@@ -84,9 +84,10 @@ async function registerMandatoryComplianceWebhooks(
   accessToken: string,
   appUrl: string
 ) {
-  const apiVersion = process.env.SHOPIFY_API_VERSION || "2025-01";
+  const apiVersion = "2024-10";
   const callbackUrl = `${appUrl}/api/shopify/webhooks`; // must match your webhook route
   const topics = ["CUSTOMERS_DATA_REQUEST", "CUSTOMERS_REDACT", "SHOP_REDACT"] as const;
+  const normalizeTopic = (t: string) => t.replace(/[\s\/]+/g, "_").toUpperCase();
 
   const mutation = `
     mutation webhookSubscriptionCreate($topic: WebhookSubscriptionTopic!, $callbackUrl: URL!) {
@@ -101,19 +102,20 @@ async function registerMandatoryComplianceWebhooks(
   `;
 
   for (const topic of topics) {
+    const topicEnum = normalizeTopic(topic);
     const data = await shopifyGraphQL<{
       webhookSubscriptionCreate: {
         webhookSubscription: { id: string } | null;
         userErrors: { field: string[] | null; message: string }[];
       };
-    }>(shop, accessToken, apiVersion, mutation, { topic, callbackUrl });
+    }>(shop, accessToken, apiVersion, mutation, { topic: topicEnum, callbackUrl });
 
     const errs = data.webhookSubscriptionCreate.userErrors || [];
     // If it already exists, Shopify may return a userError; ignore duplicates.
     const nonDuplicate = errs.filter((e) => !/already.*exists/i.test(e.message));
     if (nonDuplicate.length) {
       throw new Error(
-        `Webhook subscription error (${topic}): ${nonDuplicate.map((e) => e.message).join("; ")}`
+        `Webhook subscription error (${topicEnum}): ${nonDuplicate.map((e) => e.message).join("; ")}`
       );
     }
   }
@@ -275,9 +277,9 @@ export async function GET(req: NextRequest) {
   try {
     await registerMandatoryComplianceWebhooks(shop, accessToken, appUrl);
   } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: `Failed to register mandatory webhooks: ${e?.message || String(e)}` },
-      { status: 500 }
+    console.warn(
+      "[oauth/callback] Failed to register mandatory webhooks:",
+      e?.message || String(e)
     );
   }
 

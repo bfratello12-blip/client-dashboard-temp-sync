@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+  console.log("[oauth/start] scopes used:", scopes);
 
   const nonce = crypto.randomBytes(16).toString("hex");
   const state = Buffer.from(JSON.stringify({ client_id: clientId, nonce })).toString("base64url");
@@ -51,6 +52,7 @@ export async function GET(req: NextRequest) {
   authUrl.searchParams.set("scope", scopes.join(","));
   authUrl.searchParams.set("redirect_uri", redirectUri);
   authUrl.searchParams.set("state", state);
+  console.log("[oauth/start] authorize URL:", authUrl.toString());
 
   const res = NextResponse.redirect(authUrl.toString());
 

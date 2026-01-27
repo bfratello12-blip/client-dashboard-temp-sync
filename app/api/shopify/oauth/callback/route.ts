@@ -168,15 +168,27 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "No access_token returned" }, { status: 500 });
   }
 
-  // (Optional) Pull client_id from state if you encode it that way elsewhere.
-  // Keeping your existing behavior here:
-  const client_id = params.get("client_id") || null;
-
   // 4) Upsert into Supabase
   const supabase = createClient(
     mustGetEnv("SUPABASE_URL"),
     mustGetEnv("SUPABASE_SERVICE_ROLE_KEY")
   );
+
+  const { data: clientRow, error: clientErr } = await supabase
+    .from("clients")
+    .select("id")
+    .eq("shop", shop)
+    .maybeSingle();
+  if (clientErr) {
+    return NextResponse.json({ ok: false, error: clientErr.message }, { status: 500 });
+  }
+  if (!clientRow?.id) {
+    return NextResponse.json(
+      { ok: false, error: `No client found for shop ${shop}. Create client first.` },
+      { status: 400 }
+    );
+  }
+  const client_id = String(clientRow.id);
 
   const { error } = await supabase.from("shopify_app_installs").upsert(
     {

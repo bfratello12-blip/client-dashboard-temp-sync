@@ -756,6 +756,7 @@ export async function POST(req: NextRequest) {
     const start = searchParams.get("start");
     const end = searchParams.get("end");
     const fillZeros = searchParams.get("fillZeros") === "1";
+    const debugScopes = searchParams.get("debugScopes") === "1";
     const onlyClientId = (searchParams.get("client_id") || "").trim() || null;
 
     // Sync mode:
@@ -883,6 +884,30 @@ const days = dateRange(startDay, endDay);
         const installToken = await getInstallTokenForShop(supabase, clientId, shop);
         const integrationToken = await getIntegrationTokenForShop(supabase, clientId, shop);
         const token = await pickWorkingShopifyToken(normalizeShop(shop), [installToken, integrationToken]);
+
+        if (debugScopes) {
+          try {
+            const scopesRes = await fetch(
+              `https://${normalizeShop(shop)}/admin/oauth/access_scopes.json`,
+              {
+                method: "GET",
+                headers: {
+                  "X-Shopify-Access-Token": token,
+                },
+              }
+            );
+            const scopesJson = await scopesRes.json().catch(() => null);
+            if (!scopesRes.ok) {
+              throw new Error(`HTTP ${scopesRes.status}`);
+            }
+            const handles = Array.isArray(scopesJson?.access_scopes)
+              ? scopesJson.access_scopes.map((s: any) => String(s?.handle || "").trim()).filter(Boolean)
+              : [];
+            console.log(`[shopify/sync] granted scopes: ${handles.join(",")}`);
+          } catch (e: any) {
+            console.warn("[shopify/sync] scope check failed:", e?.message || String(e));
+          }
+        }
 
         // Shop timezone (still used for fallback)
         let tz = "UTC";

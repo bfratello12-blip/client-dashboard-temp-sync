@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+  if (!scopes.includes("read_products")) scopes.push("read_products");
 
   const nonce = crypto.randomBytes(16).toString("hex");
   const state = Buffer.from(JSON.stringify({ client_id: clientId, nonce })).toString("base64url");

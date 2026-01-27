@@ -190,14 +190,29 @@ export async function GET(req: NextRequest) {
   }
   const client_id = String(clientRow.id);
 
+  const nowISO = new Date().toISOString();
+  const { error: integErr } = await supabase
+    .from("client_integrations")
+    .update({
+      status: "connected",
+      is_active: true,
+      token_ref: accessToken,
+      updated_at: nowISO,
+    })
+    .eq("client_id", client_id)
+    .eq("provider", "shopify");
+  if (integErr) {
+    return NextResponse.json({ ok: false, error: integErr.message }, { status: 500 });
+  }
+
   const { error } = await supabase.from("shopify_app_installs").upsert(
     {
       client_id,
       shop_domain: shop,
       access_token: accessToken,
       scopes,
-      installed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      installed_at: nowISO,
+      updated_at: nowISO,
     },
     { onConflict: "shop_domain" }
   );

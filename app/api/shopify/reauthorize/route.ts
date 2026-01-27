@@ -66,6 +66,7 @@ export async function GET(req: NextRequest) {
   const redirectUri = `${appUrl}/api/shopify/oauth/callback`;
 
   const authUrl = new URL(`https://${shop}/admin/oauth/authorize`);
+  console.log("[oauth/reauthorize] client_id being set:", apiKey);
   authUrl.searchParams.set("client_id", apiKey);
   authUrl.searchParams.set("scope", scopes.join(","));
   authUrl.searchParams.set("redirect_uri", redirectUri);

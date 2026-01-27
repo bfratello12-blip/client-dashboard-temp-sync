@@ -16,6 +16,8 @@ function normalizeShop(shop: string) {
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
 
+  console.log("[oauth/start] SHOPIFY_API_KEY:", process.env.SHOPIFY_API_KEY);
+
   const shop = normalizeShop(url.searchParams.get("shop") || "");
   const clientId = (url.searchParams.get("client_id") || "").trim();
 

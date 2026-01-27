@@ -570,6 +570,67 @@ async function getInstallTokenForShop(
   return null;
 }
 
+
+async function getIntegrationTokenForShop(
+  supabase: any,
+  clientId: string,
+  shopDomain: string
+): Promise<string | null> {
+  // client_integrations.token_ref is used as a fallback Shopify access token for legacy installs.
+  // Some environments may not have this column; in that case we just return null.
+  try {
+    const { data, error } = await supabase
+      .from("client_integrations")
+      .select("token_ref")
+      .eq("provider", "shopify")
+      .eq("client_id", clientId)
+      .eq("shop_domain", shopDomain)
+      .maybeSingle();
+
+    if (error) return null;
+    const token = (data as any)?.token_ref;
+    return typeof token === "string" && token.trim() ? token.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function validateShopifyToken(shopDomain: string, token: string): Promise<void> {
+  // Minimal query to verify the token works for this shop.
+  await adminGraphQL(
+    shopDomain,
+    token,
+    `{ shop { name myshopifyDomain } }`,
+    {}
+  );
+}
+
+async function pickWorkingShopifyToken(
+  shopDomain: string,
+  tokens: Array<string | null | undefined>
+): Promise<string> {
+  const tried: string[] = [];
+  for (const t of tokens) {
+    const token = typeof t === "string" ? t.trim() : "";
+    if (!token) continue;
+    if (tried.includes(token)) continue;
+    tried.push(token);
+
+    try {
+      await validateShopifyToken(shopDomain, token);
+      return token;
+    } catch (err: any) {
+      const msg = String(err?.message || err || "");
+      // Only fall through to the next token on auth-type failures.
+      if (msg.includes("HTTP 401") || msg.toLowerCase().includes("access token") || msg.toLowerCase().includes("unauthorized")) {
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("No valid Shopify access token found for this shop (401).");
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = getSupabaseAdmin();
@@ -695,12 +756,10 @@ const days = dateRange(startDay, endDay);
 
       try {
         // Token from shopify_app_installs (authoritative OAuth install)
-        const token = await getInstallTokenForShop(supabase, clientId, shop);
-        if (!token) {
-          throw new Error(
-            `No access_token found in shopify_app_installs for client_id=${clientId}, shop=${shop}. Reinstall via /api/shopify/oauth/start.`
-          );
-        }
+        // Try token from shopify_app_installs first; fall back to client_integrations.token_ref (legacy/custom installs).
+        const installToken = await getInstallTokenForShop(supabase, clientId, shop);
+        const integrationToken = await getIntegrationTokenForShop(supabase, clientId, shop);
+        const token = await pickWorkingShopifyToken(normalizeShop(shop), [installToken, integrationToken]);
 
         // Shop timezone (still used for fallback)
         let tz = "UTC";

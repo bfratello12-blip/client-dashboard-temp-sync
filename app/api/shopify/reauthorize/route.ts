@@ -70,6 +70,7 @@ export async function GET(req: NextRequest) {
   authUrl.searchParams.set("scope", scopes.join(","));
   authUrl.searchParams.set("redirect_uri", redirectUri);
   authUrl.searchParams.set("state", state);
+  console.log("[oauth/reauthorize] env SHOPIFY_OAUTH_CLIENT_ID:", process.env.SHOPIFY_OAUTH_CLIENT_ID);
   console.log("[oauth/reauthorize] authorize URL:", authUrl.toString());
 
   const res = NextResponse.redirect(authUrl.toString());

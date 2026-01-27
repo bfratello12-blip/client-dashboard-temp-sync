@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 
@@ -14,6 +14,13 @@ function safeTimingEqualHex(aHex: string, bHex: string) {
   // Shopify HMAC is hex. Compare as buffers + guard length mismatch.
   const a = Buffer.from(aHex, "utf8");
   const b = Buffer.from(bHex, "utf8");
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+function safeTimingEqualText(aText: string, bText: string) {
+  const a = Buffer.from(aText, "utf8");
+  const b = Buffer.from(bText, "utf8");
   if (a.length !== b.length) return false;
   return crypto.timingSafeEqual(a, b);
 }
@@ -136,11 +143,32 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Invalid HMAC" }, { status: 401 });
   }
 
-  // 2) Verify state/nonce (cookie)
-  const nonceCookie = req.cookies.get("shopify_oauth_nonce")?.value;
-  if (!nonceCookie || nonceCookie !== state) {
-    return NextResponse.json({ ok: false, error: "Invalid state" }, { status: 401 });
+  const supabase = supabaseAdmin();
+
+  // 2) Verify state in DB (one-time use)
+  const { data: stateRow, error: stateErr } = await supabase
+    .from("shopify_oauth_states")
+    .select("id,shop_domain,nonce,created_at")
+    .eq("id", state)
+    .maybeSingle();
+  if (stateErr) {
+    return NextResponse.json({ ok: false, error: stateErr.message }, { status: 500 });
   }
+  if (!stateRow?.id) {
+    return NextResponse.json({ ok: false, error: "Invalid state" }, { status: 400 });
+  }
+  if (!safeTimingEqualText(shop, String(stateRow.shop_domain || ""))) {
+    await supabase.from("shopify_oauth_states").delete().eq("id", stateRow.id);
+    return NextResponse.json({ ok: false, error: "Invalid state" }, { status: 400 });
+  }
+  const createdAtMs = Date.parse(String(stateRow.created_at || ""));
+  const maxAgeMs = 10 * 60 * 1000;
+  if (!Number.isFinite(createdAtMs) || Date.now() - createdAtMs > maxAgeMs) {
+    await supabase.from("shopify_oauth_states").delete().eq("id", stateRow.id);
+    return NextResponse.json({ ok: false, error: "State expired" }, { status: 400 });
+  }
+
+  await supabase.from("shopify_oauth_states").delete().eq("id", stateRow.id);
 
   // 3) Exchange code for access token
   const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
@@ -206,11 +234,6 @@ export async function GET(req: NextRequest) {
   }
 
   // 4) Upsert into Supabase
-  const supabase = createClient(
-    mustGetEnv("SUPABASE_URL"),
-    mustGetEnv("SUPABASE_SERVICE_ROLE_KEY")
-  );
-
   const { data: clientRow, error: clientErr } = await supabase
     .from("clients")
     .select("id")

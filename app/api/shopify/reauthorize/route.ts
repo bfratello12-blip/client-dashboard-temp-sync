@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 function mustGetEnv(name: string) {
   const v = process.env[name];
@@ -25,12 +25,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const supabase = createClient(
-    mustGetEnv("SUPABASE_URL"),
-    mustGetEnv("SUPABASE_SERVICE_ROLE_KEY")
-  );
-
-  const { data: integ, error: integErr } = await supabase
+  const { data: integ, error: integErr } = await supabaseAdmin()
     .from("client_integrations")
     .select("client_id, shop_domain")
     .eq("provider", "shopify")
@@ -59,9 +54,19 @@ export async function GET(req: NextRequest) {
   if (!scopes.includes("read_products")) scopes.push("read_products");
 
   const nonce = crypto.randomBytes(16).toString("hex");
-  const state = Buffer.from(
-    JSON.stringify({ client_id: String(integ.client_id), nonce })
-  ).toString("base64url");
+  const { data: stateRow, error: stateErr } = await supabaseAdmin()
+    .from("shopify_oauth_states")
+    .insert({ shop_domain: shop, nonce })
+    .select("id")
+    .maybeSingle();
+  if (stateErr || !stateRow?.id) {
+    return NextResponse.json(
+      { ok: false, error: stateErr?.message || "Failed to create OAuth state" },
+      { status: 500 }
+    );
+  }
+  const state = String(stateRow.id);
+  console.log("[oauth/start] created state id:", state);
 
   const redirectUri = `${appUrl}/api/shopify/oauth/callback`;
 
@@ -74,15 +79,5 @@ export async function GET(req: NextRequest) {
   console.log("[oauth/reauthorize] env SHOPIFY_OAUTH_CLIENT_ID:", process.env.SHOPIFY_OAUTH_CLIENT_ID);
   console.log("[oauth/reauthorize] authorize URL:", authUrl.toString());
 
-  const res = NextResponse.redirect(authUrl.toString());
-
-  res.cookies.set("shopify_oauth_nonce", nonce, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 10,
-  });
-
-  return res;
+  return NextResponse.redirect(authUrl.toString());
 }

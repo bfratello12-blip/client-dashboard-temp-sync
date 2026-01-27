@@ -871,6 +871,12 @@ const days = dateRange(startDay, endDay);
         continue;
       }
 
+      let integrationStatus: "ok" | "error" = "ok";
+      let integrationError: string | null = null;
+      let coverageAttempted = false;
+      let coverageRowsUpserted = 0;
+      let dailyTotalsSucceeded = false;
+
       try {
         // Token from shopify_app_installs (authoritative OAuth install)
         // Try token from shopify_app_installs first; fall back to client_integrations.token_ref (legacy/custom installs).
@@ -979,8 +985,10 @@ const rows = days.map((day) => {
         });
 
         if (upErr) throw new Error(`daily_metrics upsert failed: ${upErr.message}`);
+        dailyTotalsSucceeded = true;
 
         try {
+          coverageAttempted = true;
           const coverage = await queryDailyCogsCoverage(
             normalizedShop,
             token,
@@ -1008,12 +1016,15 @@ const rows = days.map((day) => {
             .filter(Boolean) as any[];
 
           if (coverageRows.length) {
+            coverageRowsUpserted = coverageRows.length;
             const { error: cErr } = await supabase
               .from("daily_shopify_cogs_coverage")
               .upsert(coverageRows, { onConflict: "client_id,date" });
             if (cErr) throw cErr;
           }
         } catch (e: any) {
+          integrationStatus = "error";
+          integrationError = `unit-cost coverage: ${e?.message || String(e)}`;
           console.warn(
             "[shopify/sync] unit-cost coverage compute/upsert failed:",
             e?.message || String(e)
@@ -1023,6 +1034,8 @@ const rows = days.map((day) => {
         daysWritten += rows.length;
         results.push({ client_id: clientId, status: "ok", daysReturned: rows.length });
       } catch (e: any) {
+        integrationStatus = "error";
+        integrationError = e?.message || String(e);
         errors.push({ client_id: clientId, error: e?.message || String(e) });
 
         if (fillZeros) {
@@ -1046,6 +1059,28 @@ const rows = days.map((day) => {
           if (!upErr) {
             zerosInserted += rows.length;
           }}
+      } finally {
+        const nowISO = new Date().toISOString();
+        try {
+          await supabase
+            .from("client_integrations")
+            .update({
+              last_sync_at: nowISO,
+              last_sync_status: integrationStatus,
+              last_sync_error: integrationError,
+              status: dailyTotalsSucceeded || integrationStatus === "ok" ? "connected" : undefined,
+              is_active: true,
+              updated_at: nowISO,
+            })
+            .eq("client_id", clientId)
+            .eq("provider", "shopify");
+        } catch (e: any) {
+          console.warn("[shopify/sync] failed to update integration status:", e?.message || String(e));
+        }
+
+        console.log(
+          `[shopify/sync] coverageAttempted=${coverageAttempted} coverageRowsUpserted=${coverageRowsUpserted} integrationStatus=${integrationStatus}`
+        );
       }
     }
 

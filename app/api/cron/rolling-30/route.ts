@@ -197,16 +197,37 @@ export async function POST(req: NextRequest) {
     const supabase = getSupabaseAdmin();
 
     const url = req.nextUrl;
+    const clientId = url.searchParams.get("client_id")?.trim() || "";
     const start = url.searchParams.get("start")?.trim() || "";
     const end = url.searchParams.get("end")?.trim() || "";
     const fillZeros = url.searchParams.get("fillZeros")?.trim() === "1";
-    const clientId = url.searchParams.get("client_id")?.trim() || "";
 
-    // Default window: last 30 days ending yesterday (UTC)
-    const todayISO = isoDateUTC(new Date());
-    const endISO = end || isoDateUTC(new Date(Date.now() - 24 * 3600 * 1000));
-    const startISO =
-      start || isoDateUTC(new Date(Date.now() - 30 * 24 * 3600 * 1000));
+    const isISODate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+    // Window (UTC)
+    // - If end is not provided: default to yesterday (UTC) to avoid partial "today" data
+    // - If start is not provided: default to 30 days prior to end
+    if (start || end) {
+      if (!start || !end || !isISODate(start) || !isISODate(end)) {
+        return NextResponse.json(
+          { ok: false, error: "Missing/invalid start/end (YYYY-MM-DD)." },
+          { status: 400 }
+        );
+      }
+    }
+
+    let endISO = end;
+    let startISO = start;
+    if (!endISO) {
+      const endDate = new Date(Date.now() - 24 * 3600 * 1000);
+      endISO = isoDateUTC(endDate);
+      if (!startISO) {
+        startISO = isoDateUTC(new Date(endDate.getTime() - 30 * 24 * 3600 * 1000));
+      }
+    }
+
+    if (startISO > endISO) {
+      return NextResponse.json({ ok: false, error: "start must be <= end." }, { status: 400 });
+    }
 
     const days = dateRangeInclusiveUTC(startISO, endISO);
 

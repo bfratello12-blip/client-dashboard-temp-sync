@@ -32,11 +32,13 @@ export async function GET(req: NextRequest) {
   // Your env names (keep as-is if that’s what you’re using)
   const apiKey = mustGetEnv("SHOPIFY_OAUTH_CLIENT_ID");
   const appUrl = mustGetEnv("SHOPIFY_APP_URL").replace(/\/$/, "");
-  const scopes = (process.env.SHOPIFY_SCOPES || "read_reports")
+  const scopesRaw =
+    process.env.SHOPIFY_SCOPES ||
+    "read_all_orders,read_orders,read_inventory,read_reports,read_products";
+  const scopes = scopesRaw
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  if (!scopes.includes("read_products")) scopes.push("read_products");
 
   const nonce = crypto.randomBytes(16).toString("hex");
   const state = Buffer.from(JSON.stringify({ client_id: clientId, nonce })).toString("base64url");

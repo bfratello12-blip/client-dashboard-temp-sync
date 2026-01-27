@@ -456,6 +456,12 @@ async function queryDailyCogsCoverage(
   endISO: string,
   timeZone: string
 ) {
+  let scannedLineItems = 0;
+  let withVariant = 0;
+  let withInventoryItem = 0;
+  let withUnitCost = 0;
+  let loggedNoUnitCost = 0;
+
   const productCogsKnownByDay: Record<string, number> = {};
   const revenueWithCogsByDay: Record<string, number> = {};
   const unitsWithCogsByDay: Record<string, number> = {};
@@ -485,7 +491,7 @@ async function queryDailyCogsCoverage(
                     quantity
                     discountedTotalSet(withCodeDiscounts: true) { shopMoney { amount } }
                     originalTotalSet { shopMoney { amount } }
-                    variant { inventoryItem { unitCost { amount } } }
+                    variant { id inventoryItem { unitCost { amount } } }
                   }
                 }
               }
@@ -515,9 +521,25 @@ async function queryDailyCogsCoverage(
       for (const it of items) {
         const li = it?.node;
         if (!li) continue;
+        scannedLineItems += 1;
+
+        const hasVariant = Boolean(li?.variant);
+        if (hasVariant) withVariant += 1;
+
+        const hasInventoryItem = Boolean(li?.variant?.inventoryItem);
+        if (hasInventoryItem) withInventoryItem += 1;
+
+        const unitCostAmountRaw = li?.variant?.inventoryItem?.unitCost?.amount;
+        if (unitCostAmountRaw != null) withUnitCost += 1;
+
+        if (hasInventoryItem && unitCostAmountRaw == null && loggedNoUnitCost < 3) {
+          console.log("[COGS DEBUG] inventoryItem without unitCost", li?.variant?.id);
+          loggedNoUnitCost += 1;
+        }
+
         const qty = Number(li?.quantity ?? 0) || 0;
         if (qty <= 0) continue;
-        const unitCost = Number(li?.variant?.inventoryItem?.unitCost?.amount ?? 0) || 0;
+        const unitCost = Number(unitCostAmountRaw ?? 0) || 0;
         if (unitCost <= 0) continue;
 
         const lineRevenue =
@@ -533,6 +555,13 @@ async function queryDailyCogsCoverage(
     after = conn?.pageInfo?.endCursor;
     if (!after) break;
   }
+
+  console.log("[COGS DEBUG]", {
+    scannedLineItems,
+    withVariant,
+    withInventoryItem,
+    withUnitCost,
+  });
 
   return { productCogsKnownByDay, revenueWithCogsByDay, unitsWithCogsByDay };
 }

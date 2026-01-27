@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
   const nonce = crypto.randomBytes(16).toString("hex");
   const { data: stateRow, error: stateErr } = await supabaseAdmin()
     .from("shopify_oauth_states")
-    .insert({ shop_domain: shop, nonce })
+    .insert({ shop_domain: shop, nonce, client_id: clientId })
     .select("id")
     .maybeSingle();
   if (stateErr || !stateRow?.id) {

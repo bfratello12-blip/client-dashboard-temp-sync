@@ -148,7 +148,7 @@ export async function GET(req: NextRequest) {
   // 2) Verify state in DB (one-time use)
   const { data: stateRow, error: stateErr } = await supabase
     .from("shopify_oauth_states")
-    .select("id,shop_domain,nonce,created_at")
+    .select("id,shop_domain,nonce,created_at,client_id")
     .eq("id", state)
     .maybeSingle();
   if (stateErr) {
@@ -160,6 +160,10 @@ export async function GET(req: NextRequest) {
   if (!safeTimingEqualText(shop, String(stateRow.shop_domain || ""))) {
     await supabase.from("shopify_oauth_states").delete().eq("id", stateRow.id);
     return NextResponse.json({ ok: false, error: "Invalid state" }, { status: 400 });
+  }
+  if (!stateRow.client_id) {
+    await supabase.from("shopify_oauth_states").delete().eq("id", stateRow.id);
+    return NextResponse.json({ ok: false, error: "Missing client_id in state" }, { status: 400 });
   }
   const createdAtMs = Date.parse(String(stateRow.created_at || ""));
   const maxAgeMs = 10 * 60 * 1000;
@@ -234,21 +238,7 @@ export async function GET(req: NextRequest) {
   }
 
   // 4) Upsert into Supabase
-  const { data: clientRow, error: clientErr } = await supabase
-    .from("clients")
-    .select("id")
-    .eq("shop", shop)
-    .maybeSingle();
-  if (clientErr) {
-    return NextResponse.json({ ok: false, error: clientErr.message }, { status: 500 });
-  }
-  if (!clientRow?.id) {
-    return NextResponse.json(
-      { ok: false, error: `No client found for shop ${shop}. Create client first.` },
-      { status: 400 }
-    );
-  }
-  const client_id = String(clientRow.id);
+  const client_id = String(stateRow.client_id);
 
   const nowISO = new Date().toISOString();
   const { error: integErr } = await supabase

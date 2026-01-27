@@ -168,6 +168,43 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "No access_token returned" }, { status: 500 });
   }
 
+  // Verify new token works for required scopes (logs only; do not fail OAuth flow)
+  try {
+    const apiBase = `https://${shop}/admin/api/2024-01`;
+    const shopRes = await fetch(`${apiBase}/shop.json`, {
+      headers: { "X-Shopify-Access-Token": accessToken },
+    });
+    if (!shopRes.ok) {
+      const body = await shopRes.text().catch(() => "");
+      console.warn("[oauth/callback] shop.json failed:", shopRes.status, body);
+    } else {
+      console.log("[oauth/callback] shop.json ok");
+    }
+
+    const productsRes = await fetch(`${apiBase}/products.json?limit=1`, {
+      headers: { "X-Shopify-Access-Token": accessToken },
+    });
+    if (!productsRes.ok) {
+      const body = await productsRes.text().catch(() => "");
+      console.warn("[oauth/callback] products.json failed:", productsRes.status, body);
+    } else {
+      console.log("[oauth/callback] products.json ok");
+    }
+
+    const scopesRes = await fetch(`https://${shop}/admin/oauth/access_scopes.json`, {
+      headers: { "X-Shopify-Access-Token": accessToken },
+    });
+    if (!scopesRes.ok) {
+      const body = await scopesRes.text().catch(() => "");
+      console.warn("[oauth/callback] access_scopes failed:", scopesRes.status, body);
+    } else {
+      const scopesJson = await scopesRes.json().catch(() => null);
+      console.log("[oauth/callback] access_scopes:", scopesJson?.access_scopes ?? []);
+    }
+  } catch (e: any) {
+    console.warn("[oauth/callback] token verification failed:", e?.message || String(e));
+  }
+
   // 4) Upsert into Supabase
   const supabase = createClient(
     mustGetEnv("SUPABASE_URL"),

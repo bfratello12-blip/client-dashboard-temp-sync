@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
   const authUrl = new URL(`https://${shop}/admin/oauth/authorize`);
   console.log("[oauth/reauthorize] client_id being set:", apiKey);
   authUrl.searchParams.set("client_id", apiKey);
-  authUrl.searchParams.set("scope", scopes.join(","));
+  authUrl.searchParams.set("scope", scopes.join(" "));
   authUrl.searchParams.set("redirect_uri", redirectUri);
   authUrl.searchParams.set("state", state);
   console.log("[oauth/reauthorize] env SHOPIFY_OAUTH_CLIENT_ID:", process.env.SHOPIFY_OAUTH_CLIENT_ID);

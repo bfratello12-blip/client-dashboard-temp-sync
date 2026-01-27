@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
   // ✅ Standard OAuth authorize endpoint on the shop domain (NOT admin.shopify.com)
   const authUrl = new URL(`https://${shop}/admin/oauth/authorize`);
   authUrl.searchParams.set("client_id", apiKey);
-  authUrl.searchParams.set("scope", scopes.join(","));
+  authUrl.searchParams.set("scope", scopes.join(" "));
   authUrl.searchParams.set("redirect_uri", redirectUri);
   authUrl.searchParams.set("state", state);
   console.log("[oauth/start] authorize URL:", authUrl.toString());

@@ -449,6 +449,94 @@ async function queryOrdersFallback(shop: string, token: string, startISO: string
   return { bucketsRevenue, bucketsOrders, bucketsUnits };
 }
 
+async function queryDailyCogsCoverage(
+  shop: string,
+  token: string,
+  startISO: string,
+  endISO: string,
+  timeZone: string
+) {
+  const productCogsKnownByDay: Record<string, number> = {};
+  const revenueWithCogsByDay: Record<string, number> = {};
+  const unitsWithCogsByDay: Record<string, number> = {};
+
+  const startUtc = zonedDateTimeToUtcISO(startISO, "00:00:00", timeZone);
+  const endUtc = zonedDateTimeToUtcISO(endISO, "23:59:59", timeZone);
+
+  const pageSize = 100;
+  let after: string | null = null;
+
+  while (true) {
+    const data = await adminGraphQL(
+      shop,
+      token,
+      `
+      query OrdersCogs($first: Int!, $after: String, $query: String!) {
+        orders(first: $first, after: $after, query: $query, sortKey: PROCESSED_AT) {
+          pageInfo { hasNextPage endCursor }
+          edges {
+            node {
+              processedAt
+              createdAt
+              cancelledAt
+              lineItems(first: 250) {
+                edges {
+                  node {
+                    quantity
+                    discountedTotalSet(withCodeDiscounts: true) { shopMoney { amount } }
+                    originalTotalSet { shopMoney { amount } }
+                    variant { inventoryItem { unitCost { amount } } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `,
+      {
+        first: pageSize,
+        after,
+        query: `processed_at:>=${startUtc} processed_at:<=${endUtc} status:any`,
+      }
+    );
+
+    const conn = data?.orders;
+    const edges = conn?.edges || [];
+    for (const e of edges) {
+      const n = e?.node;
+      if (!n) continue;
+      if (n?.cancelledAt) continue;
+      const stamp = n.processedAt || n.createdAt;
+      if (!stamp) continue;
+
+      const day = toShopDay(stamp, timeZone);
+      const items = n?.lineItems?.edges ?? [];
+      for (const it of items) {
+        const li = it?.node;
+        if (!li) continue;
+        const qty = Number(li?.quantity ?? 0) || 0;
+        if (qty <= 0) continue;
+        const unitCost = Number(li?.variant?.inventoryItem?.unitCost?.amount ?? 0) || 0;
+        if (unitCost <= 0) continue;
+
+        const lineRevenue =
+          Number(li?.discountedTotalSet?.shopMoney?.amount ?? li?.originalTotalSet?.shopMoney?.amount ?? 0) || 0;
+
+        productCogsKnownByDay[day] = (productCogsKnownByDay[day] || 0) + unitCost * qty;
+        unitsWithCogsByDay[day] = (unitsWithCogsByDay[day] || 0) + qty;
+        revenueWithCogsByDay[day] = (revenueWithCogsByDay[day] || 0) + lineRevenue;
+      }
+    }
+
+    if (!conn?.pageInfo?.hasNextPage) break;
+    after = conn?.pageInfo?.endCursor;
+    if (!after) break;
+  }
+
+  return { productCogsKnownByDay, revenueWithCogsByDay, unitsWithCogsByDay };
+}
+
 
 // --- Shopify install token lookup (auto-detect shop column) ------------------
 
@@ -862,6 +950,46 @@ const rows = days.map((day) => {
         });
 
         if (upErr) throw new Error(`daily_metrics upsert failed: ${upErr.message}`);
+
+        try {
+          const coverage = await queryDailyCogsCoverage(
+            normalizedShop,
+            token,
+            startDay,
+            endDay,
+            tz
+          );
+
+          const coverageRows = days
+            .map((day) => {
+              const product_cogs_known = Number(coverage.productCogsKnownByDay[day] ?? 0) || 0;
+              const revenue_with_cogs = Number(coverage.revenueWithCogsByDay[day] ?? 0) || 0;
+              const units_with_cogs = Number(coverage.unitsWithCogsByDay[day] ?? 0) || 0;
+
+              if (product_cogs_known <= 0 && revenue_with_cogs <= 0 && units_with_cogs <= 0) return null;
+
+              return {
+                client_id: clientId,
+                date: day,
+                product_cogs_known,
+                revenue_with_cogs,
+                units_with_cogs,
+              };
+            })
+            .filter(Boolean) as any[];
+
+          if (coverageRows.length) {
+            const { error: cErr } = await supabase
+              .from("daily_shopify_cogs_coverage")
+              .upsert(coverageRows, { onConflict: "client_id,date" });
+            if (cErr) throw cErr;
+          }
+        } catch (e: any) {
+          console.warn(
+            "[shopify/sync] unit-cost coverage compute/upsert failed:",
+            e?.message || String(e)
+          );
+        }
 
         daysWritten += rows.length;
         results.push({ client_id: clientId, status: "ok", daysReturned: rows.length });

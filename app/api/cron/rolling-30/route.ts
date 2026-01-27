@@ -246,6 +246,7 @@ export async function POST(req: NextRequest) {
 
     let clientsProcessed = 0;
     let rowsUpserted = 0;
+    let coverageRowsFetched = 0;
     const errors: any[] = [];
 
     for (const cid of clientIds) {
@@ -271,6 +272,37 @@ export async function POST(req: NextRequest) {
           .lte("date", endISO)
           .in("source", ["shopify", "google", "meta"]);
         if (mErr) throw mErr;
+
+        const coverageByDate: Record<
+          string,
+          { product_cogs_known: number; revenue_with_cogs: number; units_with_cogs: number }
+        > = {};
+
+        try {
+          const { data: coverageRows, error: cErr } = await supabase
+            .from("daily_shopify_cogs_coverage")
+            .select("date,product_cogs_known,revenue_with_cogs,units_with_cogs")
+            .eq("client_id", cid)
+            .gte("date", startISO)
+            .lte("date", endISO);
+          if (cErr) throw cErr;
+
+          coverageRowsFetched += coverageRows?.length ?? 0;
+          for (const row of coverageRows || []) {
+            const d = String((row as any).date);
+            if (!d) continue;
+            coverageByDate[d] = {
+              product_cogs_known: n((row as any).product_cogs_known),
+              revenue_with_cogs: n((row as any).revenue_with_cogs),
+              units_with_cogs: n((row as any).units_with_cogs),
+            };
+          }
+        } catch (e: any) {
+          console.warn(
+            "[rolling-30] cogs coverage fetch failed:",
+            e?.message || String(e)
+          );
+        }
 
         const byDate: Record<
           string,
@@ -300,6 +332,7 @@ export async function POST(req: NextRequest) {
         }
 
         const upserts = Object.entries(byDate).map(([d, v]) => {
+          const coverage = coverageByDate[d];
           const base = computeDailyProfitSummary({
             date: d,
             revenue: v.revenue,
@@ -308,10 +341,9 @@ export async function POST(req: NextRequest) {
             paidSpend: v.paidSpend,
             cs: cs ? { ...cs, client_id: cid } : ({ client_id: cid } as any),
 
-            // Future: pass these when Shopify unit costs are available
-            productCogsKnown: 0,
-            revenueWithCogs: 0,
-            unitsWithCogs: 0,
+            productCogsKnown: n(coverage?.product_cogs_known),
+            revenueWithCogs: n(coverage?.revenue_with_cogs),
+            unitsWithCogs: n(coverage?.units_with_cogs),
           });
 
           return {
@@ -333,6 +365,8 @@ export async function POST(req: NextRequest) {
         errors.push({ client_id: cid, error: e?.message || String(e) });
       }
     }
+
+    console.log(`[rolling-30] cogs coverage rows fetched: ${coverageRowsFetched}`);
 
     return NextResponse.json({
       ok: errors.length === 0,

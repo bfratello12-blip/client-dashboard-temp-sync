@@ -94,6 +94,33 @@ Behavior:
 
 This prevents long-term charts from shifting unexpectedly.
 
+### `/api/cron/daily-sync` (Temp app only)
+Purpose:
+- Keep **raw platform data** (Shopify + Google Ads + Meta) and **profit summaries** updated automatically every day.
+
+What it does (runs sequentially in one request):
+1) Shopify sync — pulls recent Shopify daily totals into `daily_metrics` for the window.
+2) Google Ads sync — pulls recent Google Ads daily metrics into `daily_metrics` for the window.
+3) Meta sync — pulls recent Meta daily metrics into `daily_metrics` for the window.
+4) Profit rebuild — triggers `/api/cron/rolling-30` (with the same window) to upsert `daily_profit_summary`.
+
+Window strategy:
+- Uses a **rolling repair window** (typically last 7–8 days) so late-arriving ad conversions and Shopify adjustments get corrected automatically.
+- This prevents “gaps” or flat sections in trend charts caused by stale/zeroed `daily_profit_summary` rows.
+
+Auth:
+- Protected by the same cron auth scheme (CRON secret / sync token).
+- Can be run manually via curl for debugging, but is intended to be called by Vercel Cron.
+
+Scheduling:
+- Enabled via `vercel.json` in the **temp app repo**:
+  - Calls `/api/cron/daily-sync` once per day (Vercel cron schedules are in UTC).
+
+Notes:
+- The **public app** under Shopify review may only run `/api/cron/rolling-30` until approval.
+- The temp app is the safe place to iterate on orchestration and daily automation.
+
+
 ---
 
 ## Time Rules

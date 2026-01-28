@@ -111,24 +111,12 @@ function computeDailyProfitSummary(args: {
   const unknownRevenue = Math.max(0, revenue - coveredRevenue);
   const unknownUnits = Math.max(0, units - coveredUnits);
 
-  // Estimate COGS for the unknown portion using your existing settings
-  let est_cogs_unknown = 0;
-  est_cogs_unknown = unknownRevenue * (1 - clamp01(Number(fallbackMargin)));
+  // Estimate COGS for the unknown portion using fallback margin only
+  const est_cogs_unknown = unknownRevenue * (1 - clamp01(Number(fallbackMargin)));
 
   // Total COGS used in profit calc for the day
-  // - If coverage is complete, honor estimatedCogsMissing (if present).
-  // - Otherwise, always compute fallback for the uncovered portion.
-  const coverageComplete = revenueWithCogs === revenue && revenue > 0;
-  const est_cogs = coverageComplete && Number.isFinite(Number(estimatedCogsMissing))
-    ? productCogsKnown + n(estimatedCogsMissing)
-    : productCogsKnown > 0
-      ? productCogsKnown + est_cogs_unknown
-      : (() => {
-          // Legacy behavior: estimate for full revenue/units
-          if (units > 0 && avgCogsPerUnit > 0) return units * avgCogsPerUnit;
-          if (gm != null) return revenue * (1 - gm);
-          return revenue * 0.5;
-        })();
+  // Always use known product COGS plus fallback only on uncovered revenue
+  const est_cogs = productCogsKnown + est_cogs_unknown;
 
   // Coverage metrics
   const cogs_coverage_pct = revenue > 0 ? coveredRevenue / revenue : 0;

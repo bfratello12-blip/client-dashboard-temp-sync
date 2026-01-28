@@ -334,7 +334,7 @@ export async function POST(req: NextRequest) {
           }
 
           for (const r of lineItems || []) {
-            const d = toDayKey((r as any).day);
+            const d = String((r as any).day || "");
             if (!d) continue;
             const variantId = String((r as any).variant_id || "");
             const units = n((r as any).units);
@@ -395,7 +395,7 @@ export async function POST(req: NextRequest) {
         }
 
         const upserts = Object.entries(byDate).map(([d, v]) => {
-          const coverage = coverageByDate[toDayKey(d)];
+          const coverage = coverageByDate[d];
           const base = computeDailyProfitSummary({
             date: d,
             revenue: v.revenue,

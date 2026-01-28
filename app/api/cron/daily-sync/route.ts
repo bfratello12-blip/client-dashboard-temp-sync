@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
 
     const endDate = new Date();
     const endISO = isoDateUTC(endDate);
-    const startISO = isoDateUTC(new Date(endDate.getTime() - 7 * 24 * 3600 * 1000));
+    const startISO = isoDateUTC(new Date(endDate.getTime() - 30 * 24 * 3600 * 1000));
 
     const baseParams = new URLSearchParams();
     baseParams.set("start", startISO);

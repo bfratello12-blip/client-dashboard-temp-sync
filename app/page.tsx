@@ -1398,18 +1398,24 @@ export default function Home() {
   const [merSeriesCompare, setMerSeriesCompare] = useState<{ date: string; mer: number }[]>([]);
   /** Profitability (global assumptions) */
   const [profitTotals, setProfitTotals] = useState({
+    paidSpend: 0,
     contributionProfit: 0,
     profitMer: 0,
     estCogs: 0,
     estProcessingFees: 0,
     estFulfillmentCosts: 0,
+    estOtherVariableCosts: 0,
+    estOtherFixedCosts: 0,
   });
   const [compareProfitTotals, setCompareProfitTotals] = useState({
+    paidSpend: 0,
     contributionProfit: 0,
     profitMer: 0,
     estCogs: 0,
     estProcessingFees: 0,
     estFulfillmentCosts: 0,
+    estOtherVariableCosts: 0,
+    estOtherFixedCosts: 0,
   });
   // Client-provided blended margin (after costs, before ads). Stored in Supabase client_cost_settings.margin_after_costs_pct.
   const [marginAfterCostsPct, setMarginAfterCostsPct] = useState<number | null>(null);
@@ -1728,8 +1734,26 @@ export default function Home() {
           setAspSeriesCompare([]);
           setMerSeries([]);
           setMerSeriesCompare([]);
-          setProfitTotals({ contributionProfit: 0, profitMer: 0, estCogs: 0, estProcessingFees: 0, estFulfillmentCosts: 0 });
-          setCompareProfitTotals({ contributionProfit: 0, profitMer: 0, estCogs: 0, estProcessingFees: 0, estFulfillmentCosts: 0 });
+          setProfitTotals({
+            paidSpend: 0,
+            contributionProfit: 0,
+            profitMer: 0,
+            estCogs: 0,
+            estProcessingFees: 0,
+            estFulfillmentCosts: 0,
+            estOtherVariableCosts: 0,
+            estOtherFixedCosts: 0,
+          });
+          setCompareProfitTotals({
+            paidSpend: 0,
+            contributionProfit: 0,
+            profitMer: 0,
+            estCogs: 0,
+            estProcessingFees: 0,
+            estFulfillmentCosts: 0,
+            estOtherVariableCosts: 0,
+            estOtherFixedCosts: 0,
+          });
           setProfitMerSeries([]);
           setProfitMerSeriesCompare([]);
           setContribProfitSeries([]);
@@ -2051,9 +2075,19 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
           acc.estCogs += Number(r.est_cogs || 0);
           acc.estProcessingFees += Number(r.est_processing_fees || 0);
           acc.estFulfillmentCosts += Number(r.est_fulfillment_costs || 0);
+          acc.estOtherVariableCosts += Number(r.est_other_variable_costs || 0);
+          acc.estOtherFixedCosts += Number(r.est_other_fixed_costs || 0);
           return acc;
         },
-        { paidSpend: 0, contributionProfit: 0, estCogs: 0, estProcessingFees: 0, estFulfillmentCosts: 0 }
+        {
+          paidSpend: 0,
+          contributionProfit: 0,
+          estCogs: 0,
+          estProcessingFees: 0,
+          estFulfillmentCosts: 0,
+          estOtherVariableCosts: 0,
+          estOtherFixedCosts: 0,
+        }
       );
       const profitPrimaryMer =
         profitPrimaryAgg.paidSpend > 0 ? profitPrimaryAgg.contributionProfit / profitPrimaryAgg.paidSpend : 0;
@@ -2064,9 +2098,19 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
           acc.estCogs += Number(r.est_cogs || 0);
           acc.estProcessingFees += Number(r.est_processing_fees || 0);
           acc.estFulfillmentCosts += Number(r.est_fulfillment_costs || 0);
+          acc.estOtherVariableCosts += Number(r.est_other_variable_costs || 0);
+          acc.estOtherFixedCosts += Number(r.est_other_fixed_costs || 0);
           return acc;
         },
-        { paidSpend: 0, contributionProfit: 0, estCogs: 0, estProcessingFees: 0, estFulfillmentCosts: 0 }
+        {
+          paidSpend: 0,
+          contributionProfit: 0,
+          estCogs: 0,
+          estProcessingFees: 0,
+          estFulfillmentCosts: 0,
+          estOtherVariableCosts: 0,
+          estOtherFixedCosts: 0,
+        }
       );
       const profitCompareMer =
         profitCompareAgg.paidSpend > 0 ? profitCompareAgg.contributionProfit / profitCompareAgg.paidSpend : 0;
@@ -2389,18 +2433,24 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         setContribProfitSeries(contribProfitSeriesBuilt);
         setContribProfitSeriesCompare(effectiveCompareWindow ? contribProfitSeriesCompareBuilt : []);
         setProfitTotals({
+          paidSpend: profitPrimaryAgg.paidSpend,
           contributionProfit: profitPrimaryAgg.contributionProfit,
           profitMer: profitPrimaryMer,
           estCogs: profitPrimaryAgg.estCogs,
           estProcessingFees: profitPrimaryAgg.estProcessingFees,
           estFulfillmentCosts: profitPrimaryAgg.estFulfillmentCosts,
+          estOtherVariableCosts: profitPrimaryAgg.estOtherVariableCosts,
+          estOtherFixedCosts: profitPrimaryAgg.estOtherFixedCosts,
         });
         setCompareProfitTotals({
+          paidSpend: profitCompareAgg.paidSpend,
           contributionProfit: profitCompareAgg.contributionProfit,
           profitMer: profitCompareMer,
           estCogs: profitCompareAgg.estCogs,
           estProcessingFees: profitCompareAgg.estProcessingFees,
           estFulfillmentCosts: profitCompareAgg.estFulfillmentCosts,
+          estOtherVariableCosts: profitCompareAgg.estOtherVariableCosts,
+          estOtherFixedCosts: profitCompareAgg.estOtherFixedCosts,
         });
         setAttribSeries(attribSeriesBuilt);
         setEventsPrimary(primaryEventsData);
@@ -2511,8 +2561,22 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       : validMarginOverride
       ? compareTotals.bizRevenue * marginAfterCostsPct - compareTotals.adSpend
       : 0;
+  const totalCostsPrimary =
+    Number(profitTotals.paidSpend || 0) +
+    Number(profitTotals.estCogs || 0) +
+    Number(profitTotals.estProcessingFees || 0) +
+    Number(profitTotals.estFulfillmentCosts || 0) +
+    Number(profitTotals.estOtherVariableCosts || 0) +
+    Number(profitTotals.estOtherFixedCosts || 0);
+  const totalCostsCompare =
+    Number(compareProfitTotals.paidSpend || 0) +
+    Number(compareProfitTotals.estCogs || 0) +
+    Number(compareProfitTotals.estProcessingFees || 0) +
+    Number(compareProfitTotals.estFulfillmentCosts || 0) +
+    Number(compareProfitTotals.estOtherVariableCosts || 0) +
+    Number(compareProfitTotals.estOtherFixedCosts || 0);
   const mer = adTotals.spend > 0 ? bizTotals.revenue / adTotals.spend : 0;
-  const profitReturnOnCosts = adTotals.spend > 0 ? profitPrimaryValue / adTotals.spend : 0;
+  const profitReturnOnCosts = totalCostsPrimary > 0 ? bizTotals.revenue / totalCostsPrimary : 0;
   const prevAov =
     effectiveShowComparison && compareTotals.bizOrders > 0 ? compareTotals.bizRevenue / compareTotals.bizOrders : 0;
   const prevAsp =
@@ -2520,7 +2584,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
   const prevMer =
     effectiveShowComparison && compareTotals.adSpend > 0 ? compareTotals.bizRevenue / compareTotals.adSpend : 0;
   const prevProfitReturnOnCosts =
-    effectiveShowComparison && compareTotals.adSpend > 0 ? profitCompareValue / compareTotals.adSpend : 0;
+    effectiveShowComparison && totalCostsCompare > 0 ? compareTotals.bizRevenue / totalCostsCompare : 0;
   const prevRoas =
     effectiveShowComparison && compareTotals.adSpend > 0 ? compareTotals.adRevenue / compareTotals.adSpend : 0;
   const prevCtr =
@@ -2995,7 +3059,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         { label: "Ad ROAS", value: `${adRoas.toFixed(2)}x`, sub: "Return on ad spend", trend: undefined },
         {
           label: "Profit Return on Costs",
-          value: `${mer.toFixed(2)}x`,
+          value: `${profitReturnOnCosts.toFixed(2)}x`,
           sub: "How much revenue is generated for every $1 of total costs",
           trend: undefined,
         },
@@ -3047,7 +3111,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       { label: "Ad ROAS", value: `${adRoas.toFixed(2)}x`, sub: `vs prev: ${fmtDelta(roasDelta, allowPct)}`, trend: allowPct ? roasDelta : undefined },
       {
         label: "Profit Return on Costs",
-        value: `${mer.toFixed(2)}x`,
+        value: `${profitReturnOnCosts.toFixed(2)}x`,
         sub: `vs prev: ${fmtDelta(merDelta, allowPct)}`,
         trend: allowPct ? merDelta : undefined,
       },
@@ -3067,6 +3131,8 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     prevProfitReturnOnCosts,
     profitPrimaryValue,
     profitCompareValue,
+    totalCostsPrimary,
+    totalCostsCompare,
     rangeDays,
     prevAov,
     prevAsp,

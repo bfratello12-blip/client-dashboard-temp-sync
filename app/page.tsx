@@ -2082,23 +2082,29 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       const computeContributionProfit = (iso: string): number => {
         // IMPORTANT:
         // Profit Trend should match the KPI Profit calculation.
-        // Prefer daily_profit_summary when present (unit costs + blended estimates),
-        // then fallback to Revenue×Margin−Spend if a client margin override is set.
+        const validMarginOverride =
+          marginAfterCostsPct != null &&
+          Number.isFinite(marginAfterCostsPct) &&
+          marginAfterCostsPct > 0 &&
+          marginAfterCostsPct < 1;
+        const revPrimary = Number(revenueByDatePrimary[iso] || 0);
+        const spendPrimary = Number(spendByDatePrimary[iso] || 0);
         const row = profitRowByDate[iso];
         if (row) {
           let cp = Number(row.contribution_profit);
           const rev = Number(row.revenue);
           const pm = Number(row.profit_mer);
-          const hasSignals =
-            Number.isFinite(rev) ||
-            Number.isFinite(Number(row.paid_spend)) ||
+          const hasCosts =
             Number.isFinite(Number(row.est_cogs)) ||
             Number.isFinite(Number(row.est_processing_fees)) ||
             Number.isFinite(Number(row.est_fulfillment_costs)) ||
             Number.isFinite(Number(row.est_other_variable_costs)) ||
-            Number.isFinite(Number(row.est_other_fixed_costs)) ||
-            Number.isFinite(cp);
-          if (hasSignals) {
+            Number.isFinite(Number(row.est_other_fixed_costs));
+          const hasUsableRow =
+            Number.isFinite(cp) ||
+            (Number.isFinite(rev) && rev > 0 && hasCosts) ||
+            Number.isFinite(Number(row.paid_spend));
+          if (hasUsableRow) {
             if (
               (!Number.isFinite(cp) || (cp === 0 && Number.isFinite(rev) && rev > 0)) &&
               Number.isFinite(rev) &&
@@ -2112,9 +2118,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
             return Number.isFinite(cp) ? Number(cp.toFixed(2)) : 0;
           }
         }
-        const revPrimary = Number(revenueByDatePrimary[iso] || 0);
-        const spendPrimary = Number(spendByDatePrimary[iso] || 0);
-        if (Number.isFinite(marginAfterCostsPct) && (revPrimary !== 0 || spendPrimary !== 0)) {
+        if (validMarginOverride && (revPrimary !== 0 || spendPrimary !== 0)) {
           const v = revPrimary * Number(marginAfterCostsPct) - spendPrimary;
           return Number.isFinite(v) ? Number(v.toFixed(2)) : 0;
         }
@@ -2490,13 +2494,33 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
   /** Derived metrics */
   const adRoas = adTotals.spend > 0 ? adTotals.revenue / adTotals.spend : 0;
   const ctr = adTotals.impressions > 0 ? (adTotals.clicks / adTotals.impressions) * 100 : 0;
+  const validMarginOverride =
+    marginAfterCostsPct != null &&
+    Number.isFinite(marginAfterCostsPct) &&
+    marginAfterCostsPct > 0 &&
+    marginAfterCostsPct < 1;
+  const profitPrimaryValue =
+    Number.isFinite(Number(profitTotals.contributionProfit))
+      ? Number(profitTotals.contributionProfit)
+      : validMarginOverride
+      ? bizTotals.revenue * marginAfterCostsPct - adTotals.spend
+      : 0;
+  const profitCompareValue =
+    Number.isFinite(Number(compareProfitTotals.contributionProfit))
+      ? Number(compareProfitTotals.contributionProfit)
+      : validMarginOverride
+      ? compareTotals.bizRevenue * marginAfterCostsPct - compareTotals.adSpend
+      : 0;
   const mer = adTotals.spend > 0 ? bizTotals.revenue / adTotals.spend : 0;
+  const profitReturnOnCosts = adTotals.spend > 0 ? profitPrimaryValue / adTotals.spend : 0;
   const prevAov =
     effectiveShowComparison && compareTotals.bizOrders > 0 ? compareTotals.bizRevenue / compareTotals.bizOrders : 0;
   const prevAsp =
     effectiveShowComparison && compareTotals.bizUnits > 0 ? compareTotals.bizRevenue / compareTotals.bizUnits : 0;
   const prevMer =
     effectiveShowComparison && compareTotals.adSpend > 0 ? compareTotals.bizRevenue / compareTotals.adSpend : 0;
+  const prevProfitReturnOnCosts =
+    effectiveShowComparison && compareTotals.adSpend > 0 ? profitCompareValue / compareTotals.adSpend : 0;
   const prevRoas =
     effectiveShowComparison && compareTotals.adSpend > 0 ? compareTotals.adRevenue / compareTotals.adSpend : 0;
   const prevCtr =
@@ -2989,7 +3013,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     const spendDelta = pctChange(adTotals.spend, compareTotals.adSpend);
     const roasDelta = pctChange(adRoas, prevRoas);
     const ctrDelta = pctChange(ctr, prevCtr);
-    const merDelta = pctChange(mer, prevMer);
+    const merDelta = pctChange(profitReturnOnCosts, prevProfitReturnOnCosts);
     return [
       { label: "Total Revenue", value: formatCurrency(bizTotals.revenue), sub: `vs prev: ${fmtDelta(revDelta, allowPct)}`, trend: allowPct ? revDelta : undefined },
       {
@@ -3039,6 +3063,10 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     adRoas,
     ctr,
     mer,
+    profitReturnOnCosts,
+    prevProfitReturnOnCosts,
+    profitPrimaryValue,
+    profitCompareValue,
     rangeDays,
     prevAov,
     prevAsp,
@@ -3164,28 +3192,30 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
   }, [rangeDays, coverage, effectiveShowComparison]);
   /** North Star */
   const northStar = useMemo(() => {
-    const primaryKpi = kpis.find((k) => k.label === northStarKey) ?? kpis[0];
-    const primaryValue = primaryKpi?.value ?? "—";
-    const sub = primaryKpi?.sub ?? "";
-    const trend = typeof primaryKpi?.trend === "number" && Number.isFinite(primaryKpi.trend) ? primaryKpi.trend : null;
-    const good = trend != null ? trend >= 0 : true;
-    const deltaLine = typeof sub === "string" && sub.toLowerCase().includes("vs prev") ? sub : "";
-    const details = northStarKey === "Profit Return on Costs"
-      ? `Revenue ${formatCurrency(bizTotals.revenue)} • Spend ${formatCurrency(adTotals.spend)}`
-      : sub || `Revenue ${formatCurrency(bizTotals.revenue)}`;
+    const profitRocDelta = effectiveShowComparison ? profitReturnOnCosts - prevProfitReturnOnCosts : 0;
+    const profitDelta = effectiveShowComparison ? profitPrimaryValue - profitCompareValue : 0;
+    const good = effectiveShowComparison ? profitRocDelta >= 0 : profitReturnOnCosts >= 0;
     return {
       title: "North Star",
-      primary: primaryValue,
-      sub: northStarKey,
-      details,
-      deltaLine,
+      primary: `${profitReturnOnCosts.toFixed(2)}x`,
+      sub: "Profit Return on Costs (Profit ÷ ad spend)",
+      details: `Profit ${formatCurrency(profitPrimaryValue)} • Spend ${formatCurrency(adTotals.spend)}`,
+      deltaLine: effectiveShowComparison
+        ? `vs ${compareLabel.toLowerCase()}: Profit Return on Costs ${(profitRocDelta >= 0 ? "+" : "-")}${Math.abs(
+            profitRocDelta
+          ).toFixed(2)}x • Profit ${formatSignedCurrency(profitDelta)}`
+        : "",
       good,
     };
-  }, [kpis, northStarKey, bizTotals.revenue, adTotals.spend]);
-
-  useEffect(() => {
-    try { localStorage.setItem("dash.northstar.key", northStarKey); } catch {}
-  }, [northStarKey]);
+  }, [
+    profitReturnOnCosts,
+    prevProfitReturnOnCosts,
+    effectiveShowComparison,
+    profitPrimaryValue,
+    profitCompareValue,
+    adTotals.spend,
+    compareLabel,
+  ]);
   /** Attribution summary (range-level) */
   const attributionSummary = useMemo(() => {
     const primary = windows.primary;
@@ -3200,7 +3230,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     //   windowed revenue = sum daily revenue from start..end (shown) + assume forward days from last (attribSeries last day forward includes them)
     // Better:
     //   total windowed revenue = sum revenueSeries + (rev in (end+1..end+window-1)) which we don't store.
-    // To keep it consistent with what we actually show, we’ll report:
+    // To keep it consistent with what we actually show, we'll report:
     //   “Average daily windowed MER/ROAS” and “Median daily windowed MER/ROAS”
     // These are truthful and align with the chart.
     const merVals = attribSeries.map((d) => d.mer_w).filter((v) => isFinite(v));

@@ -368,7 +368,6 @@ export async function POST(req: NextRequest) {
         inventory_item_id: invId,
         variant_id: invToVariant[invId] ?? null,
         unit_cost_amount: cost?.amount ?? null,
-        currency: cost?.currency ?? null,
         updated_at: new Date().toISOString(),
       };
     });

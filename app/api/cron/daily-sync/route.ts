@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isoDateUTC } from "@/lib/dates";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
     if (secret) tokenParams.set("token", secret);
 
     const shopifyUrl = `${origin}/api/shopify/sync?${tokenParams.toString()}`;
+    const lineItemsUrl = `${origin}/api/shopify/daily-line-items-sync?${baseParams.toString()}`;
     const rollingUrl = `${origin}/api/cron/rolling-30?${tokenParams.toString()}`;
 
     const authedHeaders = secret ? { authorization: `Bearer ${secret}` } : undefined;
@@ -54,6 +56,39 @@ export async function POST(req: NextRequest) {
 
     const shopifyRes = await fetch(shopifyUrl, { method: "POST" });
     const shopifyBody = await safeJson(shopifyRes);
+
+    let lineItemsBody: any = null;
+    let lineItemsRes: Response | null = null;
+    if (clientId) {
+      lineItemsRes = await fetch(lineItemsUrl, { method: "POST", headers: authedHeaders });
+      lineItemsBody = await safeJson(lineItemsRes);
+    } else {
+      const supabase = supabaseAdmin();
+      const { data: integrations, error: integErr } = await supabase
+        .from("client_integrations")
+        .select("client_id")
+        .eq("provider", "shopify")
+        .eq("is_active", true)
+        .limit(5000);
+      if (integErr) throw integErr;
+
+      const lineItemErrors: any[] = [];
+      for (const row of integrations || []) {
+        const cid = String((row as any).client_id || "");
+        if (!cid) continue;
+        const perClientParams = new URLSearchParams(baseParams);
+        perClientParams.set("client_id", cid);
+        const perClientUrl = `${origin}/api/shopify/daily-line-items-sync?${perClientParams.toString()}`;
+        const res = await fetch(perClientUrl, { method: "POST", headers: authedHeaders });
+        const body = await safeJson(res);
+        if (!res.ok) lineItemErrors.push({ client_id: cid, status: res.status, body });
+      }
+
+      lineItemsBody = {
+        ok: lineItemErrors.length === 0,
+        errors: lineItemErrors,
+      };
+    }
 
     const googleRes = await fetch(googleUrl, {
       method: "POST",
@@ -72,6 +107,10 @@ export async function POST(req: NextRequest) {
 
     const errors: any[] = [];
     if (!shopifyRes.ok) errors.push({ step: "shopify", status: shopifyRes.status, body: shopifyBody });
+    if (lineItemsRes && !lineItemsRes.ok)
+      errors.push({ step: "shopify_daily_line_items", status: lineItemsRes.status, body: lineItemsBody });
+    if (!lineItemsRes && lineItemsBody?.errors?.length)
+      errors.push({ step: "shopify_daily_line_items", status: 500, body: lineItemsBody });
     if (!googleRes.ok) errors.push({ step: "google", status: googleRes.status, body: googleBody });
     if (!metaRes.ok) errors.push({ step: "meta", status: metaRes.status, body: metaBody });
     if (!rollingRes.ok) errors.push({ step: "rolling30", status: rollingRes.status, body: rollingBody });
@@ -80,6 +119,7 @@ export async function POST(req: NextRequest) {
       ok: errors.length === 0,
       window: { start: startISO, end: endISO },
       shopify: shopifyBody ?? { status: shopifyRes.status },
+      shopify_line_items: lineItemsBody ?? { status: lineItemsRes?.status },
       google: googleBody ?? { status: googleRes.status },
       meta: metaBody ?? { status: metaRes.status },
       rolling30: rollingBody ?? { status: rollingRes.status },

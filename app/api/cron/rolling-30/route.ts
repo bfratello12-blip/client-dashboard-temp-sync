@@ -326,6 +326,10 @@ export async function POST(req: NextRequest) {
           let inventoryCostRows = 0;
           let matchedLineItems = 0;
           let totalLineItems = 0;
+          const dayStats: Record<
+            string,
+            { lines: number; linesWithCost: number; revenue: number; revenueWithCost: number }
+          > = {};
 
           for (let i = 0; i < inventoryItemIds.length; i += chunkSize) {
             const chunk = inventoryItemIds.slice(i, i + chunkSize);
@@ -381,6 +385,11 @@ export async function POST(req: NextRequest) {
                 estimated_cogs_missing: 0,
               };
             }
+            if (!dayStats[d]) {
+              dayStats[d] = { lines: 0, linesWithCost: 0, revenue: 0, revenueWithCost: 0 };
+            }
+            dayStats[d].lines += 1;
+            dayStats[d].revenue += lineRevenue;
 
             totalLineItems += 1;
             const unitCostAmount = Number.isFinite(inventoryItemId)
@@ -394,6 +403,8 @@ export async function POST(req: NextRequest) {
               coverageByDate[d].revenue_with_cogs += lineRevenue;
               coverageByDate[d].units_with_cogs += units;
               matchedLineItems += 1;
+              dayStats[d].linesWithCost += 1;
+              dayStats[d].revenueWithCost += lineRevenue;
             } else {
               coverageByDate[d].estimated_cogs_missing += lineRevenue * (1 - gmFallbackRate);
             }
@@ -405,6 +416,18 @@ export async function POST(req: NextRequest) {
           );
           console.log(
             `[rolling-30] line item days: distinct=${lineItemDays.size}, min=${lineItemMin || "n/a"}, max=${lineItemMax || "n/a"}`
+          );
+          const dayKeys = Object.keys(dayStats);
+          const daysWithCoverage = dayKeys.filter((d) => dayStats[d].revenueWithCost > 0).length;
+          const totalRevenue = dayKeys.reduce((sum, d) => sum + dayStats[d].revenue, 0);
+          const totalRevenueWithCost = dayKeys.reduce((sum, d) => sum + dayStats[d].revenueWithCost, 0);
+          const revenuePct = totalRevenue > 0 ? (totalRevenueWithCost / totalRevenue) * 100 : 0;
+          const sampleNoCoverageDays = dayKeys
+            .filter((d) => dayStats[d].revenueWithCost <= 0)
+            .slice(0, 5)
+            .join(",");
+          console.log(
+            `[rolling-30] line item revenue coverage: daysWithCoverage=${daysWithCoverage}/${dayKeys.length}, revenueWithCost=${totalRevenueWithCost.toFixed(2)}, totalRevenue=${totalRevenue.toFixed(2)} (${revenuePct.toFixed(1)}%), noCoverageSample=${sampleNoCoverageDays || "n/a"}`
           );
 
           coverageRowsFetched += Object.keys(coverageByDate).length;

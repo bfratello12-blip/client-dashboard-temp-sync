@@ -420,7 +420,7 @@ function SettingsPage() {
                         <div className="mt-3 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
                           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <label className="text-xs font-semibold text-slate-700">
-                              Estimated gross margin %
+                              Fallback gross margin (%) — used when Shopify unit cost is missing
                               <input
                                 value={formatPct(costs.default_gross_margin_pct)}
                                 onChange={(e) => setCS("default_gross_margin_pct", e.target.value)}
@@ -429,7 +429,7 @@ function SettingsPage() {
                                 placeholder="e.g. 55"
                               />
                               <div className="mt-1 text-[11px] text-slate-500">
-                                Used to estimate unit costs when Shopify unit costs are missing.
+                                Applies only when inventoryItem.unitCost is null; otherwise actual unit cost is used.
                               </div>
                             </label>
 

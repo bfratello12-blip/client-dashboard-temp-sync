@@ -52,6 +52,13 @@ function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
 }
 
+function normalizePct(v: number | null | undefined): number | null {
+  if (v == null || !Number.isFinite(Number(v))) return null;
+  const n = Number(v);
+  const frac = n > 1 ? n / 100 : n;
+  return clamp01(frac);
+}
+
 function daysInMonth(iso: string): number {
   // iso: YYYY-MM-DD
   const [y, m] = iso.split("-").map((p) => Number(p));
@@ -74,12 +81,14 @@ function computeDailyProfitSummary(args: {
   productCogsKnown?: number;
   revenueWithCogs?: number;
   unitsWithCogs?: number;
+  estimatedCogsMissing?: number;
 }) {
   const { date, revenue, orders, units, paidSpend, cs } = args;
 
   const productCogsKnown = n((args as any).productCogsKnown);
   const revenueWithCogs = n((args as any).revenueWithCogs);
   const unitsWithCogs = n((args as any).unitsWithCogs);
+  const estimatedCogsMissing = (args as any).estimatedCogsMissing;
 
   // --- COGS ---
   // We support a blended model:
@@ -87,7 +96,7 @@ function computeDailyProfitSummary(args: {
   //   we only estimate COGS for the remaining (unknown) portion.
   // - Otherwise we estimate COGS for the full day (legacy behavior).
 
-  const gm = cs?.default_gross_margin_pct;
+  const gm = normalizePct(cs?.default_gross_margin_pct);
   const avgCogsPerUnit = n(cs?.avg_cogs_per_unit);
 
   const coveredRevenue = Math.max(0, Math.min(revenue, revenueWithCogs));
@@ -108,14 +117,14 @@ function computeDailyProfitSummary(args: {
   }
 
   // Total COGS used in profit calc for the day
-  const est_cogs =
-    productCogsKnown > 0
+  const est_cogs = Number.isFinite(Number(estimatedCogsMissing))
+    ? productCogsKnown + n(estimatedCogsMissing)
+    : productCogsKnown > 0
       ? productCogsKnown + est_cogs_unknown
       : (() => {
           // Legacy behavior: estimate for full revenue/units
           if (units > 0 && avgCogsPerUnit > 0) return units * avgCogsPerUnit;
-          if (gm != null && Number.isFinite(Number(gm)))
-            return revenue * (1 - clamp01(Number(gm)));
+          if (gm != null) return revenue * (1 - gm);
           return revenue * 0.5;
         })();
 
@@ -263,6 +272,9 @@ export async function POST(req: NextRequest) {
 
         const cs: CostSettingsRow | null = csRow ? ({ ...csRow } as any) : null;
 
+        const gmFallback = normalizePct(cs?.default_gross_margin_pct);
+        const gmFallbackRate = gmFallback != null ? gmFallback : 0.5;
+
         // Fetch raw daily_metrics for the date range for these sources
         const { data: metricsRows, error: mErr } = await supabase
           .from("daily_metrics")
@@ -275,31 +287,74 @@ export async function POST(req: NextRequest) {
 
         const coverageByDate: Record<
           string,
-          { product_cogs_known: number; revenue_with_cogs: number; units_with_cogs: number }
+          {
+            product_cogs_known: number;
+            revenue_with_cogs: number;
+            units_with_cogs: number;
+            estimated_cogs_missing: number;
+          }
         > = {};
 
         try {
-          const { data: coverageRows, error: cErr } = await supabase
-            .from("daily_shopify_cogs_coverage")
-            .select("date,product_cogs_known,revenue_with_cogs,units_with_cogs")
+          const { data: lineItems, error: liErr } = await supabase
+            .from("shopify_daily_line_items")
+            .select("day,variant_id,units,line_revenue")
             .eq("client_id", cid)
-            .gte("date", startISO)
-            .lte("date", endISO);
-          if (cErr) throw cErr;
+            .gte("day", startISO)
+            .lte("day", endISO);
+          if (liErr) throw liErr;
 
-          coverageRowsFetched += coverageRows?.length ?? 0;
-          for (const row of coverageRows || []) {
-            const d = String((row as any).date);
-            if (!d) continue;
-            coverageByDate[d] = {
-              product_cogs_known: n((row as any).product_cogs_known),
-              revenue_with_cogs: n((row as any).revenue_with_cogs),
-              units_with_cogs: n((row as any).units_with_cogs),
-            };
+          const variantIds = Array.from(
+            new Set((lineItems || []).map((r: any) => String(r.variant_id || "")).filter(Boolean))
+          );
+
+          const unitCostByVariant: Record<string, number | null> = {};
+          const chunkSize = 500;
+          for (let i = 0; i < variantIds.length; i += chunkSize) {
+            const chunk = variantIds.slice(i, i + chunkSize);
+            const { data: costRows, error: costErr } = await supabase
+              .from("shopify_variant_unit_costs")
+              .select("variant_id,unit_cost_amount")
+              .eq("client_id", cid)
+              .in("variant_id", chunk);
+            if (costErr) throw costErr;
+            for (const row of costRows || []) {
+              const vid = String((row as any).variant_id || "");
+              if (!vid) continue;
+              unitCostByVariant[vid] = (row as any).unit_cost_amount ?? null;
+            }
           }
+
+          for (const r of lineItems || []) {
+            const d = String((r as any).day);
+            if (!d) continue;
+            const variantId = String((r as any).variant_id || "");
+            const units = n((r as any).units);
+            const lineRevenue = n((r as any).line_revenue);
+
+            if (!coverageByDate[d]) {
+              coverageByDate[d] = {
+                product_cogs_known: 0,
+                revenue_with_cogs: 0,
+                units_with_cogs: 0,
+                estimated_cogs_missing: 0,
+              };
+            }
+
+            const unitCostAmount = unitCostByVariant[variantId];
+            if (unitCostAmount != null) {
+              coverageByDate[d].product_cogs_known += units * n(unitCostAmount);
+              coverageByDate[d].revenue_with_cogs += lineRevenue;
+              coverageByDate[d].units_with_cogs += units;
+            } else {
+              coverageByDate[d].estimated_cogs_missing += lineRevenue * (1 - gmFallbackRate);
+            }
+          }
+
+          coverageRowsFetched += Object.keys(coverageByDate).length;
         } catch (e: any) {
           console.warn(
-            "[rolling-30] cogs coverage fetch failed:",
+            "[rolling-30] cogs coverage join failed:",
             e?.message || String(e)
           );
         }
@@ -344,6 +399,7 @@ export async function POST(req: NextRequest) {
             productCogsKnown: n(coverage?.product_cogs_known),
             revenueWithCogs: n(coverage?.revenue_with_cogs),
             unitsWithCogs: n(coverage?.units_with_cogs),
+            estimatedCogsMissing: n(coverage?.estimated_cogs_missing),
           });
 
           return {

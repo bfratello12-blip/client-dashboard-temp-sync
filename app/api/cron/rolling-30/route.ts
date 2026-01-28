@@ -122,7 +122,10 @@ function computeDailyProfitSummary(args: {
   }
 
   // Total COGS used in profit calc for the day
-  const est_cogs = Number.isFinite(Number(estimatedCogsMissing))
+  // - If coverage is complete, honor estimatedCogsMissing (if present).
+  // - Otherwise, always compute fallback for the uncovered portion.
+  const coverageComplete = revenueWithCogs === revenue && revenue > 0;
+  const est_cogs = coverageComplete && Number.isFinite(Number(estimatedCogsMissing))
     ? productCogsKnown + n(estimatedCogsMissing)
     : productCogsKnown > 0
       ? productCogsKnown + est_cogs_unknown

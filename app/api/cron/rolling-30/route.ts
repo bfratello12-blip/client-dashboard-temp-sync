@@ -294,6 +294,17 @@ export async function POST(req: NextRequest) {
             .lte("day", endISO);
           if (liErr) throw liErr;
 
+          const lineItemDays = new Set<string>();
+          let lineItemMin = "";
+          let lineItemMax = "";
+          for (const r of lineItems || []) {
+            const d = String((r as any).day || "").slice(0, 10);
+            if (!d) continue;
+            lineItemDays.add(d);
+            if (!lineItemMin || d < lineItemMin) lineItemMin = d;
+            if (!lineItemMax || d > lineItemMax) lineItemMax = d;
+          }
+
           const inventoryItemIds = Array.from(
             new Set(
               (lineItems || [])
@@ -392,6 +403,9 @@ export async function POST(req: NextRequest) {
           console.log(
             `[rolling-30] unit cost coverage: inventoryIds=${inventoryItemIds.length}, costRows=${inventoryCostRows}, matchedLineItems=${matchedLineItems}/${totalLineItems} (${matchPct.toFixed(1)}%)`
           );
+          console.log(
+            `[rolling-30] line item days: distinct=${lineItemDays.size}, min=${lineItemMin || "n/a"}, max=${lineItemMax || "n/a"}`
+          );
 
           coverageRowsFetched += Object.keys(coverageByDate).length;
         } catch (e: any) {
@@ -420,6 +434,20 @@ export async function POST(req: NextRequest) {
             byDate[d].paidSpend += n((r as any).spend);
           }
         }
+
+        const metricsDays = new Set<string>();
+        let metricsMin = "";
+        let metricsMax = "";
+        for (const r of metricsRows || []) {
+          const d = toDayKey((r as any).date);
+          if (!d) continue;
+          metricsDays.add(d);
+          if (!metricsMin || d < metricsMin) metricsMin = d;
+          if (!metricsMax || d > metricsMax) metricsMax = d;
+        }
+        console.log(
+          `[rolling-30] metrics days: distinct=${metricsDays.size}, min=${metricsMin || "n/a"}, max=${metricsMax || "n/a"}`
+        );
 
         // Fill missing dates
         if (fillZeros) {

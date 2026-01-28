@@ -103,6 +103,7 @@ function computeDailyProfitSummary(args: {
 
   const gm = normalizePct(cs?.default_gross_margin_pct);
   const avgCogsPerUnit = n(cs?.avg_cogs_per_unit);
+  const fallbackMargin = gm != null ? gm : 0.5;
 
   const coveredRevenue = Math.max(0, Math.min(revenue, revenueWithCogs));
   const coveredUnits = Math.max(0, Math.min(units, unitsWithCogs));
@@ -112,14 +113,7 @@ function computeDailyProfitSummary(args: {
 
   // Estimate COGS for the unknown portion using your existing settings
   let est_cogs_unknown = 0;
-  if (unknownUnits > 0 && avgCogsPerUnit > 0) {
-    est_cogs_unknown = unknownUnits * avgCogsPerUnit;
-  } else if (gm != null && Number.isFinite(Number(gm))) {
-    est_cogs_unknown = unknownRevenue * (1 - clamp01(Number(gm)));
-  } else {
-    // Conservative default if no settings exist: assume 50% COGS rate
-    est_cogs_unknown = unknownRevenue * 0.5;
-  }
+  est_cogs_unknown = unknownRevenue * (1 - clamp01(Number(fallbackMargin)));
 
   // Total COGS used in profit calc for the day
   // - If coverage is complete, honor estimatedCogsMissing (if present).
@@ -306,7 +300,7 @@ export async function POST(req: NextRequest) {
         try {
           const { data: lineItems, error: liErr } = await supabase
             .from("shopify_daily_line_items")
-            .select("day,variant_id,units,line_revenue")
+            .select("day,variant_id,inventory_item_id,units,line_revenue")
             .eq("client_id", cid)
             .gte("day", startISO)
             .lte("day", endISO);
@@ -315,9 +309,32 @@ export async function POST(req: NextRequest) {
           const variantIds = Array.from(
             new Set((lineItems || []).map((r: any) => String(r.variant_id || "")).filter(Boolean))
           );
+          const inventoryItemIds = Array.from(
+            new Set((lineItems || []).map((r: any) => String(r.inventory_item_id || "")).filter(Boolean))
+          );
 
           const unitCostByVariant: Record<string, number | null> = {};
+          const unitCostByInventoryItem: Record<string, number | null> = {};
           const chunkSize = 500;
+
+          for (let i = 0; i < inventoryItemIds.length; i += chunkSize) {
+            const chunk = inventoryItemIds.slice(i, i + chunkSize);
+            const { data: costRows, error: costErr } = await supabase
+              .from("shopify_variant_unit_costs")
+              .select("inventory_item_id,variant_id,unit_cost_amount")
+              .eq("client_id", cid)
+              .in("inventory_item_id", chunk);
+            if (costErr) throw costErr;
+            for (const row of costRows || []) {
+              const iid = String((row as any).inventory_item_id || "");
+              if (iid) unitCostByInventoryItem[iid] = (row as any).unit_cost_amount ?? null;
+              const vid = String((row as any).variant_id || "");
+              if (vid && unitCostByVariant[vid] == null) {
+                unitCostByVariant[vid] = (row as any).unit_cost_amount ?? null;
+              }
+            }
+          }
+
           for (let i = 0; i < variantIds.length; i += chunkSize) {
             const chunk = variantIds.slice(i, i + chunkSize);
             const { data: costRows, error: costErr } = await supabase
@@ -329,7 +346,9 @@ export async function POST(req: NextRequest) {
             for (const row of costRows || []) {
               const vid = String((row as any).variant_id || "");
               if (!vid) continue;
-              unitCostByVariant[vid] = (row as any).unit_cost_amount ?? null;
+              if (unitCostByVariant[vid] == null) {
+                unitCostByVariant[vid] = (row as any).unit_cost_amount ?? null;
+              }
             }
           }
 
@@ -337,6 +356,7 @@ export async function POST(req: NextRequest) {
             const d = String((r as any).day || "");
             if (!d) continue;
             const variantId = String((r as any).variant_id || "");
+            const inventoryItemId = String((r as any).inventory_item_id || "");
             const units = n((r as any).units);
             const lineRevenue = n((r as any).line_revenue);
 
@@ -349,8 +369,12 @@ export async function POST(req: NextRequest) {
               };
             }
 
-            const unitCostAmount = unitCostByVariant[variantId];
-            if (unitCostAmount != null) {
+            const unitCostAmount =
+              (inventoryItemId && unitCostByInventoryItem[inventoryItemId] != null
+                ? unitCostByInventoryItem[inventoryItemId]
+                : unitCostByVariant[variantId]) ?? null;
+
+            if (unitCostAmount != null && Number.isFinite(Number(unitCostAmount))) {
               coverageByDate[d].product_cogs_known += units * n(unitCostAmount);
               coverageByDate[d].revenue_with_cogs += lineRevenue;
               coverageByDate[d].units_with_cogs += units;

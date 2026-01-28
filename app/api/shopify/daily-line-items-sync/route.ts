@@ -43,6 +43,10 @@ function gidToVariantId(gid: string | null | undefined): number | null {
   return m ? Number(m[1]) : null;
 }
 
+function inventoryItemIdToGid(id: number): string {
+  return `gid://shopify/InventoryItem/${id}`;
+}
+
 async function shopifyGraphQL(args: {
   shopDomain: string;
   accessToken: string;
@@ -72,6 +76,67 @@ async function shopifyGraphQL(args: {
     throw new Error(`Shopify GraphQL: ${json.errors[0]?.message || "Unknown error"}`);
   }
   return json?.data;
+}
+
+const INVENTORY_ITEM_COST_QUERY = `
+query InventoryItemCosts($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    __typename
+    ... on InventoryItem {
+      id
+      unitCost {
+        amount
+        currencyCode
+      }
+    }
+  }
+}
+`;
+
+async function fetchInventoryItemUnitCosts(args: {
+  shopDomain: string;
+  accessToken: string;
+  inventoryItemIds: number[];
+  throttleMs: number;
+}) {
+  const { shopDomain, accessToken, inventoryItemIds, throttleMs } = args;
+  const unitCostByInventoryId: Record<number, { amount: number | null; currency: string | null }> = {};
+
+  const ids = Array.from(new Set(inventoryItemIds.filter((id) => Number.isFinite(id))));
+  const chunkSize = 75;
+  let fetched = 0;
+  let withCost = 0;
+
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    const gqlIds = chunk.map((id) => inventoryItemIdToGid(id));
+    const data = await shopifyGraphQL({
+      shopDomain,
+      accessToken,
+      query: INVENTORY_ITEM_COST_QUERY,
+      variables: { ids: gqlIds },
+    });
+
+    const nodes = (data as any)?.nodes || [];
+    for (const node of nodes) {
+      if (!node || node.__typename !== "InventoryItem") continue;
+      const invId = gidToInventoryItemId(node?.id);
+      if (!invId) continue;
+      fetched += 1;
+      const amtRaw = node?.unitCost?.amount;
+      const amt = amtRaw != null ? Number(amtRaw) : null;
+      const currency = node?.unitCost?.currencyCode || null;
+      if (amt != null && Number.isFinite(amt)) withCost += 1;
+      unitCostByInventoryId[invId] = {
+        amount: amt != null && Number.isFinite(amt) ? amt : null,
+        currency,
+      };
+    }
+
+    if (throttleMs > 0) await sleep(throttleMs);
+  }
+
+  return { unitCostByInventoryId, fetched, withCost, totalRequested: ids.length };
 }
 
 /**
@@ -278,6 +343,36 @@ export async function POST(req: NextRequest) {
       updated_at: new Date().toISOString(),
     }));
 
+    // Fetch + upsert unit costs for inventory items
+    const inventoryItemIds = Array.from(new Set(rows.map((r) => r.inventory_item_id).filter(Boolean)));
+    const invToVariant: Record<number, number | null> = {};
+    for (const r of rows) {
+      if (!r.inventory_item_id) continue;
+      if (invToVariant[r.inventory_item_id] == null && r.variant_id) {
+        invToVariant[r.inventory_item_id] = r.variant_id;
+      }
+    }
+
+    const { unitCostByInventoryId, fetched, withCost, totalRequested } =
+      await fetchInventoryItemUnitCosts({
+        shopDomain,
+        accessToken,
+        inventoryItemIds,
+        throttleMs,
+      });
+
+    const unitCostRows = inventoryItemIds.map((invId) => {
+      const cost = unitCostByInventoryId[invId];
+      return {
+        client_id: clientId,
+        inventory_item_id: invId,
+        variant_id: invToVariant[invId] ?? null,
+        unit_cost_amount: cost?.amount ?? null,
+        currency: cost?.currency ?? null,
+        updated_at: new Date().toISOString(),
+      };
+    });
+
     // Chunk upserts to avoid oversized payloads
     let rowsUpserted = 0;
     const chunkSize = 500;
@@ -291,6 +386,22 @@ export async function POST(req: NextRequest) {
       rowsUpserted += chunk.length;
     }
 
+    let unitCostsUpserted = 0;
+    if (unitCostRows.length) {
+      for (let i = 0; i < unitCostRows.length; i += chunkSize) {
+        const chunk = unitCostRows.slice(i, i + chunkSize);
+        const { error: upErr } = await supabase
+          .from("shopify_variant_unit_costs")
+          .upsert(chunk, { onConflict: "client_id,inventory_item_id" });
+        if (upErr) throw upErr;
+        unitCostsUpserted += chunk.length;
+      }
+    }
+
+    console.log(
+      `[daily-line-items-sync] unit costs fetched=${fetched}/${totalRequested}, withCost=${withCost}, upserted=${unitCostsUpserted}`
+    );
+
     return NextResponse.json({
       ok: true,
       source: "shopify-daily-line-items-sync",
@@ -302,6 +413,10 @@ export async function POST(req: NextRequest) {
       lineItemsSeen,
       aggregatedKeys: rows.length,
       rowsUpserted,
+      unitCostsRequested: totalRequested,
+      unitCostsFetched: fetched,
+      unitCostsWithCost: withCost,
+      unitCostsUpserted,
     });
   } catch (e: any) {
     const msg = e?.message || String(e);

@@ -1,152 +1,115 @@
 # AI_MAP.md — ScaleAble Client Dashboard
 
-## Purpose
-ScaleAble helps clients understand **how advertising spend impacts profit**, not just revenue or ROAS.
+## High-level overview
+ScaleAble is a Next.js + Supabase dashboard that ties ad spend to profit. Raw platform data lands in Supabase, then server-side cron routes compute daily profit and derived KPIs. The UI reads only from derived tables and never recalculates profit logic.
 
-Core question:
-> “If we spend more on ads, do we actually make more money?”
+Key idea: profit is computed server-side in `app/api/cron/rolling-30/route.ts` and stored in `daily_profit_summary`.
 
----
+## Architecture (code + data flow)
+- UI: `app/page.tsx` (dashboard), `app/settings/page.tsx` (cost inputs)
+- API routes: `app/api/**` (platform sync + cron builders)
+- Data store: Supabase (Postgres)
+- Profit calculation: `computeDailyProfitSummary()` in `app/api/cron/rolling-30/route.ts`
 
-## Tech Stack
-- Next.js (App Router)
-- Supabase (Postgres)
-- Server-side API routes under `app/api/**`
-- Cron-style recalculation for data correctness
+Flow:
+1) Shopify/Google/Meta sync routes pull raw data into Supabase.
+2) `/api/cron/rolling-30` reads raw tables + cost settings, writes `daily_profit_summary`.
+3) UI reads `daily_profit_summary`, `daily_metrics`, `daily_sales_summary`, and `monthly_rollup`.
 
----
-
-## High-Level Architecture
-
-UI (Dashboard Pages)
-→ API Routes (Semantic Layer)
-→ Supabase Tables (Source of Truth)
-→ Cron Jobs (Data Correction)
-
-Charts never calculate profit themselves.
-
----
-
-## Core Tables (Source of Truth)
-
-### `daily_metrics`
-- Raw daily ad platform metrics
-- Spend, clicks, conversions, revenue by channel
-- No profit math
-
-### `client_cost_settings`
-- Client-defined assumptions (COGS, fees, shipping, etc.)
-- Used only during profit calculation
-- Not shown directly in charts
-
-### `daily_profit_summary` **(AUTHORITATIVE)**
-- Revenue
-- Paid spend
-- Contribution profit
-- MER
-- Profit MER
-
-All profit charts ultimately depend on this table.
-
----
-
-## Derived / Cached Tables
-- `monthly_rollup` — aggregated view for fast reads
-- `events` — system observability
-- `client_integrations` — connection state
-
-These are not profit truth.
-
----
-
-## API Semantic Layer
-
-### `/api/sales/summary`
-Purpose:
-- Read from `daily_profit_summary`
-- Aggregate by date
-- Apply **semantic naming** for UI
-
-#### Metric naming rules
-| Database Field | API Alias | UI Label |
-|---------------|-----------|---------|
-| `mer` | `mer` | MER |
-| `profit_mer` | `profit_return_on_cost` | Profit Return on Cost |
-| `contribution_profit` | `profit` | Profit |
-
-Math never changes here — only names.
-
----
-
-## Cron & Recalculation Logic
+## Daily sync pipeline
+### `/api/cron/daily-sync`
+- Orchestrates a daily run:
+  - Shopify sync (`/api/shopify/sync`)
+  - Shopify daily line items sync (`/api/shopify/daily-line-items-sync`)
+  - Google Ads sync (`/api/googleads/sync`)
+  - Meta sync (`/api/meta/sync`)
+  - Profit rebuild (`/api/cron/rolling-30`)
+- Uses a rolling window so late conversions or edits are corrected.
 
 ### `/api/cron/rolling-30`
-Guarantees:
-- Last ~30 days of data are always recalculated
-- Handles:
-  - late ad data
-  - Shopify adjustments
-  - updated cost assumptions
+- Rebuilds profitability for a date window.
+- Reads:
+  - `daily_metrics` (Shopify revenue + ad spend)
+  - `daily_sales_summary` (Shopify units/ASP)
+  - `client_cost_settings` (cost assumptions)
+  - `shopify_daily_line_items` + `shopify_variant_unit_costs` (unit-cost coverage)
+- Writes:
+  - `daily_profit_summary` (authoritative derived profit table)
 
-Behavior:
-- Recent history is **mutable**
-- Older history is **stable**
+## Shopify line items & unit cost handling
+- `shopify_daily_line_items` stores daily variant-level units and revenue.
+- `shopify_variant_unit_costs` stores unit cost per variant.
+- In `/api/cron/rolling-30`, per-day coverage is aggregated as:
+  - `revenue_with_cogs += line_revenue` when unit cost exists
+  - `product_cogs_known += units * unit_cost_amount`
+- Coverage percent is computed as `revenue_with_cogs / total_revenue` for the day.
 
-This prevents long-term charts from shifting unexpectedly.
+## Profit computation logic
+Location: `computeDailyProfitSummary()` in `app/api/cron/rolling-30/route.ts`.
 
-### `/api/cron/daily-sync` (Temp app only)
-Purpose:
-- Keep **raw platform data** (Shopify + Google Ads + Meta) and **profit summaries** updated automatically every day.
+Inputs:
+- Revenue, orders, units (Shopify)
+- Paid spend (Meta/Google)
+- Cost settings from `client_cost_settings`
+- Unit-cost coverage aggregates (product cogs known + revenue with cogs)
 
-What it does (runs sequentially in one request):
-1) Shopify sync — pulls recent Shopify daily totals into `daily_metrics` for the window.
-2) Google Ads sync — pulls recent Google Ads daily metrics into `daily_metrics` for the window.
-3) Meta sync — pulls recent Meta daily metrics into `daily_metrics` for the window.
-4) Profit rebuild — triggers `/api/cron/rolling-30` (with the same window) to upsert `daily_profit_summary`.
+Key outputs written to `daily_profit_summary`:
+- `revenue`, `orders`, `units`, `paid_spend`
+- `est_cogs`, `est_processing_fees`, `est_fulfillment_costs`
+- `est_other_variable_costs`, `est_other_fixed_costs`
+- `contribution_profit` (profit after costs and paid spend)
+- `profit_mer` (contribution_profit ÷ paid_spend)
+- Coverage fields: `product_cogs_known`, `revenue_with_cogs`, `cogs_coverage_pct`
 
-Window strategy:
-- Uses a **rolling repair window** (typically last 7–8 days) so late-arriving ad conversions and Shopify adjustments get corrected automatically.
-- This prevents “gaps” or flat sections in trend charts caused by stale/zeroed `daily_profit_summary` rows.
+Fallback rules:
+- For missing unit costs, COGS are estimated using `default_gross_margin_pct` or other settings.
+- Coverage does not come from fallback usage; it comes from unit-cost coverage only.
 
-Auth:
-- Protected by the same cron auth scheme (CRON secret / sync token).
-- Can be run manually via curl for debugging, but is intended to be called by Vercel Cron.
+## Cost settings and profit impact
+Table: `client_cost_settings`
+- `default_gross_margin_pct` (fallback margin)
+- `avg_cogs_per_unit`
+- `processing_fee_pct`, `processing_fee_fixed`
+- `pick_pack_per_order`, `shipping_subsidy_per_order`, `materials_per_order`
+- `other_variable_pct_revenue`, `other_fixed_per_day`
+- `margin_after_costs_pct` (optional override for UI fallback only)
 
-Scheduling:
-- Enabled via `vercel.json` in the **temp app repo**:
-  - Calls `/api/cron/daily-sync` once per day (Vercel cron schedules are in UTC).
+These settings feed into `computeDailyProfitSummary()` to estimate COGS and fees when unit costs are missing.
 
-Notes:
-- The **public app** under Shopify review may only run `/api/cron/rolling-30` until approval.
-- The temp app is the safe place to iterate on orchestration and daily automation.
+## Key Supabase tables
+Raw inputs:
+- `daily_metrics` (ad spend + channel revenue)
+- `daily_sales_summary` (Shopify units, AOV, ASP)
+- `shopify_daily_line_items` (variant-level revenue/units)
+- `shopify_variant_unit_costs` (unit cost per variant)
 
+Derived outputs:
+- `daily_profit_summary` (profit + coverage per day)
+- `monthly_rollup` (monthly aggregates for the table)
 
----
+Operational/system:
+- `events`
+- `client_integrations`
+- `shopify_app_installs`
+- `shopify_oauth_states`
 
-## Time Rules
-- Dates are bucketed daily
-- Rolling window applies to **recent data only**
-- Comparisons rely on frozen historical data
+## KPI definitions (UI)
+Source: `app/page.tsx`
+- Profit: uses `daily_profit_summary.contribution_profit` (or fallback margin override if configured)
+- Profit MER: `contribution_profit ÷ paid_spend` (from `daily_profit_summary`)
+- COGS coverage: `revenue_with_cogs ÷ revenue` per day in `daily_profit_summary`
+- Profit Return on Costs (KPI card): `revenue ÷ total_costs`, where
+  - total_costs = paid_spend + est_cogs + est_processing_fees + est_fulfillment_costs + est_other_variable_costs + est_other_fixed_costs
 
----
+## Dashboard data sources
+- KPI cards: `daily_profit_summary`, `daily_metrics`, `daily_sales_summary`
+- Trend charts: `daily_metrics` + derived series from `daily_profit_summary`
+- COGS coverage indicator: `daily_profit_summary` (revenue-weighted over last 7 days)
+- Monthly table: `monthly_rollup`
 
-## Danger Zones (Do Not Change Without Confirmation)
-- `app/api/shopify/**` (Shopify review sensitive)
-- `app/settings/**` (cost assumptions)
-- `daily_profit_summary` write logic
-- Metric aliases in `/api/sales/summary`
-
----
-
-## Rules for AI-Assisted Changes
-- Never recompute profit in the UI
-- Never rename metrics without updating this map
-- Never extend historical recalculation beyond rolling window without approval
-- Charts must respect full available date ranges from the API
-
----
-
-## Mental Model for Contributors
-- Profit is calculated once (server-side)
-- Names may change, math must not
-- Recent data can change; old data should not surprise users
+## Known assumptions & constraints
+- Dates are daily buckets; recent days can be recalculated.
+- Older history is expected to remain stable.
+- Profit is computed server-side; the UI should not recompute profit logic.
+- Unit-cost coverage depends on `shopify_variant_unit_costs` freshness.
+- `margin_after_costs_pct` is a UI fallback, not a data source override.

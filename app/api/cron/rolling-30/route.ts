@@ -66,6 +66,11 @@ function daysInMonth(iso: string): number {
   return d.getUTCDate();
 }
 
+function toDayKey(v: any): string {
+  const s = String(v || "");
+  return s ? s.slice(0, 10) : "";
+}
+
 function computeDailyProfitSummary(args: {
   date: string;
   revenue: number;
@@ -326,7 +331,7 @@ export async function POST(req: NextRequest) {
           }
 
           for (const r of lineItems || []) {
-            const d = String((r as any).day);
+            const d = toDayKey((r as any).day);
             if (!d) continue;
             const variantId = String((r as any).variant_id || "");
             const units = n((r as any).units);
@@ -365,7 +370,7 @@ export async function POST(req: NextRequest) {
         > = {};
 
         for (const r of metricsRows || []) {
-          const d = String((r as any).date);
+          const d = toDayKey((r as any).date);
           if (!d) continue;
           if (!byDate[d]) byDate[d] = { revenue: 0, orders: 0, units: 0, paidSpend: 0 };
 
@@ -387,7 +392,7 @@ export async function POST(req: NextRequest) {
         }
 
         const upserts = Object.entries(byDate).map(([d, v]) => {
-          const coverage = coverageByDate[d];
+          const coverage = coverageByDate[toDayKey(d)];
           const base = computeDailyProfitSummary({
             date: d,
             revenue: v.revenue,

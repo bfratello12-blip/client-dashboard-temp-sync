@@ -269,11 +269,11 @@ function daysInclusive(startISO: string, endISO: string) {
   const diff = Math.round((e.getTime() - s.getTime()) / (24 * 3600 * 1000));
   return Math.max(1, diff + 1);
 }
-function buildPrimaryWindowPreset(rangeDays: number): WindowISO {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const start = addDaysLocal(today, -(rangeDays - 1));
-  return { startISO: toISODate(start), endISO: toISODate(today), days: rangeDays };
+function buildPrimaryWindowPreset(rangeDays: number, endISO?: string): WindowISO {
+  const end = endISO ? isoToLocalMidnightDate(endISO) : new Date();
+  end.setHours(0, 0, 0, 0);
+  const start = addDaysLocal(end, -(rangeDays - 1));
+  return { startISO: toISODate(start), endISO: toISODate(end), days: rangeDays };
 }
 function buildPrimaryWindowCustom(startISO: string, endISO: string): WindowISO {
   const s = startISO <= endISO ? startISO : endISO;
@@ -1445,10 +1445,12 @@ export default function Home() {
   /** Derived: primary + compare windows */
   const windows = useMemo<Windows>(() => {
     const primary =
-      range === "CUSTOM" ? buildPrimaryWindowCustom(customStartISO, customEndISO) : buildPrimaryWindowPreset(rangeDays);
+      range === "CUSTOM"
+        ? buildPrimaryWindowCustom(customStartISO, customEndISO)
+        : buildPrimaryWindowPreset(rangeDays, lastSalesDateISO || undefined);
     const compare = buildCompareWindow(primary, compareMode);
     return { primary, compare };
-  }, [range, rangeDays, compareMode, customStartISO, customEndISO]);
+  }, [range, rangeDays, compareMode, customStartISO, customEndISO, lastSalesDateISO]);
   
   // Sync dateRangeValue with current range state
   useEffect(() => {
@@ -1564,10 +1566,10 @@ export default function Home() {
   /** Keep custom inputs in sync when clicking preset pills */
   useEffect(() => {
     if (range === "CUSTOM") return;
-    const p = buildPrimaryWindowPreset(rangeDays);
+    const p = buildPrimaryWindowPreset(rangeDays, lastSalesDateISO || undefined);
     setCustomStartISO(p.startISO);
     setCustomEndISO(p.endISO);
-  }, [range, rangeDays]);
+  }, [range, rangeDays, lastSalesDateISO]);
   /** Auth gate */
   useEffect(() => {
     let unsub: (() => void) | null = null;
@@ -1911,8 +1913,16 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
           .order("date", { ascending: true }),
         1000
       );
-      // last sync date = last row in fetch range (if any)
-      const lastISO = salesDataAll?.length ? toISO10(salesDataAll[salesDataAll.length - 1]?.date) : "";
+      // last sync date = most recent profit row with revenue/orders > 0 in the primary window
+      const lastNonZeroProfit = [...(profitDataAll ?? [])]
+        .reverse()
+        .find((r) => {
+          const iso = toISO10(r.date);
+          const revenue = Number(r.revenue ?? 0);
+          const orders = Number(r.orders ?? 0);
+          return iso >= primary.startISO && iso <= primary.endISO && (revenue > 0 || orders > 0);
+        });
+      const lastISO = lastNonZeroProfit ? toISO10(lastNonZeroProfit.date) : "";
       if (!cancelled) setLastSalesDateISO(lastISO);
       /** PRIMARY range slices */
       const inPrimaryMetric = metricData.filter((r) => {

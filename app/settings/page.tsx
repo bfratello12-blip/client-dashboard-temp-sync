@@ -299,22 +299,30 @@ function SettingsPage() {
       }
 
       const end = new Date();
-      const start = new Date(end.getTime() - 7 * 24 * 3600 * 1000);
+      const start = new Date(end.getTime() - 6 * 24 * 3600 * 1000);
       const endISO = end.toISOString().slice(0, 10);
       const startISO = start.toISOString().slice(0, 10);
 
       const { data: coverageRows } = await supabase
         .from("daily_profit_summary")
-        .select("date,cogs_coverage_pct")
+        .select("date,revenue,revenue_with_cogs")
         .eq("client_id", cid)
         .gte("date", startISO)
         .lte("date", endISO)
         .order("date", { ascending: false })
-        .limit(1);
+        .limit(1000);
 
-      const latest = (coverageRows?.[0] as any)?.cogs_coverage_pct;
+      const totals = (coverageRows ?? []).reduce(
+        (acc, row: any) => {
+          acc.revenue += Number(row?.revenue ?? 0);
+          acc.revenueWithCogs += Number(row?.revenue_with_cogs ?? 0);
+          return acc;
+        },
+        { revenue: 0, revenueWithCogs: 0 }
+      );
+      const weighted = totals.revenue > 0 ? totals.revenueWithCogs / totals.revenue : null;
       if (!cancelled) {
-        setCogsCoveragePct(Number.isFinite(Number(latest)) ? Number(latest) : null);
+        setCogsCoveragePct(Number.isFinite(Number(weighted)) ? Number(weighted) : null);
       }
     };
 

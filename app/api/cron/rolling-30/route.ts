@@ -294,16 +294,27 @@ export async function POST(req: NextRequest) {
             .lte("day", endISO);
           if (liErr) throw liErr;
 
-          const variantIds = Array.from(
-            new Set((lineItems || []).map((r: any) => String(r.variant_id || "")).filter(Boolean))
-          );
           const inventoryItemIds = Array.from(
-            new Set((lineItems || []).map((r: any) => String(r.inventory_item_id || "")).filter(Boolean))
+            new Set(
+              (lineItems || [])
+                .map((r: any) => Number((r as any).inventory_item_id))
+                .filter((v: any) => Number.isFinite(v))
+            )
+          );
+          const variantIds = Array.from(
+            new Set(
+              (lineItems || [])
+                .map((r: any) => Number((r as any).variant_id))
+                .filter((v: any) => Number.isFinite(v))
+            )
           );
 
-          const unitCostByVariant: Record<string, number | null> = {};
-          const unitCostByInventoryItem: Record<string, number | null> = {};
+          const unitCostByVariant = new Map<number, number | null>();
+          const unitCostByInventoryItem = new Map<number, number | null>();
           const chunkSize = 500;
+          let inventoryCostRows = 0;
+          let matchedLineItems = 0;
+          let totalLineItems = 0;
 
           for (let i = 0; i < inventoryItemIds.length; i += chunkSize) {
             const chunk = inventoryItemIds.slice(i, i + chunkSize);
@@ -314,13 +325,16 @@ export async function POST(req: NextRequest) {
               .in("inventory_item_id", chunk);
             if (costErr) throw costErr;
             for (const row of costRows || []) {
-              const iid = String((row as any).inventory_item_id || "");
-              if (iid) unitCostByInventoryItem[iid] = (row as any).unit_cost_amount ?? null;
-              const vid = String((row as any).variant_id || "");
-              if (vid && unitCostByVariant[vid] == null) {
-                unitCostByVariant[vid] = (row as any).unit_cost_amount ?? null;
+              const iid = Number((row as any).inventory_item_id);
+              if (Number.isFinite(iid)) {
+                unitCostByInventoryItem.set(iid, (row as any).unit_cost_amount ?? null);
+              }
+              const vid = Number((row as any).variant_id);
+              if (Number.isFinite(vid) && !unitCostByVariant.has(vid)) {
+                unitCostByVariant.set(vid, (row as any).unit_cost_amount ?? null);
               }
             }
+            inventoryCostRows += (costRows || []).length;
           }
 
           for (let i = 0; i < variantIds.length; i += chunkSize) {
@@ -332,10 +346,10 @@ export async function POST(req: NextRequest) {
               .in("variant_id", chunk);
             if (costErr) throw costErr;
             for (const row of costRows || []) {
-              const vid = String((row as any).variant_id || "");
-              if (!vid) continue;
-              if (unitCostByVariant[vid] == null) {
-                unitCostByVariant[vid] = (row as any).unit_cost_amount ?? null;
+              const vid = Number((row as any).variant_id);
+              if (!Number.isFinite(vid)) continue;
+              if (!unitCostByVariant.has(vid)) {
+                unitCostByVariant.set(vid, (row as any).unit_cost_amount ?? null);
               }
             }
           }
@@ -343,8 +357,8 @@ export async function POST(req: NextRequest) {
           for (const r of lineItems || []) {
             const d = String((r as any).day || "");
             if (!d) continue;
-            const variantId = String((r as any).variant_id || "");
-            const inventoryItemId = String((r as any).inventory_item_id || "");
+            const variantId = Number((r as any).variant_id);
+            const inventoryItemId = Number((r as any).inventory_item_id);
             const units = n((r as any).units);
             const lineRevenue = n((r as any).line_revenue);
 
@@ -357,19 +371,27 @@ export async function POST(req: NextRequest) {
               };
             }
 
-            const unitCostAmount =
-              (inventoryItemId && unitCostByInventoryItem[inventoryItemId] != null
-                ? unitCostByInventoryItem[inventoryItemId]
-                : unitCostByVariant[variantId]) ?? null;
+            totalLineItems += 1;
+            const unitCostAmount = Number.isFinite(inventoryItemId)
+              ? unitCostByInventoryItem.get(inventoryItemId)
+              : undefined;
+            const fallbackUnitCost = Number.isFinite(variantId) ? unitCostByVariant.get(variantId) : undefined;
+            const chosenCost = unitCostAmount != null ? unitCostAmount : fallbackUnitCost;
 
-            if (unitCostAmount != null && Number.isFinite(Number(unitCostAmount))) {
-              coverageByDate[d].product_cogs_known += units * n(unitCostAmount);
+            if (chosenCost != null && Number.isFinite(Number(chosenCost)) && Number(chosenCost) > 0) {
+              coverageByDate[d].product_cogs_known += units * n(chosenCost);
               coverageByDate[d].revenue_with_cogs += lineRevenue;
               coverageByDate[d].units_with_cogs += units;
+              matchedLineItems += 1;
             } else {
               coverageByDate[d].estimated_cogs_missing += lineRevenue * (1 - gmFallbackRate);
             }
           }
+
+          const matchPct = totalLineItems > 0 ? (matchedLineItems / totalLineItems) * 100 : 0;
+          console.log(
+            `[rolling-30] unit cost coverage: inventoryIds=${inventoryItemIds.length}, costRows=${inventoryCostRows}, matchedLineItems=${matchedLineItems}/${totalLineItems} (${matchPct.toFixed(1)}%)`
+          );
 
           coverageRowsFetched += Object.keys(coverageByDate).length;
         } catch (e: any) {

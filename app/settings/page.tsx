@@ -89,6 +89,7 @@ function SettingsPage() {
 
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string>("");
+  const [cogsCoveragePct, setCogsCoveragePct] = useState<number | null>(null);
 
 
   // Product cost source UX: Shopify unit costs vs estimated fallback inputs
@@ -296,6 +297,25 @@ function SettingsPage() {
         setCostSettings(settings);
         setLoading(false);
       }
+
+      const end = new Date();
+      const start = new Date(end.getTime() - 7 * 24 * 3600 * 1000);
+      const endISO = end.toISOString().slice(0, 10);
+      const startISO = start.toISOString().slice(0, 10);
+
+      const { data: coverageRows } = await supabase
+        .from("daily_profit_summary")
+        .select("date,cogs_coverage_pct")
+        .eq("client_id", cid)
+        .gte("date", startISO)
+        .lte("date", endISO)
+        .order("date", { ascending: false })
+        .limit(1);
+
+      const latest = (coverageRows?.[0] as any)?.cogs_coverage_pct;
+      if (!cancelled) {
+        setCogsCoveragePct(Number.isFinite(Number(latest)) ? Number(latest) : null);
+      }
     };
 
     run();
@@ -391,6 +411,19 @@ function SettingsPage() {
                       <div className="mt-1 text-xs text-slate-500">
                         We’ll pull unit costs from Shopify products/line items whenever they’re available.
                       </div>
+                      {productCostMode === "shopify" ? (
+                        <div className="mt-2 text-xs text-slate-600">
+                          <div className="font-semibold text-slate-700">COGS coverage (last 7 days)</div>
+                          <div className="mt-0.5 text-slate-600">
+                            {cogsCoveragePct == null
+                              ? "—"
+                              : `${Math.round(cogsCoveragePct * 100)}%`}
+                          </div>
+                          <div className="mt-0.5 text-[11px] text-slate-500">
+                            % of revenue from products with a Shopify unit cost.
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   </label>
 
@@ -407,7 +440,7 @@ function SettingsPage() {
                     />
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-semibold text-slate-900">
-                        Use estimated gross margin or avg COGS per unit{" "}
+                        Use estimated gross margin or avg COGS per unit when missing
                         <span className="ml-2 text-xs font-normal text-slate-500">
                           (used only if Shopify unit costs are not available)
                         </span>
@@ -454,7 +487,17 @@ function SettingsPage() {
 
                   {productCostMode === "shopify" ? (
                     <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-600 ring-1 ring-slate-200">
-                      Tip: If some products are missing unit costs in Shopify, switch to the estimate option above as a temporary fallback.
+                      <div className="text-xs font-semibold text-slate-700">Fallback gross margin (%) (optional)</div>
+                      <div className="mt-1 text-[11px] text-slate-500">
+                        Used only when a product is missing a Shopify unit cost.
+                      </div>
+                      <input
+                        value={formatPct(costs.default_gross_margin_pct)}
+                        onChange={(e) => setCS("default_gross_margin_pct", e.target.value)}
+                        inputMode="decimal"
+                        className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                        placeholder="e.g. 55"
+                      />
                     </div>
                   ) : null}
                 </div>

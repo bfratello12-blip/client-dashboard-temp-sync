@@ -17,8 +17,7 @@ function normalizeShop(shop: string) {
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const shop = normalizeShop(url.searchParams.get("shop") || "");
-  const clientIdParam = (url.searchParams.get("client_id") || "").trim();
-  const clientId = clientIdParam || process.env.DEFAULT_CLIENT_ID || "";
+  const clientId = url.searchParams.get("client_id") || process.env.DEFAULT_CLIENT_ID || "";
   const referer = req.headers.get("referer") || "";
   const origin = req.headers.get("origin") || "";
   const appBaseUrl = mustGetEnv("APP_BASE_URL").replace(/\/$/, "");

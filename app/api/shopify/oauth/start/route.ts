@@ -16,34 +16,15 @@ function normalizeShop(shop: string) {
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
-
-  // Guard: this route is internal-only (merchant entry should use Shopify install link).
-  const internalRequest = req.headers.get("x-internal-request") === "1";
-  if (!internalRequest) {
-    console.warn("[oauth/start] blocked non-internal access", {
-      shop: url.searchParams.get("shop"),
-      timestamp: new Date().toISOString(),
-    });
-    return NextResponse.json(
-      { ok: false, error: "oauth/start is internal-only; use Shopify install link" },
-      { status: 403 }
-    );
-  }
-
-  console.log("[oauth/start] SHOPIFY_API_KEY:", process.env.SHOPIFY_API_KEY);
-
   const shop = normalizeShop(url.searchParams.get("shop") || "");
   const clientId = (url.searchParams.get("client_id") || "").trim();
+  console.info("[oauth/start] HIT", {
+    ts: new Date().toISOString(),
+    shop,
+    clientId,
+  }); // log first for visibility even if we return early
 
-  // Warn if internal call lacks install context metadata (does not block).
-  const hasInstallContext = req.headers.get("x-shopify-install-context") === "1";
-  if (!hasInstallContext) {
-    console.warn("[oauth/start] missing install context", {
-      shop,
-      clientId,
-      timestamp: new Date().toISOString(),
-    });
-  }
+  console.log("[oauth/start] SHOPIFY_API_KEY:", process.env.SHOPIFY_API_KEY);
 
   if (!shop || !shop.endsWith(".myshopify.com")) {
     return NextResponse.json(

@@ -1,6 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
@@ -175,6 +175,37 @@ function formatSignedPct(n: number) {
   if (!isFinite(n)) return "—";
   const sign = n > 0 ? "+" : n < 0 ? "−" : "";
   return `${sign}${Math.abs(n).toFixed(1)}%`;
+}
+function normalizeShopDomain(shop: string) {
+  const s = (shop || "").trim().toLowerCase();
+  if (!s) return "";
+  return s.endsWith(".myshopify.com") ? s : `${s}.myshopify.com`;
+}
+function base64UrlDecode(input: string) {
+  const base64 = input.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = "=".repeat((4 - (base64.length % 4 || 4)) % 4);
+  return atob(base64 + pad);
+}
+function extractShopFromHostParam(hostParam: string) {
+  try {
+    const decoded = base64UrlDecode(hostParam);
+    const host = decoded.split("/")[0] || "";
+    return normalizeShopDomain(host);
+  } catch {
+    return "";
+  }
+}
+function extractShopFromIdToken(idToken: string) {
+  try {
+    const payload = idToken.split(".")[1];
+    if (!payload) return "";
+    const json = JSON.parse(base64UrlDecode(payload));
+    const raw = json?.dest || json?.iss || json?.shop || "";
+    const host = String(raw).replace(/^https?:\/\//, "").split("/")[0] || "";
+    return normalizeShopDomain(host);
+  } catch {
+    return "";
+  }
 }
 function toISODate(d: Date) {
   const yyyy = d.getFullYear();
@@ -1133,6 +1164,8 @@ function MultiSeriesEventfulLineChart({
  *  ----------------------------- */
 export default function Home() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const oauthStartTriggeredRef = useRef(false);
   // 🔑 Shopify embedded check: session token ping
   useEffect(() => {
     authenticatedFetch("/api/shopify/session-check").catch(() => {});
@@ -1285,6 +1318,49 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [clientName, setClientName] = useState<string>("");
   const [clientId, setClientId] = useState<string>("");
+  const clientIdFromQuery = useMemo(
+    () => (searchParams.get("client_id") || "").trim(),
+    [searchParams]
+  );
+  const shopFromQuery = useMemo(() => {
+    const shopParam = (searchParams.get("shop") || "").trim();
+    if (shopParam) return normalizeShopDomain(shopParam);
+    const hostParam = (searchParams.get("host") || "").trim();
+    const fromHost = hostParam ? extractShopFromHostParam(hostParam) : "";
+    if (fromHost) return fromHost;
+    const idToken = (searchParams.get("id_token") || "").trim();
+    return idToken ? extractShopFromIdToken(idToken) : "";
+  }, [searchParams]);
+  const effectiveClientId = clientIdFromQuery || clientId;
+  // Embedded app entry: if shop is known and install missing, start OAuth.
+  useEffect(() => {
+    if (!shopFromQuery || !effectiveClientId) return;
+    if (oauthStartTriggeredRef.current) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("shopify_app_installs")
+        .select("shop_domain")
+        .eq("client_id", effectiveClientId)
+        .eq("shop_domain", shopFromQuery)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error) {
+        console.error("[app] shopify_app_installs lookup failed", error.message);
+        return;
+      }
+      if (!data) {
+        oauthStartTriggeredRef.current = true;
+        // Redirect into OAuth start when install does not exist.
+        window.location.href = `/api/shopify/oauth/start?shop=${encodeURIComponent(
+          shopFromQuery
+        )}&client_id=${encodeURIComponent(effectiveClientId)}`;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [shopFromQuery, effectiveClientId]);
   /** Monthly rollup table */
   type MonthlyRow = {
     month: string;

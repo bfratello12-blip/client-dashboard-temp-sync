@@ -26,6 +26,20 @@ export async function GET(req: NextRequest) {
 
   console.log("[oauth/start] SHOPIFY_API_KEY:", process.env.SHOPIFY_API_KEY);
 
+  // Guard: this route is internal-only (not for merchant install link entry).
+  const internalRequest = req.headers.get("x-internal-request") === "1";
+  if (!internalRequest) {
+    console.warn("[oauth/start] blocked non-internal access", {
+      shop,
+      clientId,
+      timestamp: new Date().toISOString(),
+    });
+    return NextResponse.json(
+      { ok: false, error: "oauth/start is internal-only" },
+      { status: 403 }
+    );
+  }
+
   if (!shop || !shop.endsWith(".myshopify.com")) {
     return NextResponse.json(
       { ok: false, error: "Missing/invalid shop (must be *.myshopify.com)" },

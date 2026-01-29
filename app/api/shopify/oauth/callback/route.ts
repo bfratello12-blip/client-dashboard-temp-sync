@@ -123,6 +123,11 @@ async function registerMandatoryComplianceWebhooks(
 }
 
 export async function GET(req: NextRequest) {
+  console.info("[oauth/callback] HIT", {
+    timestamp: new Date().toISOString(),
+    rawQuery: req.url,
+  }); // must run before any validation or early return
+
   const url = new URL(req.url);
   const params = url.searchParams;
   const rawQueryString = url.search.replace(/^\?/, "");
@@ -130,13 +135,6 @@ export async function GET(req: NextRequest) {
   const shop = params.get("shop");
   const code = params.get("code");
   const state = params.get("state");
-
-  console.info("[oauth/callback] HIT", {
-    shop,
-    hasCode: Boolean(code),
-    state,
-    timestamp: new Date().toISOString(),
-  }); // log first for visibility even if we return early
 
   if (!shop || !shop.endsWith(".myshopify.com")) {
     return NextResponse.json({ ok: false, error: "Missing/invalid shop" }, { status: 400 });
@@ -151,10 +149,7 @@ export async function GET(req: NextRequest) {
 
   // 1) Verify HMAC
   if (!verifyShopifyHmac(rawQueryString, clientSecret)) {
-    console.error("[oauth/callback] HMAC verification failed", {
-      shop,
-      timestamp: new Date().toISOString(),
-    });
+    console.error("[oauth/callback] Invalid HMAC", { shop });
     return NextResponse.json({ ok: false, error: "Invalid HMAC" }, { status: 401 });
   }
 
@@ -167,23 +162,28 @@ export async function GET(req: NextRequest) {
     .eq("id", state)
     .maybeSingle();
   if (stateErr) {
+    console.error("[oauth/callback] Invalid state", { shop, reason: stateErr.message });
     return NextResponse.json({ ok: false, error: stateErr.message }, { status: 500 });
   }
   if (!stateRow?.id) {
+    console.error("[oauth/callback] Invalid state", { shop, reason: "not_found" });
     return NextResponse.json({ ok: false, error: "Invalid state" }, { status: 400 });
   }
   if (!safeTimingEqualText(shop, String(stateRow.shop_domain || ""))) {
     await supabase.from("shopify_oauth_states").delete().eq("id", stateRow.id);
+    console.error("[oauth/callback] Invalid state", { shop, reason: "shop_mismatch" });
     return NextResponse.json({ ok: false, error: "Invalid state" }, { status: 400 });
   }
   if (!stateRow.client_id) {
     await supabase.from("shopify_oauth_states").delete().eq("id", stateRow.id);
+    console.error("[oauth/callback] Invalid state", { shop, reason: "missing_client_id" });
     return NextResponse.json({ ok: false, error: "Missing client_id in state" }, { status: 400 });
   }
   const createdAtMs = Date.parse(String(stateRow.created_at || ""));
   const maxAgeMs = 10 * 60 * 1000;
   if (!Number.isFinite(createdAtMs) || Date.now() - createdAtMs > maxAgeMs) {
     await supabase.from("shopify_oauth_states").delete().eq("id", stateRow.id);
+    console.error("[oauth/callback] Invalid state", { shop, reason: "expired" });
     return NextResponse.json({ ok: false, error: "State expired" }, { status: 400 });
   }
 
@@ -206,7 +206,6 @@ export async function GET(req: NextRequest) {
       shop,
       status: tokenRes.status,
       error: tokenJson?.error_description || tokenJson?.error || "unknown",
-      timestamp: new Date().toISOString(),
     });
     return NextResponse.json(
       { ok: false, error: tokenJson?.error_description || "Token exchange failed" },

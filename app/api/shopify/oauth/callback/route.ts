@@ -186,6 +186,12 @@ export async function GET(req: NextRequest) {
     console.error("[oauth/callback] Invalid state", { shop, reason: "shop_mismatch" });
     return NextResponse.json({ ok: false, error: "Invalid state" }, { status: 400 });
   }
+  if (!stateRow.client_id) {
+    await supabase.from("shopify_oauth_states").delete().eq("id", stateRow.id);
+    console.error("[oauth/callback] Invalid state", { shop, state });
+    console.error("[oauth/callback] Invalid state", { shop, reason: "missing_client_id" });
+    return NextResponse.json({ ok: false, error: "Missing client_id in state" }, { status: 400 });
+  }
   const createdAtMs = Date.parse(String(stateRow.created_at || ""));
   const maxAgeMs = 10 * 60 * 1000;
   if (!Number.isFinite(createdAtMs) || Date.now() - createdAtMs > maxAgeMs) {
@@ -277,24 +283,7 @@ export async function GET(req: NextRequest) {
   }
 
   // 4) Upsert into Supabase
-  let client_id = stateRow.client_id
-    ? String(stateRow.client_id)
-    : process.env.CLIENT_ID || null;
-  if (!client_id) {
-    const { data: integ, error: integErr } = await supabase
-      .from("client_integrations")
-      .select("client_id")
-      .eq("provider", "shopify")
-      .eq("shop_domain", shop)
-      .maybeSingle();
-    if (integErr) {
-      return NextResponse.json({ ok: false, error: integErr.message }, { status: 500 });
-    }
-    client_id = integ?.client_id ? String(integ.client_id) : null;
-  }
-  if (!client_id) {
-    return NextResponse.json({ ok: false, error: "Missing client_id" }, { status: 500 });
-  }
+  const client_id = String(stateRow.client_id);
 
   const nowISO = new Date().toISOString();
   const { error: integErr } = await supabase

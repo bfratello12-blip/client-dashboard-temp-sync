@@ -17,7 +17,8 @@ function normalizeShop(shop: string) {
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const shop = normalizeShop(url.searchParams.get("shop") || "");
-  const clientId = (url.searchParams.get("client_id") || "").trim();
+  const clientIdParam = (url.searchParams.get("client_id") || "").trim();
+  const clientId = clientIdParam || process.env.DEFAULT_CLIENT_ID || "";
   const referer = req.headers.get("referer") || "";
   const origin = req.headers.get("origin") || "";
   const appBaseUrl = mustGetEnv("APP_BASE_URL").replace(/\/$/, "");
@@ -71,6 +72,13 @@ export async function GET(req: NextRequest) {
       { status: 400 }
     );
   }
+  if (!clientId) {
+    console.warn("[oauth/start] missing client_id", {
+      shop,
+      timestamp: new Date().toISOString(),
+    });
+    return NextResponse.json({ ok: false, error: "missing client_id" }, { status: 400 });
+  }
   // Your env names (keep as-is if that’s what you’re using)
   const apiKey = mustGetEnv("SHOPIFY_API_KEY"); // equals SHOPIFY_OAUTH_CLIENT_ID
   const scopesRaw =
@@ -83,7 +91,7 @@ export async function GET(req: NextRequest) {
   const nonce = crypto.randomBytes(16).toString("hex");
   const { data: stateRow, error: stateErr } = await supabaseAdmin()
     .from("shopify_oauth_states")
-    .insert({ shop_domain: shop, nonce, client_id: clientId || null })
+    .insert({ shop_domain: shop, nonce, client_id: clientId })
     .select("id")
     .maybeSingle();
   if (stateErr || !stateRow?.id) {

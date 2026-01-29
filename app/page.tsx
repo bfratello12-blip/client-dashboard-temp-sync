@@ -132,7 +132,10 @@ export default async function Page({
   }
 
   if (!data?.access_token) {
-    redirect(`/api/shopify/oauth/start?shop=${encodeURIComponent(shopGuess)}`);
+    const defaultClientId = process.env.DEFAULT_CLIENT_ID || "";
+    const qs = new URLSearchParams({ shop: shopGuess });
+    if (defaultClientId) qs.set("client_id", defaultClientId);
+    redirect(`/api/shopify/oauth/start?${qs.toString()}`);
   }
 
   return <HomeClient />;

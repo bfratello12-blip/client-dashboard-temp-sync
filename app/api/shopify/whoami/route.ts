@@ -24,7 +24,9 @@ export async function GET(req: NextRequest) {
     const token = match?.[1] || "";
 
     if (!token) {
-      return NextResponse.json({ ok: false, error: "missing token" }, { status: 401 });
+      const error = "missing token";
+      console.error("[whoami] error", { error });
+      return NextResponse.json({ ok: false, error }, { status: 401 });
     }
 
     const secret = process.env.SHOPIFY_OAUTH_CLIENT_SECRET || "";
@@ -52,12 +54,14 @@ export async function GET(req: NextRequest) {
 
     const shop = shopFromDest(payload?.dest || "");
     if (!shop) {
-      return NextResponse.json({ ok: false, error: "shop not found" }, { status: 400 });
+      const error = "shop not found";
+      console.error("[whoami] error", { error });
+      return NextResponse.json({ ok: false, error }, { status: 400 });
     }
-
+    console.info("[whoami] ok", { shop });
     return NextResponse.json({ ok: true, shop });
   } catch (error) {
-    console.error("[whoami] error", { message: (error as Error).message });
+    console.error("[whoami] error", { error });
     return NextResponse.json({ ok: false, error: "server error" }, { status: 500 });
   }
 }

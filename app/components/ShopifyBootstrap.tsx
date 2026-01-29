@@ -37,6 +37,18 @@ export default function ShopifyBootstrap({ host }: ShopifyBootstrapProps) {
   }, [host]);
 
   useEffect(() => {
+    const u = new URL(window.location.href);
+    const already = u.searchParams.get("bootstrapped") === "1";
+    const hasShop = Boolean(u.searchParams.get("shop"));
+    if (already && !hasShop) {
+      u.searchParams.delete("bootstrapped");
+      window.history.replaceState({}, "", u.toString());
+    }
+    if (already && hasShop) {
+      console.warn("[bootstrap] redirect skipped (bootstrapped=1)");
+      return;
+    }
+
     if (!normalizedHost) {
       console.warn("[app-entry] missing host param; open from Shopify Admin");
       setStatus("missing-host");
@@ -68,21 +80,17 @@ export default function ShopifyBootstrap({ host }: ShopifyBootstrapProps) {
           },
         });
         const data = (await res.json()) as { ok: boolean; shop?: string };
+        console.log("[bootstrap] whoami response", data);
         if (!data?.ok || !data.shop) {
           setStatus("error");
           return;
         }
 
         const params = new URLSearchParams();
+        params.set("bootstrapped", "1");
         params.set("shop", data.shop);
         params.set("host", normalizedHost);
         params.set("embedded", "1");
-        params.set("bootstrapped", "1");
-        const currentParams = new URLSearchParams(window.location.search);
-        if (currentParams.get("bootstrapped") === "1") {
-          console.warn("[bootstrap] redirect skipped (bootstrapped=1)");
-          return;
-        }
         window.location.replace(`/?${params.toString()}`);
       } catch {
         setStatus("error");

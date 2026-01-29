@@ -17,10 +17,33 @@ function normalizeShop(shop: string) {
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
 
+  // Guard: this route is internal-only (merchant entry should use Shopify install link).
+  const internalRequest = req.headers.get("x-internal-request") === "1";
+  if (!internalRequest) {
+    console.warn("[oauth/start] blocked non-internal access", {
+      shop: url.searchParams.get("shop"),
+      timestamp: new Date().toISOString(),
+    });
+    return NextResponse.json(
+      { ok: false, error: "oauth/start is internal-only; use Shopify install link" },
+      { status: 403 }
+    );
+  }
+
   console.log("[oauth/start] SHOPIFY_API_KEY:", process.env.SHOPIFY_API_KEY);
 
   const shop = normalizeShop(url.searchParams.get("shop") || "");
   const clientId = (url.searchParams.get("client_id") || "").trim();
+
+  // Warn if internal call lacks install context metadata (does not block).
+  const hasInstallContext = req.headers.get("x-shopify-install-context") === "1";
+  if (!hasInstallContext) {
+    console.warn("[oauth/start] missing install context", {
+      shop,
+      clientId,
+      timestamp: new Date().toISOString(),
+    });
+  }
 
   if (!shop || !shop.endsWith(".myshopify.com")) {
     return NextResponse.json(
@@ -33,8 +56,8 @@ export async function GET(req: NextRequest) {
   }
 
   // Your env names (keep as-is if that’s what you’re using)
-  const apiKey = mustGetEnv("SHOPIFY_OAUTH_CLIENT_ID");
-  const appUrl = mustGetEnv("SHOPIFY_APP_URL").replace(/\/$/, "");
+  const apiKey = mustGetEnv("SHOPIFY_API_KEY"); // equals SHOPIFY_OAUTH_CLIENT_ID
+  const appBaseUrl = mustGetEnv("APP_BASE_URL").replace(/\/$/, "");
   const scopesRaw =
     process.env.SHOPIFY_SCOPES ||
     "read_all_orders,read_orders,read_inventory,read_reports,read_products";
@@ -59,7 +82,7 @@ export async function GET(req: NextRequest) {
   const state = String(stateRow.id);
   console.log("[oauth/start] created state id:", state);
 
-  const redirectUri = `${appUrl}/api/shopify/oauth/callback`;
+  const redirectUri = `${appBaseUrl}/api/shopify/oauth/callback`;
 
   // ✅ Standard OAuth authorize endpoint on the shop domain (NOT admin.shopify.com)
   const authUrl = new URL(`https://${shop}/admin/oauth/authorize`);

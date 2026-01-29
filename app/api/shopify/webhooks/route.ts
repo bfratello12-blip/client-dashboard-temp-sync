@@ -17,7 +17,13 @@ function verifyHmac(rawBody: string, hmac: string, secret: string) {
 }
 
 export async function POST(req: NextRequest) {
-  const rawBody = await req.text();
+  const shopDomain = req.headers.get("x-shopify-shop-domain") || "";
+  console.info("[shopify/webhooks] HIT", {
+    shop: shopDomain,
+    timestamp: new Date().toISOString(),
+  }); // log before any early return
+
+  const rawBody = await req.text(); // raw body required for HMAC verification
   const hmac = req.headers.get("x-shopify-hmac-sha256") || "";
   const secret = process.env.SHOPIFY_OAUTH_CLIENT_SECRET!;
 

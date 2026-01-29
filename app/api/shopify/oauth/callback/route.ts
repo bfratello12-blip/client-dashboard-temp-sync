@@ -25,14 +25,15 @@ function safeTimingEqualText(aText: string, bText: string) {
   return crypto.timingSafeEqual(a, b);
 }
 
-function verifyShopifyHmac(params: URLSearchParams, secret: string) {
+function verifyShopifyHmac(rawQueryString: string, secret: string) {
+  // Use the raw query string (preserve order/encoding) per Shopify OAuth spec.
+  const params = new URLSearchParams(rawQueryString);
   const hmac = params.get("hmac");
   if (!hmac) return false;
 
-  const msg = Array.from(params.entries())
-    .filter(([k]) => k !== "hmac" && k !== "signature")
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${k}=${v}`)
+  const msg = rawQueryString
+    .split("&")
+    .filter((pair) => !pair.startsWith("hmac=") && !pair.startsWith("signature="))
     .join("&");
 
   const digest = crypto.createHmac("sha256", secret).update(msg).digest("hex");
@@ -124,6 +125,7 @@ async function registerMandatoryComplianceWebhooks(
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const params = url.searchParams;
+  const rawQueryString = url.search.replace(/^\?/, "");
 
   const shop = params.get("shop");
   const code = params.get("code");
@@ -133,7 +135,8 @@ export async function GET(req: NextRequest) {
     shop,
     hasCode: Boolean(code),
     state,
-  });
+    timestamp: new Date().toISOString(),
+  }); // log first for visibility even if we return early
 
   if (!shop || !shop.endsWith(".myshopify.com")) {
     return NextResponse.json({ ok: false, error: "Missing/invalid shop" }, { status: 400 });
@@ -142,12 +145,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Missing code/state" }, { status: 400 });
   }
 
-  const apiKey = mustGetEnv("SHOPIFY_OAUTH_CLIENT_ID");
+  const apiKey = mustGetEnv("SHOPIFY_API_KEY"); // equals SHOPIFY_OAUTH_CLIENT_ID
   const clientSecret = mustGetEnv("SHOPIFY_OAUTH_CLIENT_SECRET");
-  const appUrl = mustGetEnv("SHOPIFY_APP_URL").replace(/\/$/, "");
+  const appBaseUrl = mustGetEnv("APP_BASE_URL").replace(/\/$/, "");
 
   // 1) Verify HMAC
-  if (!verifyShopifyHmac(params, clientSecret)) {
+  if (!verifyShopifyHmac(rawQueryString, clientSecret)) {
+    console.error("[oauth/callback] HMAC verification failed", {
+      shop,
+      timestamp: new Date().toISOString(),
+    });
     return NextResponse.json({ ok: false, error: "Invalid HMAC" }, { status: 401 });
   }
 
@@ -195,6 +202,12 @@ export async function GET(req: NextRequest) {
 
   const tokenJson = await tokenRes.json().catch(() => null);
   if (!tokenRes.ok) {
+    console.error("[oauth/callback] Token exchange failed", {
+      shop,
+      status: tokenRes.status,
+      error: tokenJson?.error_description || tokenJson?.error || "unknown",
+      timestamp: new Date().toISOString(),
+    });
     return NextResponse.json(
       { ok: false, error: tokenJson?.error_description || "Token exchange failed" },
       { status: 500 }
@@ -260,6 +273,12 @@ export async function GET(req: NextRequest) {
     .eq("client_id", client_id)
     .eq("provider", "shopify");
   if (integErr) {
+    console.error("[oauth/callback] client_integrations update failed", {
+      shop,
+      client_id,
+      error: integErr.message,
+      timestamp: new Date().toISOString(),
+    });
     return NextResponse.json({ ok: false, error: integErr.message }, { status: 500 });
   }
 
@@ -276,12 +295,18 @@ export async function GET(req: NextRequest) {
   );
 
   if (error) {
+    console.error("[oauth/callback] shopify_app_installs upsert failed", {
+      shop,
+      client_id,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 
   // 5) Register mandatory compliance webhooks (required for Shopify review)
   try {
-    await registerMandatoryComplianceWebhooks(shop, accessToken, appUrl);
+    await registerMandatoryComplianceWebhooks(shop, accessToken, appBaseUrl);
   } catch (e: any) {
     console.warn(
       "[oauth/callback] Failed to register mandatory webhooks:",
@@ -290,7 +315,7 @@ export async function GET(req: NextRequest) {
   }
 
   // 6) Clear nonce + redirect
-  const res = NextResponse.redirect(`${appUrl}/login?shopifyInstalled=1`);
+  const res = NextResponse.redirect(`${appBaseUrl}/login?shopifyInstalled=1`);
   res.cookies.set("shopify_oauth_nonce", "", {
     httpOnly: true,
     secure: true,

@@ -71,6 +71,24 @@ function toDayKey(v: any): string {
   return s ? s.slice(0, 10) : "";
 }
 
+async function fetchAllSupabase<T>(
+  builderFactory: (from: number, to: number) => any,
+  pageSize = 1000
+): Promise<T[]> {
+  const allRows: T[] = [];
+  let offset = 0;
+  while (true) {
+    const query = builderFactory(offset, offset + pageSize - 1);
+    const { data, error } = await query.range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    allRows.push(...data);
+    if (data.length < pageSize) break;
+    offset += pageSize;
+  }
+  return allRows;
+}
+
 function computeDailyProfitSummary(args: {
   date: string;
   revenue: number;
@@ -286,13 +304,14 @@ export async function POST(req: NextRequest) {
         > = {};
 
         try {
-          const { data: lineItems, error: liErr } = await supabase
-            .from("shopify_daily_line_items")
-            .select("day,variant_id,inventory_item_id,units,line_revenue")
-            .eq("client_id", cid)
-            .gte("day", startISO)
-            .lte("day", endISO);
-          if (liErr) throw liErr;
+          const lineItems = await fetchAllSupabase<any>((from, to) =>
+            supabase
+              .from("shopify_daily_line_items")
+              .select("day,variant_id,inventory_item_id,units,line_revenue")
+              .eq("client_id", cid)
+              .gte("day", startISO)
+              .lte("day", endISO)
+          );
 
           const lineItemDays = new Set<string>();
           let lineItemMin = "";

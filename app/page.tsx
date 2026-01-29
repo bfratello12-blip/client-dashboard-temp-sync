@@ -3258,30 +3258,24 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
   }, [rangeDays, coverage, effectiveShowComparison]);
   /** North Star */
   const northStar = useMemo(() => {
-    const profitRocDelta = effectiveShowComparison ? profitReturnOnCosts - prevProfitReturnOnCosts : 0;
-    const profitDelta = effectiveShowComparison ? profitPrimaryValue - profitCompareValue : 0;
-    const good = effectiveShowComparison ? profitRocDelta >= 0 : profitReturnOnCosts >= 0;
+    const selected = kpis.find((k) => k.label === northStarKey) || kpis[0];
+    const primary = selected?.value != null ? String(selected.value) : "—";
+    const details = selected?.sub != null ? String(selected.sub) : "";
+    const trend = typeof selected?.trend === "number" && Number.isFinite(selected.trend) ? selected.trend : null;
+    const good = effectiveShowComparison ? (trend != null ? trend >= 0 : true) : true;
+
     return {
       title: "North Star",
-      primary: `${profitReturnOnCosts.toFixed(2)}x`,
-      sub: "Profit Return on Costs (Profit ÷ ad spend)",
-      details: `Profit ${formatCurrency(profitPrimaryValue)} • Spend ${formatCurrency(adTotals.spend)}`,
-      deltaLine: effectiveShowComparison
-        ? `vs ${compareLabel.toLowerCase()}: Profit Return on Costs ${(profitRocDelta >= 0 ? "+" : "-")}${Math.abs(
-            profitRocDelta
-          ).toFixed(2)}x • Profit ${formatSignedCurrency(profitDelta)}`
-        : "",
+      primary,
+      sub: selected?.label || "North Star",
+      details,
+      deltaLine:
+        effectiveShowComparison && trend != null
+          ? `vs ${compareLabel.toLowerCase()}: ${formatSignedPct(trend)}`
+          : "",
       good,
     };
-  }, [
-    profitReturnOnCosts,
-    prevProfitReturnOnCosts,
-    effectiveShowComparison,
-    profitPrimaryValue,
-    profitCompareValue,
-    adTotals.spend,
-    compareLabel,
-  ]);
+  }, [kpis, northStarKey, effectiveShowComparison, compareLabel]);
   /** Attribution summary (range-level) */
   const attributionSummary = useMemo(() => {
     const primary = windows.primary;

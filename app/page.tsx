@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import HomeClient from "@/app/page.client";
+import ShopifyBootstrap from "@/app/components/ShopifyBootstrap";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -63,6 +64,13 @@ export default async function Page({
       : Array.isArray(shopParamRaw)
       ? shopParamRaw[0]
       : "";
+  const hostParamRaw = searchParams?.host;
+  const hostParam =
+    typeof hostParamRaw === "string"
+      ? hostParamRaw
+      : Array.isArray(hostParamRaw)
+      ? hostParamRaw[0]
+      : "";
   const idTokenRaw = searchParams?.id_token;
   const idToken =
     typeof idTokenRaw === "string"
@@ -97,11 +105,7 @@ export default async function Page({
   });
 
   if (!shopGuess) {
-    return (
-      <main className="min-h-screen flex items-center justify-center p-6">
-        <div className="text-sm text-slate-600">Missing shop domain</div>
-      </main>
-    );
+    return <ShopifyBootstrap host={hostParam} />;
   }
 
   const { data, error } = await supabaseAdmin()

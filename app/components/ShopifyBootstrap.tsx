@@ -13,8 +13,27 @@ export default function ShopifyBootstrap({ host }: ShopifyBootstrapProps) {
   const apiKey = process.env.NEXT_PUBLIC_SHOPIFY_API_KEY || "";
 
   const normalizedHost = useMemo(() => {
-    if (!host) return "";
-    return Array.isArray(host) ? host[0] : host;
+    const hostValue = host ? (Array.isArray(host) ? host[0] : host) : "";
+    if (hostValue) {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("shopify.host", hostValue);
+      }
+      return hostValue;
+    }
+
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const hostFromQuery = params.get("host") || "";
+      if (hostFromQuery) {
+        window.localStorage.setItem("shopify.host", hostFromQuery);
+        return hostFromQuery;
+      }
+
+      const storedHost = window.localStorage.getItem("shopify.host") || "";
+      if (storedHost) return storedHost;
+    }
+
+    return "";
   }, [host]);
 
   useEffect(() => {

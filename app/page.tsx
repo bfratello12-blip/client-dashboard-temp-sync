@@ -18,6 +18,35 @@ function shopFromReferer(referer: string) {
   return normalizeShopDomain(match[1]);
 }
 
+function base64UrlDecode(input: string) {
+  const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = normalized.length % 4;
+  const padded =
+    pad === 0
+      ? normalized
+      : pad === 2
+      ? `${normalized}==`
+      : pad === 3
+      ? `${normalized}=`
+      : `${normalized}===`;
+  return Buffer.from(padded, "base64").toString("utf8");
+}
+
+function shopFromIdToken(idToken: string) {
+  try {
+    const payloadSegment = idToken.split(".")[1] || "";
+    if (!payloadSegment) return "";
+    const payloadJson = base64UrlDecode(payloadSegment);
+    const payload = JSON.parse(payloadJson) as { dest?: string };
+    const dest = payload?.dest || "";
+    if (!dest) return "";
+    const hostname = new URL(dest).hostname;
+    return normalizeShopDomain(hostname);
+  } catch {
+    return "";
+  }
+}
+
 export default async function Page({
   searchParams,
 }: {
@@ -25,19 +54,45 @@ export default async function Page({
 }) {
   const hdrs = await headers();
   const referer = hdrs.get("referer") || "";
+  const url = hdrs.get("x-url") || "";
+  const headerShop = normalizeShopDomain(hdrs.get("x-shopify-shop-domain") || "");
   const shopParamRaw = searchParams?.shop;
-  const shop =
+  const shopParam =
     typeof shopParamRaw === "string"
       ? shopParamRaw
       : Array.isArray(shopParamRaw)
       ? shopParamRaw[0]
       : "";
-  const shopGuess = normalizeShopDomain(shop || "");
+  const idTokenRaw = searchParams?.id_token;
+  const idToken =
+    typeof idTokenRaw === "string"
+      ? idTokenRaw
+      : Array.isArray(idTokenRaw)
+      ? idTokenRaw[0]
+      : "";
+  const shopFromToken = idToken ? shopFromIdToken(idToken) : "";
+  const refererShop = shopFromReferer(referer);
+  const shopGuess = normalizeShopDomain(
+    shopParam || shopFromToken || headerShop || refererShop
+  );
+  const shopSource = shopParam
+    ? "shop_param"
+    : shopFromToken
+    ? "id_token"
+    : headerShop
+    ? "header"
+    : refererShop
+    ? "referer"
+    : "missing";
 
   console.info("[app-entry] HIT", {
     ts: new Date().toISOString(),
+    url,
     shop: shopGuess || "",
-    shopParam: shop || "",
+    shopSource,
+    hasShopParam: Boolean(shopParam),
+    hasIdToken: Boolean(idToken),
+    headerShop: headerShop || "",
     referer,
   });
 

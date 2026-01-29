@@ -1377,7 +1377,7 @@ export default function Home() {
     bizUnits: 0,
   });
   /** North Star selection */
-  const [northStarKey, setNorthStarKey] = useState<string>("Profit Return on Costs");
+  const [northStarKey, setNorthStarKey] = useState<string>("Profit Return");
   /** Series */
   const [spendSeries, setSpendSeries] = useState<{ date: string; spend: number }[]>([]);
   const [metaSpendSeries, setMetaSpendSeries] = useState<{ date: string; spend: number }[]>([]);
@@ -1385,6 +1385,8 @@ export default function Home() {
   const [spendSeriesCompare, setSpendSeriesCompare] = useState<{ date: string; spend: number }[]>([]);
   const [metaSpendSeriesCompare, setMetaSpendSeriesCompare] = useState<{ date: string; spend: number }[]>([]);
   const [googleSpendSeriesCompare, setGoogleSpendSeriesCompare] = useState<{ date: string; spend: number }[]>([]);
+  const [totalCostSeries, setTotalCostSeries] = useState<{ date: string; spend: number }[]>([]);
+  const [totalCostSeriesCompare, setTotalCostSeriesCompare] = useState<{ date: string; spend: number }[]>([]);
   const [spendByChannel, setSpendByChannel] = useState<{ name: string; value: number }[]>([]);
   const [revenueSeries, setRevenueSeries] = useState<{ date: string; revenue: number }[]>([]);
   const [googleRevenueSeries, setGoogleRevenueSeries] = useState<{ date: string; revenue: number }[]>([]);
@@ -2123,6 +2125,18 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         const pm = Number(r.profit_mer);
         profitMerByDate[iso] = Number.isFinite(pm) ? pm : 0;
       }
+      const computeTotalCosts = (iso: string): number => {
+        const row = profitRowByDate[iso];
+        if (!row) return 0;
+        return (
+          Number(row.paid_spend || 0) +
+          Number(row.est_cogs || 0) +
+          Number(row.est_processing_fees || 0) +
+          Number(row.est_fulfillment_costs || 0) +
+          Number(row.est_other_variable_costs || 0) +
+          Number(row.est_other_fixed_costs || 0)
+        );
+      };
       const computeContributionProfit = (iso: string): number => {
         // IMPORTANT:
         // Profit Trend should match the KPI Profit calculation.
@@ -2172,6 +2186,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       const spendSeriesBuilt: { date: string; spend: number }[] = [];
       const metaSpendSeriesBuilt: { date: string; spend: number }[] = [];
       const googleSpendSeriesBuilt: { date: string; spend: number }[] = [];
+      const totalCostSeriesBuilt: { date: string; spend: number }[] = [];
       const revenueSeriesBuilt: { date: string; revenue: number }[] = [];
       const googleRevenueSeriesBuilt: { date: string; revenue: number }[] = [];
       const metaRevenueSeriesBuilt: { date: string; revenue: number }[] = [];
@@ -2191,9 +2206,11 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
           const metaRev = Number(metaRevByDatePrimary[iso] || 0);
           const asp = Number(aspByDatePrimary[iso] || 0);
           const mer = spend > 0 ? rev / spend : 0;
+          const totalCosts = computeTotalCosts(iso);
           spendSeriesBuilt.push({ date: iso, spend });
           metaSpendSeriesBuilt.push({ date: iso, spend: metaSpend });
           googleSpendSeriesBuilt.push({ date: iso, spend: googleSpend });
+          totalCostSeriesBuilt.push({ date: iso, spend: totalCosts });
           revenueSeriesBuilt.push({ date: iso, revenue: rev });
           googleRevenueSeriesBuilt.push({ date: iso, revenue: googleRev });
           metaRevenueSeriesBuilt.push({ date: iso, revenue: metaRev });
@@ -2210,6 +2227,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       const spendSeriesCompareBuilt: { date: string; spend: number }[] = [];
       const metaSpendSeriesCompareBuilt: { date: string; spend: number }[] = [];
       const googleSpendSeriesCompareBuilt: { date: string; spend: number }[] = [];
+      const totalCostSeriesCompareBuilt: { date: string; spend: number }[] = [];
       const revenueSeriesCompareBuilt: { date: string; revenue: number }[] = [];
       const googleRevenueSeriesCompareBuilt: { date: string; revenue: number }[] = [];
       const metaRevenueSeriesCompareBuilt: { date: string; revenue: number }[] = [];
@@ -2264,9 +2282,11 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
           const metaRev = Number(metaRevByDateCompare[compareISO] || 0);
           const asp = Number(aspByDateCompare[compareISO] || 0);
           const mer = spend > 0 ? rev / spend : 0;
+          const totalCosts = computeTotalCosts(compareISO);
           spendSeriesCompareBuilt.push({ date: primaryISO, spend });
           metaSpendSeriesCompareBuilt.push({ date: primaryISO, spend: metaSpend });
           googleSpendSeriesCompareBuilt.push({ date: primaryISO, spend: googleSpend });
+          totalCostSeriesCompareBuilt.push({ date: primaryISO, spend: totalCosts });
           revenueSeriesCompareBuilt.push({ date: primaryISO, revenue: rev });
           googleRevenueSeriesCompareBuilt.push({ date: primaryISO, revenue: googleRev });
           metaRevenueSeriesCompareBuilt.push({ date: primaryISO, revenue: metaRev });
@@ -2345,8 +2365,20 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         const iso = toISO10(r.date);
         trackedRevByDateAll[iso] = (trackedRevByDateAll[iso] || 0) + Number(r.revenue || 0);
       }
+      const totalCostsByDateAll: Record<string, number> = {};
+      for (const r of profitDataAll) {
+        const iso = toISO10(r.date);
+        totalCostsByDateAll[iso] =
+          Number((r as any).paid_spend || 0) +
+          Number((r as any).est_cogs || 0) +
+          Number((r as any).est_processing_fees || 0) +
+          Number((r as any).est_fulfillment_costs || 0) +
+          Number((r as any).est_other_variable_costs || 0) +
+          Number((r as any).est_other_fixed_costs || 0);
+      }
       const forwardTracked = buildForwardSum(trackedRevByDateAll, primary.startISO, primary.days, attribWindowDays);
       const forwardTotal = buildForwardSum(revenueByDatePrimary, primary.startISO, primary.days, attribWindowDays);
+      const forwardCosts = buildForwardSum(totalCostsByDateAll, primary.startISO, primary.days, attribWindowDays);
       const attribSeriesBuilt: {
         date: string;
         mer_w: number;
@@ -2361,7 +2393,8 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         const revTrackedW = Number(forwardTracked[iso] || 0);
         const revTotalW = Number(forwardTotal[iso] || 0);
         const roasW = spend > 0 ? revTrackedW / spend : 0;
-        const merW = spend > 0 ? revTotalW / spend : 0;
+        const costW = Number(forwardCosts[iso] || 0);
+        const merW = costW > 0 ? revTotalW / costW : 0;
         attribSeriesBuilt.push({
           date: iso,
           mer_w: Number(merW.toFixed(2)),
@@ -2394,6 +2427,8 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         setSpendSeriesCompare(effectiveCompareWindow ? spendSeriesCompareBuilt : []);
         setMetaSpendSeriesCompare(effectiveCompareWindow ? metaSpendSeriesCompareBuilt : []);
         setGoogleSpendSeriesCompare(effectiveCompareWindow ? googleSpendSeriesCompareBuilt : []);
+        setTotalCostSeries(totalCostSeriesBuilt);
+        setTotalCostSeriesCompare(effectiveCompareWindow ? totalCostSeriesCompareBuilt : []);
         setSpendByChannel(channel);
         setBizTotals({
           revenue: bizRevenue,
@@ -3069,9 +3104,9 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         { label: "Ad Spend", value: formatCurrency(adTotals.spend), sub: "Total ad spend", trend: undefined },
         { label: "Ad ROAS", value: `${adRoas.toFixed(2)}x`, sub: "Return on ad spend", trend: undefined },
         {
-          label: "Profit Return on Costs",
+          label: "Profit Return",
           value: `${profitReturnOnCosts.toFixed(2)}x`,
-          sub: "How much revenue is generated for every $1 of total costs",
+          sub: "Revenue generated per $1 of total costs",
           trend: undefined,
         },
         { label: "CTR", value: formatPct(ctr), sub: "Click-through-rate", trend: undefined },
@@ -3121,7 +3156,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       { label: "Ad Spend", value: formatCurrency(adTotals.spend), sub: `vs prev: ${fmtDelta(spendDelta, allowPct)}`, trend: allowPct ? spendDelta : undefined },
       { label: "Ad ROAS", value: `${adRoas.toFixed(2)}x`, sub: `vs prev: ${fmtDelta(roasDelta, allowPct)}`, trend: allowPct ? roasDelta : undefined },
       {
-        label: "Profit Return on Costs",
+        label: "Profit Return",
         value: `${profitReturnOnCosts.toFixed(2)}x`,
         sub: `vs prev: ${fmtDelta(merDelta, allowPct)}`,
         trend: allowPct ? merDelta : undefined,
@@ -3198,6 +3233,19 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
   const merTrendSeries = useMemo(() => {
     return merRollingEnabled ? buildRollingMerSeries(spendSeries as any, revenueSeries as any, merRollingWindowDays) : merSeries;
   }, [merRollingEnabled, merRollingWindowDays, buildRollingMerSeries, spendSeries, revenueSeries, merSeries]);
+  const profitReturnDailySeries = useMemo(() => {
+    const costByDate = new Map(totalCostSeries.map((d) => [d.date, Number(d.spend) || 0]));
+    return (revenueSeries ?? []).map((d) => {
+      const costs = costByDate.get(d.date) ?? 0;
+      const rev = Number((d as any).revenue) || 0;
+      return { date: d.date, mer: costs > 0 ? rev / costs : 0 };
+    });
+  }, [revenueSeries, totalCostSeries]);
+  const profitReturnTrendSeries = useMemo(() => {
+    return merRollingEnabled
+      ? buildRollingMerSeries(totalCostSeries as any, revenueSeries as any, merRollingWindowDays)
+      : profitReturnDailySeries;
+  }, [merRollingEnabled, merRollingWindowDays, buildRollingMerSeries, totalCostSeries, revenueSeries, profitReturnDailySeries]);
   const profitMerTrendSeries = useMemo(() => {
     // Rolling contribution profit ÷ rolling ad spend (business-truth MER)
     return merRollingEnabled
@@ -3217,6 +3265,29 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     spendSeriesCompare,
     revenueSeriesCompare,
     merSeriesCompare,
+  ]);
+  const profitReturnDailySeriesCompare = useMemo(() => {
+    if (!effectiveShowComparison) return [];
+    const costByDate = new Map(totalCostSeriesCompare.map((d) => [d.date, Number(d.spend) || 0]));
+    return (revenueSeriesCompare ?? []).map((d) => {
+      const costs = costByDate.get(d.date) ?? 0;
+      const rev = Number((d as any).revenue) || 0;
+      return { date: d.date, mer: costs > 0 ? rev / costs : 0 };
+    });
+  }, [effectiveShowComparison, revenueSeriesCompare, totalCostSeriesCompare]);
+  const profitReturnTrendSeriesCompare = useMemo(() => {
+    if (!effectiveShowComparison) return [];
+    return merRollingEnabled
+      ? buildRollingMerSeries(totalCostSeriesCompare as any, revenueSeriesCompare as any, merRollingWindowDays)
+      : profitReturnDailySeriesCompare;
+  }, [
+    effectiveShowComparison,
+    merRollingEnabled,
+    merRollingWindowDays,
+    buildRollingMerSeries,
+    totalCostSeriesCompare,
+    revenueSeriesCompare,
+    profitReturnDailySeriesCompare,
   ]);
   const profitMerTrendSeriesCompare = useMemo(() => {
     if (!effectiveShowComparison) return [];
@@ -3500,7 +3571,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
               <div>
                 <div className="text-base font-semibold text-slate-900">Costs & margins</div>
                 <div className="text-sm text-slate-500">
-                  Manage your variable cost assumptions used for Contribution Profit and Profit Return on Costs.
+                  Manage your variable cost assumptions used for Contribution Profit and Profit Return.
                 </div>
               </div>
               <Link
@@ -3695,7 +3766,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-slate-500">Profit Return on Costs</span>
+                          <span className="text-slate-500">Profit Return</span>
                           <span className="font-semibold text-slate-900">
                             {lift.primary.profitReturnOnCosts == null ? "—" : `${lift.primary.profitReturnOnCosts.toFixed(2)}x`}
                           </span>
@@ -3732,7 +3803,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-slate-500">Profit Return on Costs</span>
+                          <span className="text-slate-500">Profit Return</span>
                           <span className="font-semibold text-slate-900">
                             {lift.compare.profitReturnOnCosts == null ? "—" : `${lift.compare.profitReturnOnCosts.toFixed(2)}x`}
                           </span>
@@ -3777,7 +3848,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                         good={lift.profitLift != null ? lift.profitLift >= 0 : true}
                       />
                       <LiftRow
-                        label="Profit Return on Costs"
+                        label="Profit Return"
                         value={
                           lift.procLift == null
                             ? "—"
@@ -3918,7 +3989,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="text-base font-semibold text-slate-900">Events</h3>
-                    <p className="text-sm text-slate-600">Changes that can explain lift/drops in Revenue, ASP, and Profit Return on Costs.</p>
+                    <p className="text-sm text-slate-600">Changes that can explain lift/drops in Revenue, ASP, and Profit Return.</p>
                   </div>
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
                     {loading ? "…" : `${eventsToShow.length} shown`}
@@ -4367,9 +4438,9 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 />
               </ChartCard>
               <ChartCard
-                title="Profit Return on Costs Trend"
+                title="Profit Return Trend"
                 subtitle={`Revenue ÷ total costs (${merRollingEnabled ? `rolling ${merRollingWindowDays}d` : "daily"} • ${rangeDays} days)`}
-                badge="Profit Return on Costs"
+                badge="Profit Return"
               >
                 <div className="mb-2 flex flex-wrap items-center gap-3 text-xs text-slate-600">
                   <label className="flex items-center gap-2">
@@ -4395,11 +4466,11 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                       <option value={30}>30d</option>
                     </select>
                   </label>
-                  <span className="text-[11px] text-slate-400">{seriesDebug(merTrendSeries)}</span>
+                  <span className="text-[11px] text-slate-400">{seriesDebug(profitReturnTrendSeries)}</span>
                 </div>
                 <EventfulLineChart
-                  data={merTrendSeries}
-                  compareData={merTrendSeriesCompare}
+                  data={profitReturnTrendSeries}
+                  compareData={profitReturnTrendSeriesCompare}
                   showComparison={effectiveShowComparison}
                   yKey="mer"
                   yTooltipFormatter={(v) => `${Number(v).toFixed(2)}x`}
@@ -4411,13 +4482,13 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
               </ChartCard>
             </div>
           </section>
-          {/* Profit Return on Costs vs ROAS Attribution Window */}
+          {/* Profit Return vs ROAS Attribution Window */}
           <section className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Attribution: Profit Return on Costs vs ROAS</h2>
+                <h2 className="text-lg font-semibold text-slate-900">Attribution: Profit Return vs ROAS</h2>
                 <p className="text-sm text-slate-600">
-                  Compare business truth (Profit Return on Costs) vs tracked ad return (ROAS) under a {attribWindowDays}-day forward window.
+                  Compare business truth (Profit Return) vs tracked ad return (ROAS) under a {attribWindowDays}-day forward window.
                 </p>
                 <p className="mt-1 text-[11px] text-slate-400">
                   Chart uses forward revenue window per day divided by that day’s spend (useful for explaining lag).
@@ -4438,14 +4509,14 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                   </select>
                 </div>
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                  Avg Profit Return on Costs (w): {attributionSummary.avgMerW}x • Avg ROAS(w): {attributionSummary.avgRoasW}x
+                  Avg Profit Return (w): {attributionSummary.avgMerW}x • Avg ROAS(w): {attributionSummary.avgRoasW}x
                 </span>
               </div>
             </div>
             <div className="mt-5 grid grid-cols-1 gap-6 lg:grid-cols-2">
               <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
                 <div className="text-sm font-semibold text-slate-900">Daily windowed lines</div>
-                <div className="mt-1 text-sm text-slate-600">Profit Return on Costs (w) and ROAS(w) over time</div>
+                <div className="mt-1 text-sm text-slate-600">Profit Return (w) and ROAS(w) over time</div>
                 <div className="mt-3 h-72 w-full min-w-0 min-h-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
@@ -4479,18 +4550,18 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                         formatter={(value: any) => String(value)}
                         wrapperStyle={{ fontSize: 12 }}
                       />
-                      <Line type="monotone" dataKey="mer_w" name="Profit Return on Costs (windowed)" stroke="#10b981" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="mer_w" name="Profit Return (windowed)" stroke="#10b981" strokeWidth={2} dot={false} />
                       <Line type="monotone" dataKey="roas_w" name="ROAS (windowed)" stroke="#3b82f6" strokeWidth={2} dot={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
                 <div className="mt-3 text-xs text-slate-600">
-                  Interpretation: if Profit Return on Costs (w) is consistently above ROAS(w), revenue is being driven by more than
+                  Interpretation: if Profit Return (w) is consistently above ROAS(w), revenue is being driven by more than
                   tracked last-click/attributed conversions.
                 </div>
               </div>
               <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
-                <div className="text-sm font-semibold text-slate-900">Scatter: Profit Return on Costs (w) vs ROAS(w)</div>
+                <div className="text-sm font-semibold text-slate-900">Scatter: Profit Return (w) vs ROAS(w)</div>
                 <div className="mt-1 text-sm text-slate-600">Each dot is a day in the selected date range</div>
                 <div className="mt-3 h-72 w-full min-w-0 min-h-0">
                   <ResponsiveContainer width="100%" height="100%">
@@ -4508,7 +4579,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                       <YAxis
                         dataKey="y"
                         tick={{ fontSize: 12 }}
-                        label={{ value: "Profit Return on Costs (windowed)", angle: -90, position: "insideLeft" }}
+                        label={{ value: "Profit Return (windowed)", angle: -90, position: "insideLeft" }}
                       />
                       <Tooltip
                         content={({ active, payload }: any) => {
@@ -4525,7 +4596,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                                   <div className="text-sm font-semibold">{x.toFixed(2)}x</div>
                                 </div>
                                 <div className="flex items-center justify-between gap-4">
-                                  <div className="text-xs text-slate-300">Profit Return on Costs (w)</div>
+                                  <div className="text-xs text-slate-300">Profit Return (w)</div>
                                   <div className="text-sm font-semibold">{y.toFixed(2)}x</div>
                                 </div>
                               </div>
@@ -4542,7 +4613,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                   </ResponsiveContainer>
                 </div>
                 <div className="mt-3 text-xs text-slate-600">
-                  This helps explain when “ROAS looks fine” but “Profit Return on Costs deteriorates” (or vice versa).
+                  This helps explain when “ROAS looks fine” but “Profit Return deteriorates” (or vice versa).
                 </div>
               </div>
             </div>

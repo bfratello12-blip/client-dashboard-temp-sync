@@ -18,24 +18,33 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const shop = normalizeShop(url.searchParams.get("shop") || "");
   const clientId = (url.searchParams.get("client_id") || "").trim();
+  const referer = req.headers.get("referer") || "";
+  const origin = req.headers.get("origin") || "";
+  const appBaseUrl = mustGetEnv("APP_BASE_URL").replace(/\/$/, "");
+  const appBaseHost = new URL(appBaseUrl).host;
+  const originHost = origin ? new URL(origin).host : "";
+  const isAdminReferer = /admin\.shopify\.com/i.test(referer);
+  const isAppBaseOrigin = !!originHost && originHost === appBaseHost;
+
   console.info("[oauth/start] HIT", {
     ts: new Date().toISOString(),
     shop,
-    clientId,
-  }); // log first for visibility even if we return early
+    referer,
+    origin,
+  });
 
-  console.log("[oauth/start] SHOPIFY_API_KEY:", process.env.SHOPIFY_API_KEY);
-
-  // Guard: this route is internal-only (not for merchant install link entry).
+  // Guard: allow internal requests or Shopify Admin app-open flow.
   const internalRequest = req.headers.get("x-internal-request") === "1";
-  if (!internalRequest) {
-    console.warn("[oauth/start] blocked non-internal access", {
+  const allowed = internalRequest || (shop && (isAdminReferer || isAppBaseOrigin));
+  if (!allowed) {
+    console.warn("[oauth/start] blocked", {
       shop,
-      clientId,
+      referer,
+      origin,
       timestamp: new Date().toISOString(),
     });
     return NextResponse.json(
-      { ok: false, error: "oauth/start is internal-only" },
+      { ok: false, error: "oauth/start blocked" },
       { status: 403 }
     );
   }
@@ -46,13 +55,8 @@ export async function GET(req: NextRequest) {
       { status: 400 }
     );
   }
-  if (!clientId) {
-    return NextResponse.json({ ok: false, error: "Missing client_id" }, { status: 400 });
-  }
-
   // Your env names (keep as-is if that’s what you’re using)
   const apiKey = mustGetEnv("SHOPIFY_API_KEY"); // equals SHOPIFY_OAUTH_CLIENT_ID
-  const appBaseUrl = mustGetEnv("APP_BASE_URL").replace(/\/$/, "");
   const scopesRaw =
     process.env.SHOPIFY_SCOPES ||
     "read_all_orders,read_orders,read_inventory,read_reports,read_products";
@@ -60,12 +64,10 @@ export async function GET(req: NextRequest) {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  console.log("[oauth/start] scopes used:", scopes);
-
   const nonce = crypto.randomBytes(16).toString("hex");
   const { data: stateRow, error: stateErr } = await supabaseAdmin()
     .from("shopify_oauth_states")
-    .insert({ shop_domain: shop, nonce, client_id: clientId })
+    .insert({ shop_domain: shop, nonce, client_id: clientId || null })
     .select("id")
     .maybeSingle();
   if (stateErr || !stateRow?.id) {

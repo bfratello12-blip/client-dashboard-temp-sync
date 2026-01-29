@@ -528,6 +528,120 @@ export async function POST(req: NextRequest) {
           rowsUpserted += upserts.length;
         }
 
+        // Monthly rollup update (for months in this window)
+        try {
+          const profitRows = await fetchAllSupabase<any>((from, to) =>
+            supabase
+              .from("daily_profit_summary")
+              .select(
+                "date,revenue,orders,contribution_profit,est_cogs,est_processing_fees,est_fulfillment_costs,est_other_variable_costs,est_other_fixed_costs"
+              )
+              .eq("client_id", cid)
+              .gte("date", startISO)
+              .lte("date", endISO)
+          );
+
+          const monthKey = (iso: string) => `${String(iso || "").slice(0, 7)}-01`;
+          const monthly: Record<
+            string,
+            {
+              shopify_revenue: number;
+              shopify_orders: number;
+              meta_spend: number;
+              google_spend: number;
+              contribution_profit: number;
+              est_cogs: number;
+              est_processing_fees: number;
+              est_fulfillment_costs: number;
+              est_other_variable_costs: number;
+              est_other_fixed_costs: number;
+            }
+          > = {};
+
+          for (const r of profitRows || []) {
+            const m = monthKey((r as any).date);
+            if (!m || m === "-01") continue;
+            if (!monthly[m]) {
+              monthly[m] = {
+                shopify_revenue: 0,
+                shopify_orders: 0,
+                meta_spend: 0,
+                google_spend: 0,
+                contribution_profit: 0,
+                est_cogs: 0,
+                est_processing_fees: 0,
+                est_fulfillment_costs: 0,
+                est_other_variable_costs: 0,
+                est_other_fixed_costs: 0,
+              };
+            }
+            monthly[m].shopify_revenue += n((r as any).revenue);
+            monthly[m].shopify_orders += n((r as any).orders);
+            monthly[m].contribution_profit += n((r as any).contribution_profit);
+            monthly[m].est_cogs += n((r as any).est_cogs);
+            monthly[m].est_processing_fees += n((r as any).est_processing_fees);
+            monthly[m].est_fulfillment_costs += n((r as any).est_fulfillment_costs);
+            monthly[m].est_other_variable_costs += n((r as any).est_other_variable_costs);
+            monthly[m].est_other_fixed_costs += n((r as any).est_other_fixed_costs);
+          }
+
+          for (const r of metricsRows || []) {
+            const m = monthKey(toDayKey((r as any).date));
+            if (!m || m === "-01") continue;
+            if (!monthly[m]) {
+              monthly[m] = {
+                shopify_revenue: 0,
+                shopify_orders: 0,
+                meta_spend: 0,
+                google_spend: 0,
+                contribution_profit: 0,
+                est_cogs: 0,
+                est_processing_fees: 0,
+                est_fulfillment_costs: 0,
+                est_other_variable_costs: 0,
+                est_other_fixed_costs: 0,
+              };
+            }
+            const source = String((r as any).source || "");
+            if (source === "meta") monthly[m].meta_spend += n((r as any).spend);
+            if (source === "google") monthly[m].google_spend += n((r as any).spend);
+          }
+
+          const monthlyUpserts = Object.entries(monthly).map(([m, v]) => {
+            const totalAdSpend = v.meta_spend + v.google_spend;
+            const trueRoas = totalAdSpend > 0 ? v.shopify_revenue / totalAdSpend : 0;
+            const aov = v.shopify_orders > 0 ? v.shopify_revenue / v.shopify_orders : 0;
+            const cpo = v.shopify_orders > 0 ? totalAdSpend / v.shopify_orders : 0;
+            return {
+              client_id: cid,
+              month: m,
+              shopify_revenue: v.shopify_revenue,
+              shopify_orders: v.shopify_orders,
+              meta_spend: v.meta_spend,
+              google_spend: v.google_spend,
+              total_ad_spend: totalAdSpend,
+              true_roas: trueRoas,
+              aov,
+              cpo,
+              contribution_profit: v.contribution_profit,
+              est_cogs: v.est_cogs,
+              est_processing_fees: v.est_processing_fees,
+              est_fulfillment_costs: v.est_fulfillment_costs,
+              est_other_variable_costs: v.est_other_variable_costs,
+              est_other_fixed_costs: v.est_other_fixed_costs,
+            };
+          });
+
+          if (monthlyUpserts.length) {
+            const { error: mUpErr } = await supabase
+              .from("monthly_rollup")
+              .upsert(monthlyUpserts, { onConflict: "client_id,month" });
+            if (mUpErr) throw mUpErr;
+          }
+        } catch (e: any) {
+          console.warn("[rolling-30] monthly rollup update failed:", e?.message || String(e));
+        }
+
         clientsProcessed += 1;
       } catch (e: any) {
         errors.push({ client_id: cid, error: e?.message || String(e) });

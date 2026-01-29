@@ -2511,7 +2511,18 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         const trueRoas = totalAdSpend > 0 ? shopifyRevenue / totalAdSpend : null;
         const aov = shopifyOrders > 0 ? shopifyRevenue / shopifyOrders : null;
         const cpo = shopifyOrders > 0 ? totalAdSpend / shopifyOrders : null;
-        const profitFromDb = getNum(r, ["profit", "store_profit", "total_store_profit"], 0);
+        const profitFromDb = getNum(
+          r,
+          [
+            "profit",
+            "store_profit",
+            "total_store_profit",
+            "contribution_profit",
+            "total_contribution_profit",
+            "contribution_profit_sum",
+          ],
+          NaN
+        );
         const profit =
           marginAfterCostsPct != null
             ? shopifyRevenue * marginAfterCostsPct - totalAdSpend

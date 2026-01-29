@@ -254,6 +254,8 @@ export async function POST(req: NextRequest) {
     let pages = 0;
     let ordersSeen = 0;
     let lineItemsSeen = 0;
+    let minCreatedAt = "";
+    let maxCreatedAt = "";
 
     while (true) {
       const data = await shopifyGraphQL({
@@ -274,6 +276,11 @@ export async function POST(req: NextRequest) {
         const createdAt = String(o?.createdAt || "");
         const day = isoDayFromShopifyDate(createdAt);
         ordersSeen += 1;
+
+        if (createdAt) {
+          if (!minCreatedAt || createdAt < minCreatedAt) minCreatedAt = createdAt;
+          if (!maxCreatedAt || createdAt > maxCreatedAt) maxCreatedAt = createdAt;
+        }
 
         const liEdges = o?.lineItems?.edges || [];
         for (const le of liEdges) {
@@ -343,6 +350,8 @@ export async function POST(req: NextRequest) {
       updated_at: new Date().toISOString(),
     }));
 
+    const distinctDays = new Set(rows.map((r) => r.day));
+
     // Fetch + upsert unit costs for inventory items
     const inventoryItemIds = Array.from(new Set(rows.map((r) => r.inventory_item_id).filter(Boolean)));
     const invToVariant: Record<number, number | null> = {};
@@ -411,6 +420,8 @@ export async function POST(req: NextRequest) {
       pages,
       ordersSeen,
       lineItemsSeen,
+      createdAtRange: { min: minCreatedAt || null, max: maxCreatedAt || null },
+      distinctDays: distinctDays.size,
       aggregatedKeys: rows.length,
       rowsUpserted,
       unitCostsRequested: totalRequested,

@@ -80,7 +80,7 @@ export default function ShopifyBootstrap({ host }: ShopifyBootstrapProps) {
           },
         });
         const data = (await res.json()) as { ok: boolean; shop?: string };
-        console.log("[bootstrap] whoami response", data);
+        console.log("[bootstrap] whoami response", { ok: data?.ok, shop: data?.shop });
         if (!data?.ok || !data.shop) {
           setStatus("error");
           return;
@@ -91,7 +91,9 @@ export default function ShopifyBootstrap({ host }: ShopifyBootstrapProps) {
         params.set("shop", data.shop);
         params.set("host", normalizedHost);
         params.set("embedded", "1");
-        window.location.replace(`/?${params.toString()}`);
+        console.log("[bootstrap] redirecting to app root with shop+host");
+        const url = `${window.location.origin}/?${params.toString()}`;
+        window.location.assign(url);
       } catch {
         setStatus("error");
       }

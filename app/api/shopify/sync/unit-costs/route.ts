@@ -10,6 +10,13 @@ function parseGidId(gid: string | null | undefined): string | null {
   return parts.length ? parts[parts.length - 1] : null;
 }
 
+function normalizeShop(shop: string): string {
+  const s = (shop || "").trim().toLowerCase();
+  const noProto = s.replace(/^https?:\/\//, "");
+  const noPath = noProto.split("/")[0];
+  return noPath;
+}
+
 async function shopifyGraphQL<T>(
   shop: string,
   accessToken: string,
@@ -53,10 +60,18 @@ async function shopifyGraphQL<T>(
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
-    const shop = (url.searchParams.get("shop") || "").trim();
+    const shopRaw = (url.searchParams.get("shop") || "").trim();
     const clientIdParam = (url.searchParams.get("client_id") || "").trim();
     const limitProducts = Math.max(1, Number(url.searchParams.get("limit_products") || 50));
 
+    if (!clientIdParam) {
+      return NextResponse.json(
+        { ok: false, error: "Missing client_id" },
+        { status: 400 }
+      );
+    }
+
+    const shop = normalizeShop(shopRaw);
     if (!shop || !shop.endsWith(".myshopify.com")) {
       return NextResponse.json(
         { ok: false, error: "Missing/invalid shop (must be *.myshopify.com)" },
@@ -69,6 +84,7 @@ export async function GET(req: NextRequest) {
     const { data: install, error: installErr } = await supabase
       .from("shopify_app_installs")
       .select("client_id, shop_domain, access_token")
+      .eq("client_id", clientIdParam)
       .eq("shop_domain", shop)
       .maybeSingle();
 
@@ -77,7 +93,7 @@ export async function GET(req: NextRequest) {
     }
     if (!install?.access_token) {
       return NextResponse.json(
-        { ok: false, error: "No Shopify install found for shop" },
+        { ok: false, error: "No Shopify install found for client_id + shop" },
         { status: 400 }
       );
     }

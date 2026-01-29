@@ -129,6 +129,12 @@ export async function GET(req: NextRequest) {
   const code = params.get("code");
   const state = params.get("state");
 
+  console.info("[oauth/callback] HIT", {
+    shop,
+    hasCode: Boolean(code),
+    state,
+  });
+
   if (!shop || !shop.endsWith(".myshopify.com")) {
     return NextResponse.json({ ok: false, error: "Missing/invalid shop" }, { status: 400 });
   }

@@ -59,7 +59,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, error }, { status: 400 });
     }
     console.info("[whoami] ok", { shop });
-    return NextResponse.json({ ok: true, shop });
+    const res = NextResponse.json({ ok: true, shop });
+    res.cookies.set("sa_shop", shop, {
+      path: "/",
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      maxAge: 86400,
+    });
+    return res;
   } catch (error) {
     console.error("[whoami] error", { error });
     return NextResponse.json({ ok: false, error: "server error" }, { status: 500 });

@@ -1,4 +1,4 @@
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import HomeClient from "@/app/page.client";
 import ShopifyBootstrap from "@/app/components/ShopifyBootstrap";
@@ -64,6 +64,8 @@ export default async function Page({
       : Array.isArray(shopParamRaw)
       ? shopParamRaw[0]
       : "";
+  const cookieShopRaw = !shopParam ? cookies().get("sa_shop")?.value || "" : "";
+  const cookieShop = normalizeShopDomain(cookieShopRaw);
   const hostParamRaw = searchParams?.host;
   const hostParam =
     typeof hostParamRaw === "string"
@@ -81,7 +83,7 @@ export default async function Page({
   const shopFromToken = idToken ? shopFromIdToken(idToken) : "";
   const refererShop = shopFromReferer(referer);
   const shopGuess = normalizeShopDomain(
-    shopParam || shopFromToken || headerShop || refererShop
+    shopParam || shopFromToken || headerShop || refererShop || cookieShop
   );
   const shopSource = shopParam
     ? "shop_param"
@@ -91,6 +93,8 @@ export default async function Page({
     ? "header"
     : refererShop
     ? "referer"
+    : cookieShop
+    ? "cookie"
     : "missing";
 
   console.info("[app-entry] HIT", {

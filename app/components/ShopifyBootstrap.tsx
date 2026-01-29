@@ -88,12 +88,8 @@ export default function ShopifyBootstrap({ host }: ShopifyBootstrapProps) {
 
         const params = new URLSearchParams();
         params.set("bootstrapped", "1");
-        params.set("shop", data.shop);
-        params.set("host", normalizedHost);
-        params.set("embedded", "1");
         console.log("[bootstrap] redirecting to app root with shop+host");
-        const url = `${window.location.origin}/?${params.toString()}`;
-        window.location.assign(url);
+        window.location.replace(`/?${params.toString()}`);
       } catch {
         setStatus("error");
       }

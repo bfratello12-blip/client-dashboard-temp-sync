@@ -277,35 +277,38 @@ export async function GET(req: NextRequest) {
   }
 
   // 4) Upsert into Supabase
-  const client_id = stateRow.client_id ? String(stateRow.client_id) : null;
+  const client_id = stateRow.client_id
+    ? String(stateRow.client_id)
+    : process.env.CLIENT_ID || null;
+  if (!client_id) {
+    return NextResponse.json({ ok: false, error: "Missing client_id" }, { status: 500 });
+  }
 
   const nowISO = new Date().toISOString();
-  if (client_id) {
-    const { error: integErr } = await supabase
-      .from("client_integrations")
-      .update({
-        status: "connected",
-        is_active: true,
-        token_ref: accessToken,
-        updated_at: nowISO,
-      })
-      .eq("client_id", client_id)
-      .eq("provider", "shopify");
-    if (integErr) {
-      console.error("[oauth/callback] client_integrations update failed", {
-        shop,
-        client_id,
-        error: integErr.message,
-        timestamp: new Date().toISOString(),
-      });
-      return NextResponse.json({ ok: false, error: integErr.message }, { status: 500 });
-    }
+  const { error: integErr } = await supabase
+    .from("client_integrations")
+    .update({
+      status: "connected",
+      is_active: true,
+      token_ref: accessToken,
+      updated_at: nowISO,
+    })
+    .eq("client_id", client_id)
+    .eq("provider", "shopify");
+  if (integErr) {
+    console.error("[oauth/callback] client_integrations update failed", {
+      shop,
+      client_id,
+      error: integErr.message,
+      timestamp: new Date().toISOString(),
+    });
+    return NextResponse.json({ ok: false, error: integErr.message }, { status: 500 });
   }
 
   console.info("[oauth/callback] upserting install", { shop });
   const { error } = await supabase.from("shopify_app_installs").upsert(
     {
-      ...(client_id ? { client_id } : {}),
+      client_id,
       shop_domain: shop,
       access_token: accessToken,
       scopes,

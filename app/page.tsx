@@ -5,10 +5,6 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 
-type PageProps = {
-  searchParams?: Record<string, string | string[] | undefined>;
-};
-
 function normalizeShopDomain(shop: string) {
   const s = (shop || "").trim().toLowerCase();
   if (!s) return "";
@@ -22,23 +18,26 @@ function shopFromReferer(referer: string) {
   return normalizeShopDomain(match[1]);
 }
 
-function getSingleParam(v?: string | string[]) {
-  return Array.isArray(v) ? v[0] : v;
-}
-
-export default async function Home({ searchParams }: PageProps) {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Record<string, string | string[] | undefined>;
+}) {
   const hdrs = await headers();
   const referer = hdrs.get("referer") || "";
-  const headerShop = normalizeShopDomain(hdrs.get("x-shopify-shop-domain") || "");
-  const shopParamRaw = getSingleParam(searchParams?.shop) || "";
-  const shopParam = normalizeShopDomain(shopParamRaw);
-  const shopGuess = shopParam || headerShop || shopFromReferer(referer);
+  const shopParamRaw = searchParams?.shop;
+  const shop =
+    typeof shopParamRaw === "string"
+      ? shopParamRaw
+      : Array.isArray(shopParamRaw)
+      ? shopParamRaw[0]
+      : "";
+  const shopGuess = normalizeShopDomain(shop || "");
 
   console.info("[app-entry] HIT", {
     ts: new Date().toISOString(),
     shop: shopGuess || "",
-    shopParam: shopParam || "",
-    headerShop: headerShop || "",
+    shopParam: shop || "",
     referer,
   });
 

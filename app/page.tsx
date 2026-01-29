@@ -64,7 +64,8 @@ export default async function Page({
       : Array.isArray(shopParamRaw)
       ? shopParamRaw[0]
       : "";
-  const cookieShopRaw = !shopParam ? cookies().get("sa_shop")?.value || "" : "";
+  const cookieStore = await cookies();
+  const cookieShopRaw = !shopParam ? cookieStore.get("sa_shop")?.value || "" : "";
   const cookieShop = normalizeShopDomain(cookieShopRaw);
   const hostParamRaw = searchParams?.host;
   const hostParam =

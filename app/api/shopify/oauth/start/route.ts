@@ -25,6 +25,10 @@ export async function GET(req: NextRequest) {
   const originHost = origin ? new URL(origin).host : "";
   const isAdminReferer = /admin\.shopify\.com/i.test(referer);
   const isAppBaseOrigin = !!originHost && originHost === appBaseHost;
+  const hasRefererAdmin = referer.includes("https://admin.shopify.com/");
+  const hasHostParam = url.searchParams.has("host");
+  const hasIdTokenParam = url.searchParams.has("id_token");
+  const embeddedParam = url.searchParams.get("embedded") || "";
 
   console.info("[oauth/start] HIT", {
     ts: new Date().toISOString(),
@@ -35,12 +39,24 @@ export async function GET(req: NextRequest) {
 
   // Guard: allow internal requests or Shopify Admin app-open flow.
   const internalRequest = req.headers.get("x-internal-request") === "1";
-  const allowed = internalRequest || (shop && (isAdminReferer || isAppBaseOrigin));
+  const allowed =
+    internalRequest ||
+    (shop &&
+      (isAdminReferer ||
+        isAppBaseOrigin ||
+        hasRefererAdmin ||
+        hasHostParam ||
+        hasIdTokenParam ||
+        embeddedParam === "1"));
   if (!allowed) {
     console.warn("[oauth/start] blocked", {
       shop,
       referer,
       origin,
+      hasRefererAdmin,
+      hasHostParam,
+      hasIdTokenParam,
+      embeddedParam,
       timestamp: new Date().toISOString(),
     });
     return NextResponse.json(

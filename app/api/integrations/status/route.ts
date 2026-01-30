@@ -3,9 +3,10 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 const PROVIDER_KEYS = ["provider", "type", "source", "kind", "integration", "name"];
-const GOOGLE_HINT_KEYS = ["google_ads_customer_id", "customer_id", "ad_account_id"];
+const GOOGLE_HINT_KEYS = ["google_ads_customer_id", "google_customer_id", "customer_id", "ad_account_id"];
 const META_HINT_KEYS = ["meta_ad_account_id", "ad_account_id", "account_id"];
-const TOKEN_KEYS = ["access_token", "refresh_token"];
+const GOOGLE_TOKEN_KEYS = ["google_refresh_token", "refresh_token", "access_token"];
+const META_TOKEN_KEYS = ["access_token", "refresh_token"];
 
 const hasNonEmpty = (v: any) => v != null && String(v).trim().length > 0;
 
@@ -25,14 +26,23 @@ function rowHasAnyKey(row: Record<string, any>, keys: string[]) {
   return keys.some((key) => key in row && hasNonEmpty(row[key]));
 }
 
-function rowHasTokenAndHint(row: Record<string, any>, needles: string[]) {
-  const hasToken = TOKEN_KEYS.some((key) => key in row && hasNonEmpty(row[key]));
-  if (!hasToken) return false;
+function pickKey(row: Record<string, any>, keys: string[], regexes: RegExp[]) {
+  for (const key of keys) {
+    if (key in row) return key;
+  }
 
-  return Object.keys(row).some((key) => {
-    if (TOKEN_KEYS.includes(key)) return false;
-    return needles.some((n) => valueIncludes(row[key], n));
-  });
+  const rowKeys = Object.keys(row);
+  for (const r of regexes) {
+    const match = rowKeys.find((k) => r.test(k));
+    if (match) return match;
+  }
+
+  return null;
+}
+
+function pickValue(row: Record<string, any>, keys: string[], regexes: RegExp[]) {
+  const key = pickKey(row, keys, regexes);
+  return key ? row[key] : null;
 }
 
 function redactRow(row: Record<string, any>) {
@@ -91,23 +101,52 @@ export async function GET(req: Request) {
       console.log("[integrations/status] client_integrations sample:", sample);
     }
 
-    const googleConnected = integrations.some((row) => {
-      const isGoogleRow = rowMatchesProvider(row, ["google"]) || rowHasAnyKey(row, GOOGLE_HINT_KEYS);
-      if (!isGoogleRow) return false;
+    const googleRows = integrations.filter(
+      (row) => rowMatchesProvider(row, ["google"]) || rowHasAnyKey(row, GOOGLE_HINT_KEYS)
+    );
 
-      const hasToken = TOKEN_KEYS.some((key) => key in row && hasNonEmpty(row[key]));
-      const hasAccount = GOOGLE_HINT_KEYS.some((key) => key in row && hasNonEmpty(row[key]));
-      return hasToken && hasAccount;
-    });
+    const googleRow =
+      googleRows.find((row) => {
+        const token = pickValue(row, GOOGLE_TOKEN_KEYS, [/google.*refresh.*token/i, /refresh.*token/i, /access.*token/i]);
+        const customerId = pickValue(row, GOOGLE_HINT_KEYS, [/google.*customer.*id/i, /customer.*id/i, /ad.*account.*id/i]);
+        return hasNonEmpty(token) && hasNonEmpty(customerId);
+      }) ??
+      googleRows.find((row) => {
+        const token = pickValue(row, GOOGLE_TOKEN_KEYS, [/google.*refresh.*token/i, /refresh.*token/i, /access.*token/i]);
+        return hasNonEmpty(token);
+      }) ??
+      googleRows[0];
 
-    const metaConnected = integrations.some((row) => {
-      const isMetaRow = rowMatchesProvider(row, ["meta", "facebook", "fb"]) || rowHasAnyKey(row, META_HINT_KEYS);
-      if (!isMetaRow) return false;
+    const googleToken = googleRow
+      ? pickValue(googleRow, GOOGLE_TOKEN_KEYS, [/google.*refresh.*token/i, /refresh.*token/i, /access.*token/i])
+      : null;
+    const googleCustomerId = googleRow
+      ? pickValue(googleRow, GOOGLE_HINT_KEYS, [/google.*customer.*id/i, /customer.*id/i, /ad.*account.*id/i])
+      : null;
+    const googleConnected = hasNonEmpty(googleToken) && hasNonEmpty(googleCustomerId);
 
-      const hasToken = "access_token" in row && hasNonEmpty(row.access_token);
-      const hasAccount = META_HINT_KEYS.some((key) => key in row && hasNonEmpty(row[key]));
-      return hasToken && hasAccount;
-    });
+    const metaRows = integrations.filter(
+      (row) => rowMatchesProvider(row, ["meta", "facebook", "fb"]) || rowHasAnyKey(row, META_HINT_KEYS)
+    );
+    const metaRow =
+      metaRows.find((row) => {
+        const token = pickValue(row, META_TOKEN_KEYS, [/access.*token/i, /refresh.*token/i]);
+        const accountId = pickValue(row, META_HINT_KEYS, [/meta.*account.*id/i, /facebook.*account.*id/i, /fb.*account.*id/i, /account.*id/i]);
+        return hasNonEmpty(token) && hasNonEmpty(accountId);
+      }) ??
+      metaRows.find((row) => {
+        const token = pickValue(row, META_TOKEN_KEYS, [/access.*token/i, /refresh.*token/i]);
+        return hasNonEmpty(token);
+      }) ??
+      metaRows[0];
+
+    const metaToken = metaRow
+      ? pickValue(metaRow, META_TOKEN_KEYS, [/access.*token/i, /refresh.*token/i])
+      : null;
+    const metaAccountId = metaRow
+      ? pickValue(metaRow, META_HINT_KEYS, [/meta.*account.*id/i, /facebook.*account.*id/i, /fb.*account.*id/i, /account.*id/i])
+      : null;
+    const metaConnected = hasNonEmpty(metaToken) && hasNonEmpty(metaAccountId);
 
     return NextResponse.json({
       ok: true,
@@ -117,8 +156,16 @@ export async function GET(req: Request) {
         needsReconnect: shopifyNeedsReconnect,
         shop: shopifyRow?.shop_domain ?? null,
       },
-      google: { connected: googleConnected },
-      meta: { connected: metaConnected },
+      google: {
+        connected: googleConnected,
+        hasToken: hasNonEmpty(googleToken),
+        customerId: hasNonEmpty(googleCustomerId) ? String(googleCustomerId) : null,
+      },
+      meta: {
+        connected: metaConnected,
+        hasToken: hasNonEmpty(metaToken),
+        accountId: hasNonEmpty(metaAccountId) ? String(metaAccountId) : null,
+      },
     });
   } catch (e: any) {
     console.error("integrations/status error:", e);

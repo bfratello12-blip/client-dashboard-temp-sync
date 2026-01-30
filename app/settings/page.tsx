@@ -24,8 +24,8 @@ type ClientCostSettings = {
 
 type IntegrationStatus = {
   shopify: { connected: boolean; needsReconnect: boolean; shop?: string | null };
-  google: { connected: boolean };
-  meta: { connected: boolean };
+  google: { connected: boolean; hasToken?: boolean; customerId?: string | null };
+  meta: { connected: boolean; hasToken?: boolean; accountId?: string | null };
 };
 
 const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
@@ -100,6 +100,12 @@ function SettingsPage() {
   const [integrationStatus, setIntegrationStatus] = useState<IntegrationStatus | null>(null);
   const [integrationLoading, setIntegrationLoading] = useState(false);
   const [integrationError, setIntegrationError] = useState("");
+
+  const [googleAccounts, setGoogleAccounts] = useState<Array<{ id: string; name?: string | null }>>([]);
+  const [googleAccountsLoading, setGoogleAccountsLoading] = useState(false);
+  const [googleAccountsError, setGoogleAccountsError] = useState("");
+  const [googleSelectedAccountId, setGoogleSelectedAccountId] = useState("");
+  const [googleAccountSaving, setGoogleAccountSaving] = useState(false);
 
   // Product cost source UX: Shopify unit costs vs estimated fallback inputs
   const [productCostMode, setProductCostMode] = useState<'shopify' | 'estimate'>('shopify');
@@ -258,6 +264,87 @@ function SettingsPage() {
     }
   }, [clientId]);
 
+  const fetchIntegrationStatus = useCallback(async () => {
+    if (!clientId) return;
+
+    setIntegrationLoading(true);
+    setIntegrationError("");
+
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const shopDomainParam = params.get("shop_domain") || params.get("shop") || "";
+      const statusUrl = new URL("/api/integrations/status", window.location.origin);
+      statusUrl.searchParams.set("client_id", clientId);
+      if (shopDomainParam) statusUrl.searchParams.set("shop_domain", shopDomainParam);
+
+      const res = await fetch(statusUrl.toString(), {
+        cache: "no-store",
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload?.ok) throw new Error(payload?.error || `Status failed (${res.status})`);
+
+      setIntegrationStatus({
+        shopify: payload.shopify,
+        google: payload.google,
+        meta: payload.meta,
+      });
+    } catch (e: any) {
+      console.error(e);
+      setIntegrationError(e?.message ?? "Failed to load integrations");
+    } finally {
+      setIntegrationLoading(false);
+    }
+  }, [clientId]);
+
+  const fetchGoogleAccounts = useCallback(async () => {
+    if (!clientId) return;
+    setGoogleAccountsLoading(true);
+    setGoogleAccountsError("");
+
+    try {
+      const res = await fetch(`/api/googleads/accounts?client_id=${encodeURIComponent(clientId)}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload?.ok) throw new Error(payload?.error || `Account fetch failed (${res.status})`);
+
+      const accounts = Array.isArray(payload?.accounts) ? payload.accounts : [];
+      setGoogleAccounts(accounts);
+      if (!googleSelectedAccountId && accounts.length > 0) {
+        setGoogleSelectedAccountId(String(accounts[0]?.id ?? ""));
+      }
+    } catch (e: any) {
+      console.error(e);
+      setGoogleAccountsError(e?.message ?? "Failed to load Google accounts");
+    } finally {
+      setGoogleAccountsLoading(false);
+    }
+  }, [clientId, googleSelectedAccountId]);
+
+  const saveGoogleAccount = useCallback(async () => {
+    if (!clientId || !googleSelectedAccountId) return;
+    setGoogleAccountSaving(true);
+    setIntegrationError("");
+
+    try {
+      const res = await fetch("/api/googleads/select-account", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ client_id: clientId, google_ads_customer_id: googleSelectedAccountId }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload?.ok) throw new Error(payload?.error || `Save failed (${res.status})`);
+
+      await fetchIntegrationStatus();
+    } catch (e: any) {
+      console.error(e);
+      setIntegrationError(e?.message ?? "Failed to save Google account");
+    } finally {
+      setGoogleAccountSaving(false);
+    }
+  }, [clientId, googleSelectedAccountId, fetchIntegrationStatus]);
+
   // Load: auth -> client mapping -> cost settings
   useEffect(() => {
     let cancelled = false;
@@ -380,45 +467,28 @@ function SettingsPage() {
       return;
     }
 
-    let cancelled = false;
-
     const run = async () => {
-      setIntegrationLoading(true);
-      setIntegrationError("");
-
-      try {
-        const params = new URLSearchParams(window.location.search);
-        const shopDomainParam = params.get("shop_domain") || params.get("shop") || "";
-        const statusUrl = new URL("/api/integrations/status", window.location.origin);
-        statusUrl.searchParams.set("client_id", clientId);
-        if (shopDomainParam) statusUrl.searchParams.set("shop_domain", shopDomainParam);
-
-        const res = await fetch(statusUrl.toString(), {
-          cache: "no-store",
-        });
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok || !payload?.ok) throw new Error(payload?.error || `Status failed (${res.status})`);
-
-        if (!cancelled) {
-          setIntegrationStatus({
-            shopify: payload.shopify,
-            google: payload.google,
-            meta: payload.meta,
-          });
-        }
-      } catch (e: any) {
-        console.error(e);
-        if (!cancelled) setIntegrationError(e?.message ?? "Failed to load integrations");
-      } finally {
-        if (!cancelled) setIntegrationLoading(false);
-      }
+      await fetchIntegrationStatus();
     };
 
     run();
-    return () => {
-      cancelled = true;
-    };
-  }, [clientId]);
+  }, [clientId, fetchIntegrationStatus]);
+
+  useEffect(() => {
+    if (!clientId) return;
+    if (!integrationStatus?.google?.hasToken) return;
+    if (integrationStatus?.google?.customerId) return;
+    if (googleAccountsLoading || googleAccounts.length > 0) return;
+
+    fetchGoogleAccounts();
+  }, [
+    clientId,
+    integrationStatus?.google?.hasToken,
+    integrationStatus?.google?.customerId,
+    googleAccountsLoading,
+    googleAccounts.length,
+    fetchGoogleAccounts,
+  ]);
 
   const costs = useMemo(() => costSettings || ({ client_id: clientId } as ClientCostSettings), [costSettings, clientId]);
 
@@ -535,19 +605,73 @@ function SettingsPage() {
                     />
                     {integrationStatus?.google?.connected ? "Connected" : "Disconnected"}
                   </div>
-                  <button
-                    onClick={startGoogleOAuth}
-                    disabled={!clientId || integrationStatus?.google?.connected}
-                    className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
-                      integrationStatus?.google?.connected || !clientId
-                        ? "cursor-not-allowed bg-slate-300"
-                        : "bg-blue-600 hover:bg-blue-700"
-                    }`}
-                  >
-                    {integrationStatus?.google?.connected ? "Connected" : "Connect"}
-                  </button>
+                  {integrationStatus?.google?.connected ? (
+                    <div className="text-xs text-slate-600">
+                      Account: <span className="font-semibold text-slate-800">{integrationStatus?.google?.customerId}</span>
+                    </div>
+                  ) : null}
+
+                  {!integrationStatus?.google?.hasToken ? (
+                    <button
+                      onClick={startGoogleOAuth}
+                      disabled={!clientId}
+                      className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
+                        !clientId ? "cursor-not-allowed bg-slate-300" : "bg-blue-600 hover:bg-blue-700"
+                      }`}
+                    >
+                      Connect Google Ads
+                    </button>
+                  ) : null}
                 </div>
               </div>
+
+              {integrationStatus?.google?.hasToken && !integrationStatus?.google?.customerId ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="text-sm font-semibold text-slate-900">Select Google Ads Account</div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    Choose the account to sync for this client.
+                  </div>
+
+                  {googleAccountsError ? (
+                    <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-2 text-xs text-rose-800">
+                      {googleAccountsError}
+                    </div>
+                  ) : null}
+
+                  <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <select
+                      value={googleSelectedAccountId}
+                      onChange={(e) => setGoogleSelectedAccountId(e.target.value)}
+                      disabled={googleAccountsLoading || googleAccounts.length === 0}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 sm:max-w-md"
+                    >
+                      {googleAccountsLoading ? (
+                        <option>Loading accounts…</option>
+                      ) : googleAccounts.length === 0 ? (
+                        <option>No accounts found</option>
+                      ) : (
+                        googleAccounts.map((acct) => (
+                          <option key={acct.id} value={acct.id}>
+                            {acct.name ? `${acct.name} (${acct.id})` : acct.id}
+                          </option>
+                        ))
+                      )}
+                    </select>
+
+                    <button
+                      onClick={saveGoogleAccount}
+                      disabled={!googleSelectedAccountId || googleAccountSaving}
+                      className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
+                        !googleSelectedAccountId || googleAccountSaving
+                          ? "cursor-not-allowed bg-slate-300"
+                          : "bg-blue-600 hover:bg-blue-700"
+                      }`}
+                    >
+                      {googleAccountSaving ? "Saving…" : "Save account"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>

@@ -43,9 +43,11 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const clientId = url.searchParams.get("client_id")?.trim();
     if (!clientId) {
-      return NextResponse.json({ ok: false, error: "Missing client_id" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "missing client_id" }, { status: 400 });
     }
+    const cookieShop = req.cookies.get("sa_shop")?.value || "";
     console.log("GOOGLE CONNECT received client_id", clientId);
+    console.log("GOOGLE CONNECT shop cookie", cookieShop);
 
     const oauthClientId = getOAuthClientId();
     if (!oauthClientId) throw new Error("Missing GOOGLE_ADS_CLIENT_ID (or GOOGLE_CLIENT_ID)");
@@ -65,7 +67,7 @@ export async function GET(req: NextRequest) {
       ts: Date.now(),
       nonce: crypto.randomBytes(12).toString("hex"),
     };
-    console.log("GOOGLE CONNECT state client_id", payload.client_id);
+    console.log("GOOGLE CONNECT building state client_id", payload.client_id);
 
     const payloadB64 = base64url(JSON.stringify(payload));
     const sig = signState(payloadB64, secret);

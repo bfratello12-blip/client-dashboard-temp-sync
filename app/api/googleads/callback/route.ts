@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
 
     const clientId = payload.client_id;
     if (!clientId) return NextResponse.json({ ok: false, error: "Missing client_id in state" }, { status: 400 });
-    console.log("GOOGLE CALLBACK state client_id", clientId);
+    console.log("GOOGLE CALLBACK verified client_id", clientId);
 
     const redirectUri = `${url.origin}/api/googleads/callback`;
     const tokens = await exchangeCodeForTokens(code, redirectUri);
@@ -176,6 +176,8 @@ export async function GET(req: NextRequest) {
       <div class="ok">✅ Google Ads connected</div>
       <p>Refresh token saved for client:</p>
       <p><code>${clientId}</code></p>
+      <p>Verified state client_id: <code>${clientId}</code></p>
+      <p>Upserted client_id: <code>${clientId}</code></p>
       <p>You can close this tab and run your Google sync.</p>
     </div>
   </body>

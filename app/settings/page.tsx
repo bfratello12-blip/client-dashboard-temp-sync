@@ -246,8 +246,10 @@ function SettingsPage() {
     if (!clientId) return;
 
     try {
-      console.log("CONNECT GOOGLE client_id", clientId);
-      const res = await fetch(`/api/googleads/connect?client_id=${encodeURIComponent(clientId)}`, {
+      const connectUrl = `/api/googleads/connect?client_id=${encodeURIComponent(clientId)}`;
+      console.log("SETTINGS currentClientId", clientId);
+      console.log("GOOGLE CONNECT url", connectUrl);
+      const res = await fetch(connectUrl, {
         method: "GET",
         cache: "no-store",
       });

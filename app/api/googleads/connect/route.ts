@@ -57,11 +57,9 @@ export async function GET(req: NextRequest) {
     const secret = mustEnv("OAUTH_STATE_SECRET");
 
     // Redirect URI must match Google Cloud Console exactly.
-    const redirectUri =
-      process.env.NODE_ENV === "production"
-        ? "https://scaleable-dashboard-wildwater.vercel.app/api/googleads/callback"
-        : "http://localhost:3000/api/googleads/callback";
-    console.log("[googleads/connect] redirect_uri:", redirectUri);
+    const origin = req.nextUrl.origin;
+    const redirectUri = `${origin}/api/googleads/callback`;
+    console.log("[googleads/connect] origin=", origin, "redirect_uri=", redirectUri);
 
     const payload = {
       client_id: clientId,

@@ -110,7 +110,9 @@ export async function GET(req: NextRequest) {
     if (!clientId) return NextResponse.json({ ok: false, error: "Missing client_id in state" }, { status: 400 });
     console.log("GOOGLE CALLBACK verified client_id", clientId);
 
-    const redirectUri = `${url.origin}/api/googleads/callback`;
+    const origin = req.nextUrl.origin;
+    const redirectUri = `${origin}/api/googleads/callback`;
+    console.log("[googleads/callback] origin=", origin, "redirect_uri=", redirectUri);
     const tokens = await exchangeCodeForTokens(code, redirectUri);
 
     if (!tokens.refresh_token) {

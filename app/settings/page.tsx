@@ -719,7 +719,7 @@ function SettingsPage() {
                     >
                       Reconnect
                     </button>
-                  ) : null}
+                  )}
                 </div>
               </div>
 

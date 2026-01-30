@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
     if (!code) return NextResponse.json({ ok: false, error: "Missing code" }, { status: 400 });
     if (!state) return NextResponse.json({ ok: false, error: "Missing state" }, { status: 400 });
 
-    const secret = mustEnv("CRON_SECRET");
+    const secret = mustEnv("OAUTH_STATE_SECRET");
 
     const [payloadB64, sig] = state.split(".");
     if (!payloadB64 || !sig) return NextResponse.json({ ok: false, error: "Invalid state format" }, { status: 400 });
@@ -94,10 +94,15 @@ export async function GET(req: NextRequest) {
     }
 
     const payloadJson = b64urlToString(payloadB64);
-    const payload = JSON.parse(payloadJson) as { client_id: string; ts: number; nonce: string; origin?: string };
+    const payload = JSON.parse(payloadJson) as {
+      client_id: string;
+      shop_domain?: string;
+      ts: number;
+      nonce: string;
+    };
 
-    // 20 minute window
-    if (!payload?.ts || Math.abs(Date.now() - payload.ts) > 20 * 60 * 1000) {
+    // 10 minute window
+    if (!payload?.ts || Math.abs(Date.now() - payload.ts) > 10 * 60 * 1000) {
       return NextResponse.json({ ok: false, error: "State expired. Please reconnect again." }, { status: 400 });
     }
 
@@ -122,14 +127,17 @@ export async function GET(req: NextRequest) {
 
     const supabase = getSupabaseAdmin();
 
-    const providerVariants = ["google", "google_ads", "googleads", "google-ads"];
-
-    // Try update first (handles your existing rows).
+    // Try update first (handles existing row).
     const { data: updated, error: updErr } = await supabase
       .from("client_integrations")
-      .update({ google_refresh_token: tokens.refresh_token, is_active: true })
+      .update({
+        google_refresh_token: tokens.refresh_token,
+        status: "connected",
+        google_connected_at: new Date().toISOString(),
+        is_active: true,
+      })
       .eq("client_id", clientId)
-      .in("provider", providerVariants)
+      .eq("provider", "google_ads")
       .select("client_id, provider");
 
     if (updErr) throw updErr;
@@ -138,7 +146,9 @@ export async function GET(req: NextRequest) {
       // If no existing row, insert a minimal one.
       const { error: insErr } = await supabase.from("client_integrations").insert({
         client_id: clientId,
-        provider: "google",
+        provider: "google_ads",
+        status: "connected",
+        google_connected_at: new Date().toISOString(),
         is_active: true,
         google_refresh_token: tokens.refresh_token,
       });

@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
     const oauthClientId = getOAuthClientId();
     if (!oauthClientId) throw new Error("Missing GOOGLE_ADS_CLIENT_ID (or GOOGLE_CLIENT_ID)");
 
-    const secret = mustEnv("CRON_SECRET");
+    const secret = mustEnv("OAUTH_STATE_SECRET");
 
     // Redirect URI must match Google Cloud Console exactly.
     const redirectUri =
@@ -60,9 +60,9 @@ export async function GET(req: NextRequest) {
 
     const payload = {
       client_id: clientId,
+      shop_domain: url.searchParams.get("shop_domain")?.trim() || undefined,
       ts: Date.now(),
       nonce: crypto.randomBytes(12).toString("hex"),
-      origin: url.origin,
     };
 
     const payloadB64 = base64url(JSON.stringify(payload));

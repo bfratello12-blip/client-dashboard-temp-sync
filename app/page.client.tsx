@@ -2047,9 +2047,12 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       const aspByDatePrimary: Record<string, number> = {};
       const unitsByDatePrimary: Record<string, number> = {};
       const ordersByDatePrimary: Record<string, number> = {};
+      for (const r of profitDataAll) {
+        const iso = toISO10(r.date);
+        revenueByDatePrimary[iso] = Number((r as any).revenue || 0);
+      }
       for (const r of salesDataAll) {
         const iso = toISO10(r.date);
-        revenueByDatePrimary[iso] = Number(r.revenue || 0);
         aspByDatePrimary[iso] = Number(r.asp || 0);
         unitsByDatePrimary[iso] = Number(r.units || 0);
         ordersByDatePrimary[iso] = Number(r.orders || 0);
@@ -2067,7 +2070,10 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         },
         { spend: 0, revenue: 0, orders: 0, conversions: 0, clicks: 0, impressions: 0 }
       );
-      const bizRevenue = inPrimarySales.reduce((s, r) => s + Number(r.revenue || 0), 0);
+      let bizRevenue = 0;
+      for (let d = primary.startISO; d <= primary.endISO; d = addDaysISO(d, 1)) {
+        bizRevenue += Number(revenueByDatePrimary[d] || 0);
+      }
       const bizOrders = inPrimarySales.reduce((s, r) => s + Number(r.orders || 0), 0);
       const bizUnits = inPrimarySales.reduce((s, r) => s + Number(r.units || 0), 0);
       const bizAov = bizOrders > 0 ? bizRevenue / bizOrders : 0;
@@ -2269,9 +2275,12 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         const revenueByDateCompare: Record<string, number> = {};
         const aspByDateCompare: Record<string, number> = {};
         // Profit series for compare window can reuse the same per-day profit maps we built above.
+        for (const r of rawInCompareProfit) {
+          const iso = toISO10(r.date);
+          revenueByDateCompare[iso] = Number((r as any).revenue || 0);
+        }
         for (const r of rawInCompareSales) {
           const iso = toISO10(r.date);
-          revenueByDateCompare[iso] = Number(r.revenue || 0);
           aspByDateCompare[iso] = Number(r.asp || 0);
         }
         for (let i = 0; i < primary.days; i++) {
@@ -2304,7 +2313,9 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         compareAdRevenue = inCompareMetric.reduce((s, r) => s + Number(r.revenue || 0), 0);
         compareClicks = inCompareMetric.reduce((s, r) => s + Number(r.clicks || 0), 0);
         compareImpressions = inCompareMetric.reduce((s, r) => s + Number(r.impressions || 0), 0);
-        compareBizRevenue = inCompareSales.reduce((s, r) => s + Number(r.revenue || 0), 0);
+        for (let d = effectiveCompareWindow.startISO; d <= effectiveCompareWindow.endISO; d = addDaysISO(d, 1)) {
+          compareBizRevenue += Number(revenueByDateCompare[d] || 0);
+        }
         compareBizOrders = inCompareSales.reduce((s, r) => s + Number(r.orders || 0), 0);
         compareBizUnits = inCompareSales.reduce((s, r) => s + Number(r.units || 0), 0);
         // (trackedRevByDateCompare used later in attribution section)

@@ -279,8 +279,35 @@ const { buckets, fetchedOrders, fetchedRefundScanOrders } = await computeTotalSa
     const days = daysBetweenInclusive(start, end);
     const rows: any[] = [];
     const results: any[] = [];
+    let daysSkippedExisting = 0;
+
+    const { data: existingRows, error: existingErr } = await sb
+      .from("daily_metrics")
+      .select("date,revenue,orders,units")
+      .eq("client_id", client_id)
+      .eq("source", "shopify")
+      .gte("date", start)
+      .lte("date", end);
+    if (existingErr) {
+      throw new Error(`daily_metrics lookup failed: ${existingErr.message}`);
+    }
+    const existingMap = new Map<string, { revenue?: number; orders?: number; units?: number }>();
+    for (const r of existingRows || []) {
+      const d = String((r as any).date || "");
+      if (!d) continue;
+      existingMap.set(d, {
+        revenue: Number((r as any).revenue ?? 0),
+        orders: Number((r as any).orders ?? 0),
+        units: Number((r as any).units ?? 0),
+      });
+    }
 
     for (const day of days) {
+      const existing = existingMap.get(day);
+      if (existing && (existing.revenue || existing.orders || existing.units)) {
+        daysSkippedExisting += 1;
+        continue;
+      }
       const b = buckets[day];
       if (!b && !fillZeros) continue;
 
@@ -318,6 +345,7 @@ const { buckets, fetchedOrders, fetchedRefundScanOrders } = await computeTotalSa
     }
 
     console.info("[shopify/backfill] daily_metrics upserted", { daysWritten });
+    console.info("[shopify/backfill] daily_metrics skipped existing", { daysSkippedExisting });
 
     return NextResponse.json({
       ok: true,
@@ -327,6 +355,7 @@ const { buckets, fetchedOrders, fetchedRefundScanOrders } = await computeTotalSa
       tz: timeZone,
       daysRequested: days.length,
       daysWritten,
+      daysSkippedExisting,
       fetchedOrders,
       fetchedRefundScanOrders,
       results,

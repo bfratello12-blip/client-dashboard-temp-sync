@@ -190,8 +190,8 @@ LIMIT 1000`;
 
   // If rows is still empty but rowsRaw exists, keep a helpful error
   if (!Array.isArray(rows)) rows = [];
-  if (rows.length === 0 && rowsRaw != null) {
-    // Don't fail hard; just proceed with empty buckets
+  if (rows.length === 0) {
+    throw new Error("ShopifyQL returned no rows");
   }
 
   // Determine column indexes (fallback to [0,1,2] if we can't find them)
@@ -290,7 +290,7 @@ const idxNetItems = (() => {
     bucketsUnits[day] = units;
   }
 
-  return { bucketsRevenue, bucketsOrders, bucketsUnits };
+  return { bucketsRevenue, bucketsOrders, bucketsUnits, rowsCount: rows.length };
 }
 
 
@@ -963,6 +963,8 @@ const days = dateRange(startDay, endDay);
     const results: any[] = [];
     let daysWritten = 0;
     let zerosInserted = 0;
+    let daysWrittenShopifyQL = 0;
+    let daysWrittenFallback = 0;
 
     for (const integ of resolvedIntegrations || []) {
       const clientId = integ.client_id;
@@ -1021,6 +1023,7 @@ const days = dateRange(startDay, endDay);
         let bucketsRevenue: Record<string, number> = {};
         let bucketsOrders: Record<string, number> = {};
         let bucketsUnits: Record<string, number> = {};
+        let revenueSource: "shopifyql" | "fallback" = "shopifyql";
 
         const normalizedShop = normalizeShop(shop);
 
@@ -1029,10 +1032,21 @@ const days = dateRange(startDay, endDay);
           bucketsRevenue = fallback.bucketsRevenue;
           bucketsOrders = fallback.bucketsOrders;
           bucketsUnits = fallback.bucketsUnits || {};
+          revenueSource = "fallback";
         } else if (modeParam === "shopifyql") {
-          const ql = await querySalesShopifyQL(normalizedShop, token, startDay, endDay);
-          bucketsRevenue = ql.bucketsRevenue;
-          bucketsOrders = ql.bucketsOrders;
+          try {
+            const ql = await querySalesShopifyQL(normalizedShop, token, startDay, endDay);
+            bucketsRevenue = ql.bucketsRevenue;
+            bucketsOrders = ql.bucketsOrders;
+            bucketsUnits = ql.bucketsUnits || {};
+            revenueSource = "shopifyql";
+          } catch (e: any) {
+            const fallback = await queryOrdersFallback(normalizedShop, token, startDay, endDay, tz);
+            bucketsRevenue = fallback.bucketsRevenue;
+            bucketsOrders = fallback.bucketsOrders;
+            bucketsUnits = fallback.bucketsUnits || {};
+            revenueSource = "fallback";
+          }
         } else {
           // auto
           try {
@@ -1040,11 +1054,13 @@ const days = dateRange(startDay, endDay);
             bucketsRevenue = ql.bucketsRevenue;
             bucketsOrders = ql.bucketsOrders;
             bucketsUnits = ql.bucketsUnits || {};
+            revenueSource = "shopifyql";
           } catch (e: any) {
             const fallback = await queryOrdersFallback(normalizedShop, token, startDay, endDay, tz);
             bucketsRevenue = fallback.bucketsRevenue;
             bucketsOrders = fallback.bucketsOrders;
             bucketsUnits = fallback.bucketsUnits || {};
+            revenueSource = "fallback";
           }
         }
 
@@ -1116,6 +1132,19 @@ const rows = days.map((day) => {
           client_id: clientId,
           rows: rows.length,
         });
+        if (revenueSource === "shopifyql") {
+          daysWrittenShopifyQL += rows.length;
+          console.info("[shopify/sync] shopifyql days written", {
+            client_id: clientId,
+            days: rows.length,
+          });
+        } else {
+          daysWrittenFallback += rows.length;
+          console.info("[shopify/sync] fallback days written", {
+            client_id: clientId,
+            days: rows.length,
+          });
+        }
 
         try {
           coverageAttempted = true;

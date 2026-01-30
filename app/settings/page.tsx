@@ -405,7 +405,7 @@ function SettingsPage() {
     }
   }, [clientId, fetchIntegrationStatus, fetchGoogleIntegration]);
 
-  // Load: auth -> client mapping -> cost settings
+  // Load: auth -> shop (sa_shop) -> client mapping -> cost settings
   useEffect(() => {
     let cancelled = false;
 
@@ -424,19 +424,48 @@ function SettingsPage() {
         return;
       }
 
-      const { data: mapping, error: mapErr } = await supabase
-        .from("user_clients")
+      let shopDomain = document.cookie
+        .split(";")
+        .map((c) => c.trim())
+        .find((c) => c.startsWith("sa_shop="))
+        ?.split("=")
+        ?.slice(1)
+        .join("=");
+
+      if (!shopDomain) {
+        try {
+          const whoRes = await fetch("/api/shopify/whoami", { cache: "no-store" });
+          const whoJson = await whoRes.json().catch(() => ({}));
+          if (whoRes.ok && whoJson?.shop) {
+            shopDomain = String(whoJson.shop).trim();
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      if (!shopDomain) {
+        if (!cancelled) {
+          setClientName("Unknown Store");
+          setCostSettings(null);
+          setLoading(false);
+        }
+        return;
+      }
+
+      const { data: installRows, error: installErr } = await supabase
+        .from("shopify_app_installs")
         .select("client_id")
-        .eq("user_id", userId)
+        .eq("shop_domain", shopDomain)
         .limit(1);
 
-      if (mapErr) {
-        console.error(mapErr);
+      if (installErr) {
+        console.error(installErr);
         if (!cancelled) setLoading(false);
         return;
       }
 
-      const cid = (mapping?.[0]?.client_id as string | undefined) || "";
+      const cid = (installRows?.[0]?.client_id as string | undefined) || "";
       if (!cancelled) setClientId(cid);
 
       if (!cid) {

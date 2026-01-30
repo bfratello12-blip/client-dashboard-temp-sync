@@ -476,6 +476,47 @@ function SettingsPage() {
 
   useEffect(() => {
     if (!clientId) return;
+
+    let cancelled = false;
+
+    const run = async () => {
+      const { data, error } = await supabase
+        .from("client_integrations")
+        .select("provider, google_refresh_token, google_ads_customer_id")
+        .eq("client_id", clientId)
+        .eq("provider", "google_ads")
+        .limit(1);
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error(error);
+        return;
+      }
+
+      const row = data?.[0] ?? null;
+      const hasToken = Boolean(String(row?.google_refresh_token ?? "").trim());
+      const hasCustomerId = Boolean(String(row?.google_ads_customer_id ?? "").trim());
+
+      setIntegrationStatus((prev) => ({
+        shopify: prev?.shopify ?? { connected: false, needsReconnect: false, shop: null },
+        meta: prev?.meta ?? { connected: false },
+        google: {
+          connected: hasToken && hasCustomerId,
+          hasToken,
+          customerId: hasCustomerId ? String(row?.google_ads_customer_id ?? "") : null,
+        },
+      }));
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
+
+  useEffect(() => {
+    if (!clientId) return;
     if (!integrationStatus?.google?.hasToken) return;
     if (integrationStatus?.google?.customerId) return;
     if (googleAccountsLoading || googleAccounts.length > 0) return;

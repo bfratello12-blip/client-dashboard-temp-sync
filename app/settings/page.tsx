@@ -539,6 +539,20 @@ function SettingsPage() {
 
   useEffect(() => {
     if (!clientId) return;
+    setGoogleAccounts([]);
+    setGoogleSelectedAccountId("");
+    setGoogleAccountsError("");
+  }, [clientId]);
+
+  useEffect(() => {
+    if (integrationStatus?.google?.hasToken) return;
+    setGoogleAccounts([]);
+    setGoogleSelectedAccountId("");
+    setGoogleAccountsError("");
+  }, [integrationStatus?.google?.hasToken]);
+
+  useEffect(() => {
+    if (!clientId) return;
     if (!integrationStatus?.google?.hasToken) return;
     if (integrationStatus?.google?.customerId) return;
     if (googleAccountsLoading || googleAccounts.length > 0) return;
@@ -666,7 +680,11 @@ function SettingsPage() {
                         integrationStatus?.google?.connected ? "bg-emerald-500" : "bg-slate-300"
                       }`}
                     />
-                    {integrationStatus?.google?.connected ? "Connected" : "Disconnected"}
+                    {integrationStatus?.google?.connected
+                      ? "Connected"
+                      : integrationStatus?.google?.hasToken
+                        ? "Needs account selection"
+                        : "Disconnected"}
                   </div>
                   {integrationStatus?.google?.connected ? (
                     <div className="text-xs text-slate-600">
@@ -690,6 +708,16 @@ function SettingsPage() {
                       }`}
                     >
                       Connect Google Ads
+                    </button>
+                  ) : (
+                    <button
+                      onClick={startGoogleOAuth}
+                      disabled={!clientId}
+                      className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
+                        !clientId ? "cursor-not-allowed bg-slate-300" : "bg-blue-600 hover:bg-blue-700"
+                      }`}
+                    >
+                      Reconnect
                     </button>
                   ) : null}
                 </div>

@@ -114,7 +114,7 @@ export async function GET(req: NextRequest) {
 
     const refreshToken = pickValue(googleRow, ["google_refresh_token"], [/google.*refresh.*token/i]) as string | null;
     if (!hasNonEmpty(refreshToken)) {
-      return NextResponse.json({ ok: false, error: "Google token missing" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Google not connected for this client" }, { status: 401 });
     }
 
     const developerToken = String(process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? "").trim();

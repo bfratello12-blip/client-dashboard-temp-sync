@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
-const PROVIDER_KEYS = ["provider", "type", "source", "kind", "integration"];
+const PROVIDER_KEYS = ["provider", "type", "source", "kind", "integration", "name"];
 const GOOGLE_HINT_KEYS = ["google_ads_customer_id", "customer_id", "ad_account_id"];
 const META_HINT_KEYS = ["meta_ad_account_id", "ad_account_id", "account_id"];
 const TOKEN_KEYS = ["access_token", "refresh_token"];
@@ -33,6 +33,18 @@ function rowHasTokenAndHint(row: Record<string, any>, needles: string[]) {
     if (TOKEN_KEYS.includes(key)) return false;
     return needles.some((n) => valueIncludes(row[key], n));
   });
+}
+
+function redactRow(row: Record<string, any>) {
+  const out: Record<string, any> = {};
+  Object.keys(row).forEach((key) => {
+    if (key.toLowerCase().includes("token")) {
+      out[key] = { present: true, hasValue: hasNonEmpty(row[key]) };
+      return;
+    }
+    out[key] = row[key];
+  });
+  return out;
 }
 
 export async function GET(req: Request) {
@@ -71,23 +83,30 @@ export async function GET(req: Request) {
 
     const integrations = (integrationsRes.data ?? []) as Record<string, any>[];
 
-    if (process.env.NODE_ENV !== "production") {
+    const debug = process.env.NODE_ENV !== "production" || searchParams.get("debug") === "1";
+    if (debug) {
       const firstKeys = Object.keys(integrations?.[0] ?? {});
-      console.log("[integrations/status] first client_integrations keys:", firstKeys);
+      const sample = integrations?.[0] ? redactRow(integrations[0]) : null;
+      console.log("[integrations/status] client_integrations keys:", firstKeys);
+      console.log("[integrations/status] client_integrations sample:", sample);
     }
 
     const googleConnected = integrations.some((row) => {
-      if (rowMatchesProvider(row, ["google"])) return true;
-      if (rowHasAnyKey(row, GOOGLE_HINT_KEYS)) return true;
-      if (rowHasTokenAndHint(row, ["google"])) return true;
-      return false;
+      const isGoogleRow = rowMatchesProvider(row, ["google"]) || rowHasAnyKey(row, GOOGLE_HINT_KEYS);
+      if (!isGoogleRow) return false;
+
+      const hasToken = TOKEN_KEYS.some((key) => key in row && hasNonEmpty(row[key]));
+      const hasAccount = GOOGLE_HINT_KEYS.some((key) => key in row && hasNonEmpty(row[key]));
+      return hasToken && hasAccount;
     });
 
     const metaConnected = integrations.some((row) => {
-      if (rowMatchesProvider(row, ["meta", "facebook", "fb"])) return true;
-      if (rowHasAnyKey(row, META_HINT_KEYS)) return true;
-      if (rowHasTokenAndHint(row, ["meta", "facebook", "fb"])) return true;
-      return false;
+      const isMetaRow = rowMatchesProvider(row, ["meta", "facebook", "fb"]) || rowHasAnyKey(row, META_HINT_KEYS);
+      if (!isMetaRow) return false;
+
+      const hasToken = "access_token" in row && hasNonEmpty(row.access_token);
+      const hasAccount = META_HINT_KEYS.some((key) => key in row && hasNonEmpty(row[key]));
+      return hasToken && hasAccount;
     });
 
     return NextResponse.json({

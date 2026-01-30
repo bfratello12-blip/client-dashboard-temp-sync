@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
     if (!clientId) {
       return NextResponse.json({ ok: false, error: "Missing client_id" }, { status: 400 });
     }
-    console.log("GOOGLE CONNECT client_id", clientId);
+    console.log("GOOGLE CONNECT received client_id", clientId);
 
     const oauthClientId = getOAuthClientId();
     if (!oauthClientId) throw new Error("Missing GOOGLE_ADS_CLIENT_ID (or GOOGLE_CLIENT_ID)");
@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
       ts: Date.now(),
       nonce: crypto.randomBytes(12).toString("hex"),
     };
-    console.log("STATE payload client_id", payload.client_id);
+    console.log("GOOGLE CONNECT state client_id", payload.client_id);
 
     const payloadB64 = base64url(JSON.stringify(payload));
     const sig = signState(payloadB64, secret);

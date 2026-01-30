@@ -910,12 +910,6 @@ const days = dateRange(startDay, endDay);
     const hasRevenue = !(await supabase.from("daily_metrics").select("revenue").limit(1)).error;
     const hasOrders  = !(await supabase.from("daily_metrics").select("orders").limit(1)).error;
     const hasUnits   = !(await supabase.from("daily_metrics").select("units").limit(1)).error;
-
-
-
-    const shopParamRaw = searchParams.get("shop")?.trim() || "";
-    const shopParam = shopParamRaw ? normalizeShop(shopParamRaw) : "";
-
     if (!shopParam && !onlyClientId) {
       return NextResponse.json(
         { ok: false, error: "Missing shop or client_id" },

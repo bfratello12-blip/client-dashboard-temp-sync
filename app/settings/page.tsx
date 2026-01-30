@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import DashboardLayout from "@/components/DashboardLayout";
 
@@ -83,7 +83,6 @@ function formatPct(v: number | null) {
 function SettingsPage() {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
 
   const [loading, setLoading] = useState(true);
   const [clientId, setClientId] = useState("");
@@ -365,8 +364,8 @@ function SettingsPage() {
       setIntegrationError("");
 
       try {
-        const shopDomainParam =
-          searchParams?.get("shop_domain") || searchParams?.get("shop") || "";
+        const params = new URLSearchParams(window.location.search);
+        const shopDomainParam = params.get("shop_domain") || params.get("shop") || "";
         const statusUrl = new URL("/api/integrations/status", window.location.origin);
         statusUrl.searchParams.set("client_id", clientId);
         if (shopDomainParam) statusUrl.searchParams.set("shop_domain", shopDomainParam);
@@ -396,7 +395,7 @@ function SettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [clientId, searchParams]);
+  }, [clientId]);
 
   const costs = useMemo(() => costSettings || ({ client_id: clientId } as ClientCostSettings), [costSettings, clientId]);
 

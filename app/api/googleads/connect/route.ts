@@ -79,7 +79,7 @@ export async function GET(req: NextRequest) {
     auth.searchParams.set("include_granted_scopes", "true");
     auth.searchParams.set("state", state);
 
-    return NextResponse.redirect(auth.toString(), { status: 302 });
+    return NextResponse.json({ url: auth.toString() });
   } catch (e: any) {
     console.error("googleads/connect error:", e);
     return NextResponse.json({ ok: false, error: e?.message ?? "Unknown error" }, { status: 500 });

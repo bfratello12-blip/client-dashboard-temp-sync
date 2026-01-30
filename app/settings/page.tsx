@@ -235,6 +235,29 @@ function SettingsPage() {
     window.location.href = url;
   }, []);
 
+  const startGoogleOAuth = useCallback(async () => {
+    if (!clientId) return;
+
+    try {
+      const res = await fetch(`/api/googleads/connect?client_id=${encodeURIComponent(clientId)}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      const payload = await res.json().catch(() => ({}));
+      const url = payload?.url as string | undefined;
+      if (!res.ok || !url) throw new Error(payload?.error || `OAuth start failed (${res.status})`);
+
+      if (window.top) {
+        window.top.location.href = url;
+      } else {
+        window.location.href = url;
+      }
+    } catch (e: any) {
+      console.error(e);
+      setIntegrationError(e?.message ?? "Failed to start Google OAuth");
+    }
+  }, [clientId]);
+
   // Load: auth -> client mapping -> cost settings
   useEffect(() => {
     let cancelled = false;
@@ -513,9 +536,7 @@ function SettingsPage() {
                     {integrationStatus?.google?.connected ? "Connected" : "Disconnected"}
                   </div>
                   <button
-                    onClick={() =>
-                      openIntegration(`/api/googleads/connect?client_id=${encodeURIComponent(clientId)}`)
-                    }
+                    onClick={startGoogleOAuth}
                     disabled={!clientId || integrationStatus?.google?.connected}
                     className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
                       integrationStatus?.google?.connected || !clientId

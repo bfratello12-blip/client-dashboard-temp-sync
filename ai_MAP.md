@@ -1,121 +1,145 @@
-# AI_MAP.md — ScaleAble Client Dashboard
+# AI_MAP.md — ScaleAble Dashboard Architecture
 
-## High-level overview
-ScaleAble is a Next.js + Supabase dashboard that ties ad spend to profit. Raw platform data lands in Supabase, then server-side cron routes compute daily profit and derived KPIs. The UI reads from derived tables and visualizes profitability; trend lines use the same formulas as KPI cards.
+This document is the source-of-truth technical map for the ScaleAble Dashboard. It is intended for LLM ingestion to fully understand how the system works end-to-end.
 
-Key idea: profit is computed server-side in `app/api/cron/rolling-30/route.ts` and stored in `daily_profit_summary`.
+---
 
-## Architecture (code + data flow)
-- UI: `app/page.tsx` (dashboard), `app/settings/page.tsx` (cost inputs)
-- API routes: `app/api/**` (platform sync + cron builders)
-- Data store: Supabase (Postgres)
-- Profit calculation: `computeDailyProfitSummary()` in `app/api/cron/rolling-30/route.ts`
+## 1) Product Overview
+ScaleAble is a profit-first analytics platform for Shopify + paid media. It is an embedded Shopify Admin app and also operates as a multi-client SaaS dashboard. The core goal is to compute true profit, MER, and ROAS using real revenue and COGS, not just ad-platform metrics.
 
-Flow:
-1) Shopify/Google/Meta sync routes pull raw data into Supabase.
-2) `/api/cron/rolling-30` reads raw tables + cost settings, writes `daily_profit_summary` and refreshes `monthly_rollup` for months in the window.
-3) UI reads `daily_profit_summary`, `daily_metrics`, `daily_sales_summary`, and `monthly_rollup`.
+Key principles:
+- Revenue comes from Shopify (not ad platforms).
+- Profit is computed server-side and persisted.
+- COGS uses real Shopify unit costs when available.
 
-## Daily sync pipeline
-### `/api/cron/daily-sync`
-- Orchestrates a daily run:
-  - Shopify sync (`/api/shopify/sync`)
-  - Shopify daily line items sync (`/api/shopify/daily-line-items-sync`)
-  - Google Ads sync (`/api/googleads/sync`)
-  - Meta sync (`/api/meta/sync`)
-  - Profit rebuild (`/api/cron/rolling-30`)
-- Uses a rolling last-30-days window so late conversions or edits are corrected.
+---
 
-### `/api/cron/rolling-30`
-- Rebuilds profitability for a date window.
-- Reads:
-  - `daily_metrics` (Shopify revenue + ad spend)
-  - `daily_sales_summary` (Shopify units/ASP)
-  - `client_cost_settings` (cost assumptions)
-  - `shopify_daily_line_items` + `shopify_variant_unit_costs` (unit-cost coverage)
-- Writes:
-  - `daily_profit_summary` (authoritative derived profit table)
-  - `monthly_rollup` (month aggregates for the window)
+## 2) Tech Stack
+- Next.js App Router (v16)
+- Embedded Shopify App (App Bridge)
+- Supabase (Postgres)
+- Vercel deployment
+- Google Ads API
+- Meta Marketing API
 
-### `/api/shopify/unit-cost-backfill`
-- Manual backfill for historical ranges.
-- Runs line-item sync (including unit costs) and then `rolling-30` for the same window.
+---
 
-## Shopify line items & unit cost handling
-- `shopify_daily_line_items` stores daily inventory-item-level units and revenue (also keeps variant_id when available).
-- `shopify_variant_unit_costs` stores unit cost keyed by `inventory_item_id` (and variant_id when available).
-- Unit costs are pulled from Shopify InventoryItem.unitCost and upserted by `(client_id, inventory_item_id)`.
-- In `/api/cron/rolling-30`, per-day coverage is aggregated as:
-  - `revenue_with_cogs += line_revenue` when unit cost exists
-  - `product_cogs_known += units * unit_cost_amount`
-- Coverage percent is computed as `revenue_with_cogs / total_revenue` for the day.
+## 3) Tenancy Model (CRITICAL)
+- Every Shopify store maps to exactly ONE `client_id`.
+- `shopify_app_installs` is the source of truth for the Shopify store → `client_id` mapping.
+- All reads/writes for profit metrics are keyed by `client_id`.
+- No Shopify data path relies on Supabase auth-to-client mapping. (UI auth mapping exists for dashboard access, but Shopify store identity and data ownership are always resolved via `shopify_app_installs`.)
 
-## Profit computation logic
-Location: `computeDailyProfitSummary()` in `app/api/cron/rolling-30/route.ts`.
+---
 
-Inputs:
-- Revenue, orders, units (Shopify)
-- Paid spend (Meta/Google)
-- Cost settings from `client_cost_settings`
-- Unit-cost coverage aggregates (product cogs known + revenue with cogs)
+## 4) Shopify Auth Flow
+1) Embedded app loads without `?shop` at first render.
+2) App Bridge supplies a session token for the logged-in Shopify admin.
+3) `/api/shopify/whoami` validates the token and sets an HttpOnly cookie (`sa_shop`) with the shop domain.
+4) App reload is guarded by a `bootstrapped` URL flag to prevent loops.
+5) OAuth starts only when no access token exists for the shop/client.
+6) OAuth callback always upserts `client_id` and scopes in `shopify_app_installs`.
 
-Key outputs written to `daily_profit_summary`:
-- `revenue`, `orders`, `units`, `paid_spend`
-- `est_cogs`, `est_processing_fees`, `est_fulfillment_costs`
-- `est_other_variable_costs`, `est_other_fixed_costs`
-- `contribution_profit` (profit after costs and paid spend)
-- `profit_mer` (contribution_profit ÷ paid_spend)
-- Coverage fields: `product_cogs_known`, `revenue_with_cogs`, `cogs_coverage_pct`
+---
 
-Fallback rules:
-- For missing unit costs, COGS are estimated using `default_gross_margin_pct` on the uncovered revenue portion.
-- Coverage does not come from fallback usage; it comes from unit-cost coverage only.
+## 5) Shopify Revenue Model
+Canonical revenue source is ShopifyQL:
+- Query: `FROM sales SHOW total_sales TIMESERIES day`
+- This must match Shopify Analytics exactly.
 
-## Cost settings and profit impact
-Table: `client_cost_settings`
-- `default_gross_margin_pct` (fallback margin)
-- `avg_cogs_per_unit`
-- `processing_fee_pct`, `processing_fee_fixed`
-- `pick_pack_per_order`, `shipping_subsidy_per_order`, `materials_per_order`
-- `other_variable_pct_revenue`, `other_fixed_per_day`
-- `margin_after_costs_pct` (optional override for UI fallback only)
+Bucketing:
+- Orders are bucketed by `processedAt`, falling back to `createdAt` when missing.
+- Current implementation buckets in UTC (timezone argument removed). If shop-timezone bucketing is reintroduced, it should use the shop’s IANA timezone.
 
-These settings feed into `computeDailyProfitSummary()` to estimate COGS and fees when unit costs are missing.
+Refund handling:
+- Refunds are subtracted from daily revenue.
+- Line item sync also tracks refunds where applicable.
 
-## Key Supabase tables
+---
+
+## 6) Core Tables
+Operational / identity:
+- `shopify_app_installs`
+- `client_integrations`
+
 Raw inputs:
-- `daily_metrics` (ad spend + channel revenue)
-- `daily_sales_summary` (Shopify units, AOV, ASP)
-- `shopify_daily_line_items` (variant-level revenue/units)
-- `shopify_variant_unit_costs` (unit cost per inventory item / variant)
+- `daily_metrics`
+- `shopify_daily_line_items`
 
 Derived outputs:
-- `daily_profit_summary` (profit + coverage per day)
-- `monthly_rollup` (view; monthly aggregates, including contribution_profit and cost sums)
+- `daily_profit_summary`
+- `daily_shopify_cogs_coverage`
 
-Operational/system:
-- `events`
-- `client_integrations`
-- `shopify_app_installs`
-- `shopify_oauth_states`
+---
 
-## KPI definitions (UI)
-Source: `app/page.tsx`
-- Profit: uses `daily_profit_summary.contribution_profit` (or fallback margin override if configured)
-- Profit MER: `contribution_profit ÷ paid_spend` (from `daily_profit_summary`)
-- COGS coverage: `revenue_with_cogs ÷ revenue` per day in `daily_profit_summary`
-- Profit Return (KPI card): `revenue ÷ total_costs`, where
-  - total_costs = paid_spend + est_cogs + est_processing_fees + est_fulfillment_costs + est_other_variable_costs + est_other_fixed_costs
+## 7) Backfill & Recompute Strategy
+- ShopifyQL sync skips >60-day ranges to avoid overwriting older historical data.
+- Historical profit is rebuilt using line items + recompute routes instead.
+- This is intentional to prevent ShopifyQL returning changed historical totals and polluting stable periods.
 
-## Dashboard data sources
-- KPI cards: `daily_profit_summary`, `daily_metrics`, `daily_sales_summary`
-- Trend charts: `daily_metrics` + derived series from `daily_profit_summary`
-- COGS coverage indicator: `daily_profit_summary` (revenue-weighted over last 7 days)
-- Monthly table: `monthly_rollup`
+---
 
-## Known assumptions & constraints
-- Dates are daily buckets; recent days can be recalculated.
-- Older history is expected to remain stable.
-- Profit is computed server-side; the UI uses derived totals and trends from `daily_profit_summary`.
-- Unit-cost coverage depends on `shopify_variant_unit_costs` freshness.
-- `margin_after_costs_pct` is a UI fallback, not a data source override.
+## 8) API Endpoints
+Shopify:
+- /api/shopify/sync
+- /api/shopify/daily-line-items-sync
+- /api/shopify/recompute
+
+Cron:
+- /api/cron/rolling-30
+
+Google OAuth:
+- /api/googleads/connect (current OAuth start route)
+- /api/googleads/callback
+- /api/google/oauth/start (documented start route; add only if implemented)
+
+Meta OAuth:
+- /api/meta/oauth/start (documented start route; add only if implemented)
+
+---
+
+## 9) Curl Commands (IMPORTANT)
+Correct order for historical rebuilds:
+1) ShopifyQL sync (optional for recent windows)
+2) Line items sync
+3) Recompute profit
+
+Example month-by-month backfill (repeat for each month window):
+
+Sync optional (last 60 days only):
+curl -X POST "https://scaleable-dashboard-wildwater.vercel.app/api/shopify/sync?client_id=<CLIENT_ID>&start=2026-01-01&end=2026-01-31&force=1" \
+  -H "Authorization: Bearer <SYNC_TOKEN>"
+
+Line items (required for historical COGS + refunds):
+curl -X POST "https://scaleable-dashboard-wildwater.vercel.app/api/shopify/daily-line-items-sync?client_id=<CLIENT_ID>&start=2026-01-01&end=2026-01-31" \
+  -H "Authorization: Bearer <SYNC_TOKEN>"
+
+Recompute profit from existing tables:
+curl -X POST "https://scaleable-dashboard-wildwater.vercel.app/api/shopify/recompute?client_id=<CLIENT_ID>&start=2026-01-01&end=2026-01-31" \
+  -H "Authorization: Bearer <SYNC_TOKEN>"
+
+---
+
+## 10) Settings → Integrations Logic
+Shopify:
+- Query `shopify_app_installs` filtered by `client_id` (and `shop_domain` if provided).
+- Connected = row exists AND `access_token` is truthy.
+
+Google Ads:
+- Query `client_integrations` for the client.
+- Identify Google rows by provider/type/source/kind/name containing “google” OR by presence of customer/ad account ID fields.
+- Connected ONLY if token field is present AND a customer/ad account ID field is present.
+- This prevents false positives from incomplete rows.
+
+Meta Ads:
+- Query `client_integrations` for the client.
+- Identify Meta rows by provider/type/source/kind/name containing “meta”, “facebook”, or “fb” OR by presence of account ID fields.
+- Connected ONLY if `access_token` is present AND a Meta account ID field is present.
+
+---
+
+## 11) Common Failure Modes
+- Missing or incorrect Google OAuth `redirect_uri` (must exactly match the callback endpoint).
+- Shopify iframe OAuth issues (embedded apps require App Bridge session + bootstrapped reload guard).
+- Over-permissive integration detection (marking connected without required tokens + account IDs).
+- Timezone mismatches (UTC vs shop timezone causes day-bucketing drift).

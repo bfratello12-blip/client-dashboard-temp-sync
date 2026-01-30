@@ -45,9 +45,11 @@ export async function GET(req: NextRequest) {
     if (!clientId) {
       return NextResponse.json({ ok: false, error: "missing client_id" }, { status: 400 });
     }
-    const cookieShop = req.cookies.get("sa_shop")?.value || "";
+    if (!clientId) {
+      throw new Error("client_id is required for Google OAuth");
+    }
     console.log("GOOGLE CONNECT received client_id", clientId);
-    console.log("GOOGLE CONNECT shop cookie", cookieShop);
+    console.log("GOOGLE CONNECT FINAL client_id", clientId);
 
     const oauthClientId = getOAuthClientId();
     if (!oauthClientId) throw new Error("Missing GOOGLE_ADS_CLIENT_ID (or GOOGLE_CLIENT_ID)");
@@ -63,7 +65,6 @@ export async function GET(req: NextRequest) {
 
     const payload = {
       client_id: clientId,
-      shop_domain: url.searchParams.get("shop_domain")?.trim() || undefined,
       ts: Date.now(),
       nonce: crypto.randomBytes(12).toString("hex"),
     };

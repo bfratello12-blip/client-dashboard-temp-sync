@@ -40,3 +40,15 @@ export function dayWindowUTC(day: string): { start: string; end: string } {
   return { start, end };
 }
 
+export function bucketShopifyOrderDay(order: {
+  processedAt?: string | null;
+  createdAt?: string | null;
+}): string {
+  const stamp = order?.processedAt || order?.createdAt;
+  if (!stamp) return "";
+  const d = new Date(stamp);
+  if (!Number.isFinite(d.getTime())) return "";
+  return isoDateUTC(d); // ALWAYS UTC
+}
+
+

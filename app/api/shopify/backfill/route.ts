@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { bucketShopifyOrderDay } from "@/lib/dates";
 
 /**
  * Shopify backfill (GraphQL, refunds-aware) — writes Shopify "Total sales" (order totals minus refunds on refund day)
@@ -40,18 +41,6 @@ function daysBetweenInclusive(start: string, end: string): string[] {
     cur.setUTCDate(cur.getUTCDate() + 1);
   }
   return out;
-}
-
-function toShopDay(isoDateTime: string, timeZone: string): string {
-  const d = new Date(isoDateTime);
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  // en-CA => YYYY-MM-DD
-  return fmt.format(d);
 }
 
 async function shopifyGraphQL<T>(
@@ -105,6 +94,7 @@ async function computeTotalSalesBuckets(params: {
         pageInfo { hasNextPage endCursor }
         nodes {
           id
+          createdAt
           processedAt
           cancelledAt
           totalPriceSet { shopMoney { amount currencyCode } }
@@ -123,6 +113,7 @@ async function computeTotalSalesBuckets(params: {
   let cursor: string | null = null;
   let fetchedOrders = 0;
 
+  let sampleLogged = false;
   while (true) {
     const data: any = await shopifyGraphQL(shop, token, ordersGql, {
       first: 250,
@@ -134,11 +125,22 @@ async function computeTotalSalesBuckets(params: {
     fetchedOrders += nodes.length;
 
     for (const n of nodes) {
-      if (!n?.processedAt) continue;
+      if (!n?.processedAt && !n?.createdAt) continue;
       if (n?.cancelledAt) continue;
 
-      const day = toShopDay(n.processedAt, timeZone);
+      const day = bucketShopifyOrderDay({ processedAt: n.processedAt, createdAt: n.createdAt });
+      if (!day) continue;
       if (!days.has(day)) continue;
+
+      if (!sampleLogged) {
+        console.info("[shopify/backfill] sample order", {
+          id: n?.id,
+          createdAt: n?.createdAt || null,
+          processedAt: n?.processedAt || null,
+          day,
+        });
+        sampleLogged = true;
+      }
 
       const amt = Number(n?.totalPriceSet?.shopMoney?.amount ?? "0") || 0;
 
@@ -196,7 +198,7 @@ async function computeTotalSalesBuckets(params: {
         const createdAt = r?.createdAt;
         if (!createdAt) continue;
 
-        const day = toShopDay(createdAt, timeZone);
+        const day = bucketShopifyOrderDay({ createdAt });
         if (!days.has(day)) continue;
 
         const refundAmt = Number(r?.totalRefundedSet?.shopMoney?.amount ?? "0") || 0;
@@ -314,6 +316,8 @@ const { buckets, fetchedOrders, fetchedRefundScanOrders } = await computeTotalSa
       if (upErr) throw new Error(`daily_metrics upsert failed: ${upErr.message}`);
       daysWritten = up?.length ?? 0;
     }
+
+    console.info("[shopify/backfill] daily_metrics upserted", { daysWritten });
 
     return NextResponse.json({
       ok: true,

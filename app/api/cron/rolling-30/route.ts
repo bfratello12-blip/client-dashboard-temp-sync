@@ -526,6 +526,10 @@ export async function POST(req: NextRequest) {
             .upsert(upserts, { onConflict: "client_id,date" });
           if (upErr) throw upErr;
           rowsUpserted += upserts.length;
+          console.info("[rolling-30] daily_profit_summary upserted", {
+            client_id: cid,
+            rows: upserts.length,
+          });
         }
 
         // Monthly rollup update (for months in this window)

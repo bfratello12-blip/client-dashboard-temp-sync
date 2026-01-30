@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { addDays, format, parseISO, differenceInCalendarDays, startOfDay, isBefore } from "date-fns";
+import { bucketShopifyOrderDay } from "@/lib/dates";
 
 type AnyObj = Record<string, any>;
 
@@ -25,21 +26,6 @@ function safeStr(...vals: any[]): string | undefined {
     if (typeof v === "string" && v.trim().length > 0) return v.trim();
   }
   return undefined;
-}
-
-function toShopDay(iso: string, timeZone: string) {
-  const d = new Date(iso);
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(d);
-
-  const y = parts.find((p) => p.type === "year")?.value;
-  const m = parts.find((p) => p.type === "month")?.value;
-  const day = parts.find((p) => p.type === "day")?.value;
-  return `${y}-${m}-${day}`;
 }
 
 
@@ -330,6 +316,7 @@ async function queryOrdersFallback(shop: string, token: string, startISO: string
   // -------- Pass 1: Orders created in window (revenue + order count) --------
   {
     let after: string | null = null;
+    let sampleLogged = false;
     while (true) {
       const data = await adminGraphQL(
         shop,
@@ -340,6 +327,7 @@ async function queryOrdersFallback(shop: string, token: string, startISO: string
             pageInfo { hasNextPage endCursor }
             edges {
               node {
+                id
                 processedAt
                 createdAt
                 cancelledAt
@@ -361,11 +349,21 @@ async function queryOrdersFallback(shop: string, token: string, startISO: string
       const edges = conn?.edges || [];
       for (const e of edges) {
         const n = e?.node;
-        if (!n?.createdAt) continue;
+        if (!n?.processedAt && !n?.createdAt) continue;
         if (n?.cancelledAt) continue; // ignore cancelled orders
         const stamp = n.processedAt || n.createdAt;
         if (!stamp) continue;
-        const day = toShopDay(stamp, timeZone);
+        const day = bucketShopifyOrderDay({ processedAt: n.processedAt, createdAt: n.createdAt });
+        if (!day) continue;
+        if (!sampleLogged) {
+          console.info("[shopify/sync] sample order", {
+            id: n?.id,
+            createdAt: n?.createdAt || null,
+            processedAt: n?.processedAt || null,
+            day,
+          });
+          sampleLogged = true;
+        }
         const amt = Number(n?.totalPriceSet?.shopMoney?.amount ?? 0) || 0;
         bucketsRevenue[day] = (bucketsRevenue[day] || 0) + amt;
         bucketsOrders[day] = (bucketsOrders[day] || 0) + 1;
@@ -428,7 +426,7 @@ async function queryOrdersFallback(shop: string, token: string, startISO: string
           if (Number.isFinite(startMs) && Number.isFinite(endMs)) {
             if (ms < startMs || ms > endMs) continue;
           }
-          const day = toShopDay(ref.createdAt, timeZone);
+          const day = bucketShopifyOrderDay({ createdAt: ref.createdAt });
           const amt = Number(ref?.totalRefundedSet?.shopMoney?.amount ?? 0) || 0;
           if (amt <= 0) continue;
           bucketsRefunds[day] = (bucketsRefunds[day] || 0) + amt;
@@ -471,6 +469,7 @@ async function queryDailyCogsCoverage(
 
   const pageSize = 100;
   let after: string | null = null;
+  let sampleLogged = false;
 
   while (true) {
     const data = await adminGraphQL(
@@ -482,6 +481,7 @@ async function queryDailyCogsCoverage(
           pageInfo { hasNextPage endCursor }
           edges {
             node {
+              id
               processedAt
               createdAt
               cancelledAt
@@ -515,8 +515,17 @@ async function queryDailyCogsCoverage(
       if (n?.cancelledAt) continue;
       const stamp = n.processedAt || n.createdAt;
       if (!stamp) continue;
-
-      const day = toShopDay(stamp, timeZone);
+      const day = bucketShopifyOrderDay({ processedAt: n.processedAt, createdAt: n.createdAt });
+      if (!day) continue;
+      if (!sampleLogged) {
+        console.info("[shopify/sync] sample cogs order", {
+          id: n?.id,
+          createdAt: n?.createdAt || null,
+          processedAt: n?.processedAt || null,
+          day,
+        });
+        sampleLogged = true;
+      }
       const items = n?.lineItems?.edges ?? [];
       for (const it of items) {
         const li = it?.node;
@@ -1011,6 +1020,10 @@ const rows = days.map((day) => {
 
         if (upErr) throw new Error(`daily_metrics upsert failed: ${upErr.message}`);
         dailyTotalsSucceeded = true;
+        console.info("[shopify/sync] daily_metrics upserted", {
+          client_id: clientId,
+          rows: rows.length,
+        });
 
         try {
           coverageAttempted = true;
@@ -1046,6 +1059,10 @@ const rows = days.map((day) => {
               .from("daily_shopify_cogs_coverage")
               .upsert(coverageRows, { onConflict: "client_id,date" });
             if (cErr) throw cErr;
+            console.info("[shopify/sync] daily_shopify_cogs_coverage upserted", {
+              client_id: clientId,
+              rows: coverageRowsUpserted,
+            });
           }
         } catch (e: any) {
           integrationStatus = "error";

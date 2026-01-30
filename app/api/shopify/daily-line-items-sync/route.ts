@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { bucketShopifyOrderDay } from "@/lib/dates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,12 +22,6 @@ function sleep(ms: number) {
 function n(v: any): number {
   const x = Number(v);
   return Number.isFinite(x) ? x : 0;
-}
-
-function isoDayFromShopifyDate(iso: string): string {
-  // Shopify createdAt is ISO datetime. Convert to YYYY-MM-DD (UTC).
-  // Example: 2026-01-13T12:34:56Z -> 2026-01-13
-  return (iso || "").slice(0, 10);
 }
 
 function gidToInventoryItemId(gid: string | null | undefined): number | null {
@@ -76,6 +71,15 @@ async function shopifyGraphQL(args: {
     throw new Error(`Shopify GraphQL: ${json.errors[0]?.message || "Unknown error"}`);
   }
   return json?.data;
+}
+
+async function getShopTimeZone(shopDomain: string, accessToken: string): Promise<string> {
+  const data = await shopifyGraphQL({
+    shopDomain,
+    accessToken,
+    query: `query ShopTZ { shop { ianaTimezone } }`,
+  });
+  return (data as any)?.shop?.ianaTimezone || "UTC";
 }
 
 const INVENTORY_ITEM_COST_QUERY = `
@@ -151,12 +155,13 @@ async function fetchInventoryItemUnitCosts(args: {
  */
 const ORDERS_WITH_LINEITEMS_QUERY = `
 query OrdersWithLineItems($cursor: String, $queryStr: String!) {
-  orders(first: 50, after: $cursor, query: $queryStr, sortKey: CREATED_AT) {
+  orders(first: 50, after: $cursor, query: $queryStr, sortKey: PROCESSED_AT) {
     pageInfo { hasNextPage endCursor }
     edges {
       node {
         id
         createdAt
+        processedAt
         lineItems(first: 250) {
           edges {
             node {
@@ -234,7 +239,7 @@ export async function POST(req: NextRequest) {
     // Shopify Admin "orders" search query
     // Use UTC midnight bounds. This keeps it deterministic.
     // Note: Shopify search expects timestamps; this form is commonly accepted.
-    const queryStr = `created_at:>=${start}T00:00:00Z created_at:<=${end}T23:59:59Z status:any`;
+    const queryStr = `processed_at:>=${start}T00:00:00Z processed_at:<=${end}T23:59:59Z status:any`;
 
     // Aggregate in memory: key = `${day}|${inventoryItemId}`
     const agg = new Map<
@@ -256,6 +261,9 @@ export async function POST(req: NextRequest) {
     let lineItemsSeen = 0;
     let minCreatedAt = "";
     let maxCreatedAt = "";
+    let sampleLogged = false;
+
+    const shopTimeZone = await getShopTimeZone(shopDomain, accessToken);
 
     while (true) {
       const data = await shopifyGraphQL({
@@ -274,12 +282,25 @@ export async function POST(req: NextRequest) {
       for (const e of edges) {
         const o = e?.node;
         const createdAt = String(o?.createdAt || "");
-        const day = isoDayFromShopifyDate(createdAt);
+        const processedAt = String(o?.processedAt || "");
+        const day = bucketShopifyOrderDay({ processedAt, createdAt });
         ordersSeen += 1;
 
-        if (createdAt) {
-          if (!minCreatedAt || createdAt < minCreatedAt) minCreatedAt = createdAt;
-          if (!maxCreatedAt || createdAt > maxCreatedAt) maxCreatedAt = createdAt;
+        if (!sampleLogged && day) {
+          console.info("[daily-line-items-sync] sample order", {
+            id: o?.id,
+            createdAt: createdAt || null,
+            processedAt: processedAt || null,
+            day,
+          });
+          sampleLogged = true;
+        }
+
+        const stamp = processedAt || createdAt;
+
+        if (stamp) {
+          if (!minCreatedAt || stamp < minCreatedAt) minCreatedAt = stamp;
+          if (!maxCreatedAt || stamp > maxCreatedAt) maxCreatedAt = stamp;
         }
 
         const liEdges = o?.lineItems?.edges || [];
@@ -410,6 +431,10 @@ export async function POST(req: NextRequest) {
     console.log(
       `[daily-line-items-sync] unit costs fetched=${fetched}/${totalRequested}, withCost=${withCost}, upserted=${unitCostsUpserted}`
     );
+    console.info("[daily-line-items-sync] rows upserted", {
+      rowsUpserted,
+      unitCostsUpserted,
+    });
 
     return NextResponse.json({
       ok: true,

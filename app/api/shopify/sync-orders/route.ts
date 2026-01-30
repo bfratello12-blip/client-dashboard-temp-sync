@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { bucketShopifyOrderDay } from "@/lib/dates";
 
 function mustGetEnv(name: string) {
   const v = process.env[name];
@@ -31,17 +32,6 @@ function daysBetweenInclusive(start: string, end: string): string[] {
     cur.setUTCDate(cur.getUTCDate() + 1);
   }
   return out;
-}
-
-function asDenverDay(isoDateTime: string, timeZone = "America/Denver"): string {
-  const d = new Date(isoDateTime);
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  return fmt.format(d);
 }
 
 async function shopifyGraphQL<T>(
@@ -168,6 +158,7 @@ export async function GET(req: Request) {
 
     let cursor: string | null = null;
     let fetched = 0;
+    let sampleLogged = false;
 
     while (true) {
       const data: GqlResp = await shopifyGraphQL<GqlResp>(shop, token, gql, {
@@ -181,9 +172,19 @@ export async function GET(req: Request) {
 
       for (const o of nodes) {
         const stamp = o.processedAt || o.createdAt;
-        if (!stamp) continue;
-        const dayLocal = asDenverDay(stamp, timeZone);
+        const dayLocal = bucketShopifyOrderDay({ processedAt: o.processedAt, createdAt: o.createdAt });
+        if (!stamp || !dayLocal) continue;
         if (!inRangeDays.has(dayLocal)) continue;
+
+        if (!sampleLogged) {
+          console.info("[sync-orders] sample order", {
+            id: o.id,
+            createdAt: o.createdAt,
+            processedAt: o.processedAt,
+            day: dayLocal,
+          });
+          sampleLogged = true;
+        }
 
         const amtStr = o.totalPriceSet?.shopMoney?.amount ?? "0";
         const amt = Number(amtStr) || 0;
@@ -241,6 +242,8 @@ export async function GET(req: Request) {
       if (upsertErr) throw new Error(`daily_metrics upsert failed: ${upsertErr.message}`);
       written = upsertData?.length ?? 0;
     }
+
+    console.info("[sync-orders] daily_metrics upserted", { rowsWritten: written });
 
     return NextResponse.json({
       ok: true,

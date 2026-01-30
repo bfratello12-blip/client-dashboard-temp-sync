@@ -52,8 +52,11 @@ export async function GET(req: NextRequest) {
     const secret = mustEnv("CRON_SECRET");
 
     // Redirect URI must match Google Cloud Console exactly.
-    // Use the current request origin so this works on Vercel + locally.
-    const redirectUri = `${url.origin}/api/googleads/callback`;
+    const redirectUri =
+      process.env.NODE_ENV === "production"
+        ? "https://scaleable-dashboard-wildwater.vercel.app/api/googleads/callback"
+        : "http://localhost:3000/api/googleads/callback";
+    console.log("[googleads/connect] redirect_uri:", redirectUri);
 
     const payload = {
       client_id: clientId,

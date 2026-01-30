@@ -799,18 +799,77 @@ export async function POST(req: NextRequest) {
     const maxDaysBack = Number(process.env.SHOPIFY_MAX_DAYS_BACK || "60");
     const cutoffDay = format(addDays(startOfDay(new Date()), -maxDaysBack), "yyyy-MM-dd");
 
-    const force = modeParam === "shopifyql" && searchParams.get("force") === "1";
+    const force = searchParams.get("force") === "1";
 
+    const dateColCandidates = ["day", "date", "metric_date", "report_date"];
+    let dateColForCount: string | null = null;
+    for (const c of dateColCandidates) {
+      const { error } = await supabase.from("daily_metrics").select(c).limit(1);
+      if (!error) {
+        dateColForCount = c;
+        break;
+      }
+    }
+    if (!dateColForCount) dateColForCount = "date";
+
+    const shopParamRaw = searchParams.get("shop")?.trim() || "";
+    const shopParam = shopParamRaw ? normalizeShop(shopParamRaw) : "";
+
+    let existingCount = 0;
     const daysAgoEnd = differenceInCalendarDays(startOfDay(new Date()), parseISO(endDay));
-    if (!force && daysAgoEnd > maxDaysBack) {
-      return NextResponse.json({
-        ok: true,
-        source: "shopify",
-        start: window.start,
-        end: window.end,
-        fillZeros,
-        skipped: true,
-        reason: `Requested window end is older than ${maxDaysBack} days. Skipping sync to avoid overwriting backfilled history.`,
+    const isOlderThan60Days = daysAgoEnd > maxDaysBack;
+
+    if (isOlderThan60Days && !force) {
+      let clientIdForCount = onlyClientId;
+      if (!clientIdForCount && shopParam) {
+        const { data: install, error: installErr } = await supabase
+          .from("shopify_app_installs")
+          .select("client_id")
+          .eq("shop_domain", shopParam)
+          .maybeSingle();
+        if (installErr) throw new Error(`shopify_app_installs lookup failed: ${installErr.message}`);
+        clientIdForCount = install?.client_id ? String(install.client_id) : null;
+      }
+
+      if (clientIdForCount) {
+        const { count, error: countErr } = await supabase
+          .from("daily_metrics")
+          .select(dateColForCount, { count: "exact", head: true })
+          .eq("client_id", clientIdForCount)
+          .eq("source", "shopify")
+          .gte(dateColForCount, startDay)
+          .lte(dateColForCount, endDay);
+        if (countErr) throw new Error(`daily_metrics count failed: ${countErr.message}`);
+        existingCount = count ?? 0;
+      }
+
+      const skipped = existingCount > 0;
+      console.info("[shopify/sync] skip_check", {
+        endDate: endDay,
+        isOlderThan60Days,
+        existingCount,
+        skipped,
+        force,
+      });
+
+      if (skipped) {
+        return NextResponse.json({
+          ok: true,
+          source: "shopify",
+          start: window.start,
+          end: window.end,
+          fillZeros,
+          skipped: true,
+          reason: `Requested window end is older than ${maxDaysBack} days. Skipping sync to avoid overwriting backfilled history.`,
+        });
+      }
+    } else {
+      console.info("[shopify/sync] skip_check", {
+        endDate: endDay,
+        isOlderThan60Days,
+        existingCount,
+        skipped: false,
+        force,
       });
     }
 
@@ -824,7 +883,6 @@ export async function POST(req: NextRequest) {
 const days = dateRange(startDay, endDay);
 
     // Determine which daily_metrics columns exist (date + source/provider)
-    const dateColCandidates = ["day", "date", "metric_date", "report_date"];
     const sourceColCandidates = ["source", "provider", "platform", "channel", "integration"];
 
     let dateCol: string | null = null;

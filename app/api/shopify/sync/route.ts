@@ -1224,7 +1224,7 @@ const rows = days.map((day) => {
       start: startDay,
       end: endDay,
       fillZeros,
-      clients: integrations?.length ?? 0,
+      clients: resolvedIntegrations?.length ?? 0,
       daysWritten,
       zerosInserted,
       errors,

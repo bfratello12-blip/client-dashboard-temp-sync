@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import DashboardLayout from "@/components/DashboardLayout";
 
@@ -83,6 +83,7 @@ function formatPct(v: number | null) {
 function SettingsPage() {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const [loading, setLoading] = useState(true);
   const [clientId, setClientId] = useState("");
@@ -364,43 +365,23 @@ function SettingsPage() {
       setIntegrationError("");
 
       try {
-        const [shopifyRes, googleRes, metaRes] = await Promise.all([
-          supabase
-            .from("shopify_app_installs")
-            .select("shop_domain, access_token")
-            .eq("client_id", clientId)
-            .limit(1),
-          supabase
-            .from("client_integrations")
-            .select("platform")
-            .eq("client_id", clientId)
-            .eq("platform", "google_ads")
-            .limit(1),
-          supabase
-            .from("client_integrations")
-            .select("platform")
-            .eq("client_id", clientId)
-            .eq("platform", "meta_ads")
-            .limit(1),
-        ]);
+        const shopDomainParam =
+          searchParams?.get("shop_domain") || searchParams?.get("shop") || "";
+        const statusUrl = new URL("/api/integrations/status", window.location.origin);
+        statusUrl.searchParams.set("client_id", clientId);
+        if (shopDomainParam) statusUrl.searchParams.set("shop_domain", shopDomainParam);
 
-        if (shopifyRes.error) throw shopifyRes.error;
-        if (googleRes.error) throw googleRes.error;
-        if (metaRes.error) throw metaRes.error;
-
-        const shopifyRow = shopifyRes.data?.[0] ?? null;
-        const shopifyConnected = Boolean(shopifyRow?.access_token);
-        const shopifyNeedsReconnect = Boolean(shopifyRow) && !shopifyConnected;
+        const res = await fetch(statusUrl.toString(), {
+          cache: "no-store",
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok || !payload?.ok) throw new Error(payload?.error || `Status failed (${res.status})`);
 
         if (!cancelled) {
           setIntegrationStatus({
-            shopify: {
-              connected: shopifyConnected,
-              needsReconnect: shopifyNeedsReconnect,
-              shop: shopifyRow?.shop_domain ?? null,
-            },
-            google: { connected: (googleRes.data?.length ?? 0) > 0 },
-            meta: { connected: (metaRes.data?.length ?? 0) > 0 },
+            shopify: payload.shopify,
+            google: payload.google,
+            meta: payload.meta,
           });
         }
       } catch (e: any) {
@@ -415,7 +396,7 @@ function SettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [clientId]);
+  }, [clientId, searchParams]);
 
   const costs = useMemo(() => costSettings || ({ client_id: clientId } as ClientCostSettings), [costSettings, clientId]);
 

@@ -22,6 +22,12 @@ type ClientCostSettings = {
   margin_after_costs_pct: number | null;
 };
 
+type IntegrationStatus = {
+  shopify: { connected: boolean; needsReconnect: boolean; shop?: string | null };
+  google: { connected: boolean };
+  meta: { connected: boolean };
+};
+
 const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
 
 function Field({
@@ -91,6 +97,9 @@ function SettingsPage() {
   const [syncError, setSyncError] = useState<string>("");
   const [cogsCoveragePct, setCogsCoveragePct] = useState<number | null>(null);
 
+  const [integrationStatus, setIntegrationStatus] = useState<IntegrationStatus | null>(null);
+  const [integrationLoading, setIntegrationLoading] = useState(false);
+  const [integrationError, setIntegrationError] = useState("");
 
   // Product cost source UX: Shopify unit costs vs estimated fallback inputs
   const [productCostMode, setProductCostMode] = useState<'shopify' | 'estimate'>('shopify');
@@ -222,6 +231,10 @@ function SettingsPage() {
     router.replace("/login");
   }, [router]);
 
+  const openIntegration = useCallback((url: string) => {
+    window.location.href = url;
+  }, []);
+
   // Load: auth -> client mapping -> cost settings
   useEffect(() => {
     let cancelled = false;
@@ -338,6 +351,46 @@ function SettingsPage() {
     };
   }, [router]);
 
+  useEffect(() => {
+    if (!clientId) {
+      setIntegrationStatus(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const run = async () => {
+      setIntegrationLoading(true);
+      setIntegrationError("");
+
+      try {
+        const res = await fetch(`/api/integrations/status?client_id=${encodeURIComponent(clientId)}`, {
+          cache: "no-store",
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok || !payload?.ok) throw new Error(payload?.error || `Status failed (${res.status})`);
+
+        if (!cancelled) {
+          setIntegrationStatus({
+            shopify: payload.shopify,
+            google: payload.google,
+            meta: payload.meta,
+          });
+        }
+      } catch (e: any) {
+        console.error(e);
+        if (!cancelled) setIntegrationError(e?.message ?? "Failed to load integrations");
+      } finally {
+        if (!cancelled) setIntegrationLoading(false);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
+
   const costs = useMemo(() => costSettings || ({ client_id: clientId } as ClientCostSettings), [costSettings, clientId]);
 
   return (
@@ -384,6 +437,120 @@ function SettingsPage() {
           {syncError ? (
             <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{syncError}</div>
           ) : null}
+
+          <section className="mt-6">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-base font-semibold text-slate-900">Integrations</div>
+                <div className="mt-1 text-sm text-slate-500">Connect your ad platforms and Shopify store.</div>
+              </div>
+              {integrationLoading ? (
+                <div className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                  Checking…
+                </div>
+              ) : null}
+            </div>
+
+            {integrationError ? (
+              <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+                {integrationError}
+              </div>
+            ) : null}
+
+            <div className="mt-4 space-y-3">
+              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Shopify</div>
+                  <div className="mt-1 text-xs text-slate-500">Orders and revenue from your store.</div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                    <span
+                      className={`h-2 w-2 rounded-full ${
+                        integrationStatus?.shopify?.connected ? "bg-emerald-500" : "bg-slate-300"
+                      }`}
+                    />
+                    {integrationStatus?.shopify?.connected ? "Connected" : "Disconnected"}
+                  </div>
+                  <button
+                    onClick={() =>
+                      openIntegration(`/api/shopify/oauth/start?client_id=${encodeURIComponent(clientId)}`)
+                    }
+                    disabled={!clientId || integrationStatus?.shopify?.connected}
+                    className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
+                      integrationStatus?.shopify?.connected || !clientId
+                        ? "cursor-not-allowed bg-slate-300"
+                        : "bg-blue-600 hover:bg-blue-700"
+                    }`}
+                  >
+                    {integrationStatus?.shopify?.connected
+                      ? "Connected"
+                      : integrationStatus?.shopify?.needsReconnect
+                        ? "Reconnect"
+                        : "Connect"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Google Ads</div>
+                  <div className="mt-1 text-xs text-slate-500">Paid search spend and conversions.</div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                    <span
+                      className={`h-2 w-2 rounded-full ${
+                        integrationStatus?.google?.connected ? "bg-emerald-500" : "bg-slate-300"
+                      }`}
+                    />
+                    {integrationStatus?.google?.connected ? "Connected" : "Disconnected"}
+                  </div>
+                  <button
+                    onClick={() =>
+                      openIntegration(`/api/googleads/connect?client_id=${encodeURIComponent(clientId)}`)
+                    }
+                    disabled={!clientId || integrationStatus?.google?.connected}
+                    className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
+                      integrationStatus?.google?.connected || !clientId
+                        ? "cursor-not-allowed bg-slate-300"
+                        : "bg-blue-600 hover:bg-blue-700"
+                    }`}
+                  >
+                    {integrationStatus?.google?.connected ? "Connected" : "Connect"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Meta Ads</div>
+                  <div className="mt-1 text-xs text-slate-500">Paid social spend and conversions.</div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                    <span
+                      className={`h-2 w-2 rounded-full ${
+                        integrationStatus?.meta?.connected ? "bg-emerald-500" : "bg-slate-300"
+                      }`}
+                    />
+                    {integrationStatus?.meta?.connected ? "Connected" : "Disconnected"}
+                  </div>
+                  <button
+                    onClick={() => openIntegration(`/api/meta/connect?client_id=${encodeURIComponent(clientId)}`)}
+                    disabled={!clientId || integrationStatus?.meta?.connected}
+                    className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
+                      integrationStatus?.meta?.connected || !clientId
+                        ? "cursor-not-allowed bg-slate-300"
+                        : "bg-blue-600 hover:bg-blue-700"
+                    }`}
+                  >
+                    {integrationStatus?.meta?.connected ? "Connected" : "Connect"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
 
           <section className="mt-6">
             <div className="text-base font-semibold text-slate-900">Costs & margins</div>

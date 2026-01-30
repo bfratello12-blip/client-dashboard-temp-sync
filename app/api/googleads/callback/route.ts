@@ -108,6 +108,7 @@ export async function GET(req: NextRequest) {
 
     const clientId = payload.client_id;
     if (!clientId) return NextResponse.json({ ok: false, error: "Missing client_id in state" }, { status: 400 });
+    console.log("GOOGLE CALLBACK state client_id", clientId);
 
     const redirectUri = `${url.origin}/api/googleads/callback`;
     const tokens = await exchangeCodeForTokens(code, redirectUri);
@@ -127,6 +128,7 @@ export async function GET(req: NextRequest) {
 
     const supabase = getSupabaseAdmin();
 
+    console.log("UPSERT client_id", clientId);
     // Try update first (handles existing row).
     const { data: updated, error: updErr } = await supabase
       .from("client_integrations")

@@ -247,6 +247,7 @@ function SettingsPage() {
     if (!clientId) return;
 
     try {
+      console.log("CONNECT GOOGLE client_id", clientId);
       const res = await fetch(`/api/googleads/connect?client_id=${encodeURIComponent(clientId)}`, {
         method: "GET",
         cache: "no-store",

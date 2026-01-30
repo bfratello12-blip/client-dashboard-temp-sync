@@ -264,6 +264,36 @@ function SettingsPage() {
     }
   }, [clientId]);
 
+  const fetchGoogleIntegration = useCallback(async () => {
+    if (!clientId) return;
+
+    const { data, error } = await supabase
+      .from("client_integrations")
+      .select("provider, google_refresh_token, google_ads_customer_id")
+      .eq("client_id", clientId)
+      .eq("provider", "google_ads")
+      .limit(1);
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    const row = data?.[0] ?? null;
+    const hasToken = Boolean(String(row?.google_refresh_token ?? "").trim());
+    const hasCustomerId = Boolean(String(row?.google_ads_customer_id ?? "").trim());
+
+    setIntegrationStatus((prev) => ({
+      shopify: prev?.shopify ?? { connected: false, needsReconnect: false, shop: null },
+      meta: prev?.meta ?? { connected: false },
+      google: {
+        connected: hasToken && hasCustomerId,
+        hasToken,
+        customerId: hasCustomerId ? String(row?.google_ads_customer_id ?? "") : null,
+      },
+    }));
+  }, [clientId]);
+
   const fetchIntegrationStatus = useCallback(async () => {
     if (!clientId) return;
 
@@ -283,11 +313,11 @@ function SettingsPage() {
       const payload = await res.json().catch(() => ({}));
       if (!res.ok || !payload?.ok) throw new Error(payload?.error || `Status failed (${res.status})`);
 
-      setIntegrationStatus({
+      setIntegrationStatus((prev) => ({
         shopify: payload.shopify,
-        google: payload.google,
         meta: payload.meta,
-      });
+        google: prev?.google ?? payload.google ?? { connected: false },
+      }));
     } catch (e: any) {
       console.error(e);
       setIntegrationError(e?.message ?? "Failed to load integrations");
@@ -337,13 +367,37 @@ function SettingsPage() {
       if (!res.ok || !payload?.ok) throw new Error(payload?.error || `Save failed (${res.status})`);
 
       await fetchIntegrationStatus();
+      await fetchGoogleIntegration();
     } catch (e: any) {
       console.error(e);
       setIntegrationError(e?.message ?? "Failed to save Google account");
     } finally {
       setGoogleAccountSaving(false);
     }
-  }, [clientId, googleSelectedAccountId, fetchIntegrationStatus]);
+  }, [clientId, googleSelectedAccountId, fetchIntegrationStatus, fetchGoogleIntegration]);
+
+  const disconnectGoogleAds = useCallback(async () => {
+    if (!clientId) return;
+    setIntegrationError("");
+
+    try {
+      const res = await fetch("/api/googleads/disconnect", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ client_id: clientId }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload?.ok) throw new Error(payload?.error || `Disconnect failed (${res.status})`);
+
+      setGoogleAccounts([]);
+      setGoogleSelectedAccountId("");
+      await fetchIntegrationStatus();
+      await fetchGoogleIntegration();
+    } catch (e: any) {
+      console.error(e);
+      setIntegrationError(e?.message ?? "Failed to disconnect Google Ads");
+    }
+  }, [clientId, fetchIntegrationStatus, fetchGoogleIntegration]);
 
   // Load: auth -> client mapping -> cost settings
   useEffect(() => {
@@ -476,44 +530,8 @@ function SettingsPage() {
 
   useEffect(() => {
     if (!clientId) return;
-
-    let cancelled = false;
-
-    const run = async () => {
-      const { data, error } = await supabase
-        .from("client_integrations")
-        .select("provider, google_refresh_token, google_ads_customer_id")
-        .eq("client_id", clientId)
-        .eq("provider", "google_ads")
-        .limit(1);
-
-      if (cancelled) return;
-
-      if (error) {
-        console.error(error);
-        return;
-      }
-
-      const row = data?.[0] ?? null;
-      const hasToken = Boolean(String(row?.google_refresh_token ?? "").trim());
-      const hasCustomerId = Boolean(String(row?.google_ads_customer_id ?? "").trim());
-
-      setIntegrationStatus((prev) => ({
-        shopify: prev?.shopify ?? { connected: false, needsReconnect: false, shop: null },
-        meta: prev?.meta ?? { connected: false },
-        google: {
-          connected: hasToken && hasCustomerId,
-          hasToken,
-          customerId: hasCustomerId ? String(row?.google_ads_customer_id ?? "") : null,
-        },
-      }));
-    };
-
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [clientId]);
+    fetchGoogleIntegration();
+  }, [clientId, fetchGoogleIntegration]);
 
   useEffect(() => {
     if (!clientId) return;
@@ -652,7 +670,14 @@ function SettingsPage() {
                     </div>
                   ) : null}
 
-                  {!integrationStatus?.google?.hasToken ? (
+                  {integrationStatus?.google?.connected ? (
+                    <button
+                      onClick={disconnectGoogleAds}
+                      className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100"
+                    >
+                      Disconnect
+                    </button>
+                  ) : !integrationStatus?.google?.hasToken ? (
                     <button
                       onClick={startGoogleOAuth}
                       disabled={!clientId}

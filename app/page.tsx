@@ -115,7 +115,7 @@ export default async function Page({
 
   const { data, error } = await supabaseAdmin()
     .from("shopify_app_installs")
-    .select("access_token")
+    .select("access_token, client_id")
     .eq("shop_domain", shopGuess)
     .maybeSingle();
 
@@ -137,6 +137,15 @@ export default async function Page({
     if (defaultClientId) qs.set("client_id", defaultClientId);
     redirect(`/api/shopify/oauth/start?${qs.toString()}`);
   }
+  if (!data?.client_id) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-6">
+        <div className="text-sm text-slate-600">
+          Shopify install is missing a client mapping. Please contact support.
+        </div>
+      </main>
+    );
+  }
 
-  return <HomeClient />;
+  return <HomeClient initialClientId={String(data.client_id)} />;
 }

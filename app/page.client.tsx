@@ -1131,7 +1131,7 @@ function MultiSeriesEventfulLineChart({
 /** -----------------------------
  *  Page
  *  ----------------------------- */
-export default function Home() {
+export default function Home({ initialClientId }: { initialClientId?: string }) {
   const router = useRouter();
   // 🔑 Shopify embedded check: session token ping
   useEffect(() => {
@@ -1284,7 +1284,7 @@ export default function Home() {
   /** UI state */
   const [loading, setLoading] = useState(true);
   const [clientName, setClientName] = useState<string>("");
-  const [clientId, setClientId] = useState<string>("");
+  const [clientId, setClientId] = useState<string>(initialClientId || "");
   /** Monthly rollup table */
   type MonthlyRow = {
     month: string;
@@ -1697,21 +1697,24 @@ export default function Home() {
         return;
       }
       const userId = sessionData.session?.user?.id;
-      if (!userId) {
-        if (!cancelled) setLoading(false);
-        return;
+      let cid = initialClientId || "";
+      if (!cid) {
+        if (!userId) {
+          if (!cancelled) setLoading(false);
+          return;
+        }
+        const { data: mapping, error: mapErr } = await supabase
+          .from("user_clients")
+          .select("client_id")
+          .eq("user_id", userId)
+          .limit(1);
+        if (mapErr) {
+          console.error(mapErr);
+          if (!cancelled) setLoading(false);
+          return;
+        }
+        cid = (mapping?.[0]?.client_id as string | undefined) || "";
       }
-      const { data: mapping, error: mapErr } = await supabase
-        .from("user_clients")
-        .select("client_id")
-        .eq("user_id", userId)
-        .limit(1);
-      if (mapErr) {
-        console.error(mapErr);
-        if (!cancelled) setLoading(false);
-        return;
-      }
-      const cid = mapping?.[0]?.client_id as string | undefined;
       if (!cancelled) setClientId(cid || "");
       if (!cid) {
         if (!cancelled) {
@@ -2498,6 +2501,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       cancelled = true;
     };
   }, [
+    initialClientId,
     range,
     rangeDays,
     windows,

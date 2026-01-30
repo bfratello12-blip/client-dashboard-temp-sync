@@ -855,24 +855,116 @@ const days = dateRange(startDay, endDay);
 
 
 
-    // Pull active shopify integrations
-    let integrationsQuery = supabase
-      .from("client_integrations")
-      .select("client_id, provider, shop_domain")
-      .eq("provider", "shopify")
-      .eq("is_active", true);
+    const shopParamRaw = searchParams.get("shop")?.trim() || "";
+    const shopParam = shopParamRaw ? normalizeShop(shopParamRaw) : "";
 
-    if (onlyClientId) integrationsQuery = integrationsQuery.eq("client_id", onlyClientId);
+    if (!shopParam && !onlyClientId) {
+      return NextResponse.json(
+        { ok: false, error: "Missing shop or client_id" },
+        { status: 400 }
+      );
+    }
 
-    const { data: integrations, error: integErr } = await integrationsQuery;
-    if (integErr) throw new Error(`client_integrations query failed: ${integErr.message}`);
+    const resolvedIntegrations: Array<{ client_id: string; shop_domain: string; resolution_source: string }> = [];
+
+    if (shopParam) {
+      const { data: install, error: installErr } = await supabase
+        .from("shopify_app_installs")
+        .select("client_id, shop_domain, access_token")
+        .eq("shop_domain", shopParam)
+        .maybeSingle();
+      if (installErr) throw new Error(`shopify_app_installs lookup failed: ${installErr.message}`);
+
+      if (install?.client_id && install?.shop_domain) {
+        if (onlyClientId && String(install.client_id) !== onlyClientId) {
+          return NextResponse.json(
+            { ok: false, error: "client_id does not match shopify_app_installs for shop" },
+            { status: 400 }
+          );
+        }
+        resolvedIntegrations.push({
+          client_id: String(install.client_id),
+          shop_domain: String(install.shop_domain),
+          resolution_source: "query:shop",
+        });
+      } else {
+        const { data: integ, error: integErr } = await supabase
+          .from("client_integrations")
+          .select("client_id, shop_domain")
+          .eq("provider", "shopify")
+          .eq("shop_domain", shopParam)
+          .maybeSingle();
+        if (integErr) throw new Error(`client_integrations query failed: ${integErr.message}`);
+
+        if (!integ?.client_id || !integ?.shop_domain) {
+          return NextResponse.json(
+            { ok: false, error: `No shopify_app_installs row found for shop ${shopParam}` },
+            { status: 400 }
+          );
+        }
+        if (onlyClientId && String(integ.client_id) !== onlyClientId) {
+          return NextResponse.json(
+            { ok: false, error: "client_id does not match client_integrations for shop" },
+            { status: 400 }
+          );
+        }
+        resolvedIntegrations.push({
+          client_id: String(integ.client_id),
+          shop_domain: String(integ.shop_domain),
+          resolution_source: "client_integrations:fallback",
+        });
+      }
+    } else if (onlyClientId) {
+      const { data: install, error: installErr } = await supabase
+        .from("shopify_app_installs")
+        .select("client_id, shop_domain, access_token")
+        .eq("client_id", onlyClientId)
+        .maybeSingle();
+      if (installErr) throw new Error(`shopify_app_installs lookup failed: ${installErr.message}`);
+
+      if (install?.client_id && install?.shop_domain) {
+        resolvedIntegrations.push({
+          client_id: String(install.client_id),
+          shop_domain: String(install.shop_domain),
+          resolution_source: "install:client_id",
+        });
+      } else {
+        const { data: integ, error: integErr } = await supabase
+          .from("client_integrations")
+          .select("client_id, shop_domain")
+          .eq("provider", "shopify")
+          .eq("client_id", onlyClientId)
+          .maybeSingle();
+        if (integErr) throw new Error(`client_integrations query failed: ${integErr.message}`);
+
+        if (!integ?.client_id || !integ?.shop_domain) {
+          return NextResponse.json(
+            { ok: false, error: `No shopify_app_installs row found for client_id ${onlyClientId}` },
+            { status: 400 }
+          );
+        }
+        resolvedIntegrations.push({
+          client_id: String(integ.client_id),
+          shop_domain: String(integ.shop_domain),
+          resolution_source: "client_integrations:fallback",
+        });
+      }
+    }
+
+    for (const r of resolvedIntegrations) {
+      console.info("[shopify/sync] resolved", {
+        shop_domain: r.shop_domain,
+        client_id: r.client_id,
+        source: r.resolution_source,
+      });
+    }
 
     const errors: any[] = [];
     const results: any[] = [];
     let daysWritten = 0;
     let zerosInserted = 0;
 
-    for (const integ of integrations || []) {
+    for (const integ of resolvedIntegrations || []) {
       const clientId = integ.client_id;
       const shop = safeStr(integ.shop_domain) || "";
 

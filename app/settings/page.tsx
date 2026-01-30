@@ -364,17 +364,43 @@ function SettingsPage() {
       setIntegrationError("");
 
       try {
-        const res = await fetch(`/api/integrations/status?client_id=${encodeURIComponent(clientId)}`, {
-          cache: "no-store",
-        });
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok || !payload?.ok) throw new Error(payload?.error || `Status failed (${res.status})`);
+        const [shopifyRes, googleRes, metaRes] = await Promise.all([
+          supabase
+            .from("shopify_app_installs")
+            .select("shop_domain, access_token")
+            .eq("client_id", clientId)
+            .limit(1),
+          supabase
+            .from("client_integrations")
+            .select("platform")
+            .eq("client_id", clientId)
+            .eq("platform", "google_ads")
+            .limit(1),
+          supabase
+            .from("client_integrations")
+            .select("platform")
+            .eq("client_id", clientId)
+            .eq("platform", "meta_ads")
+            .limit(1),
+        ]);
+
+        if (shopifyRes.error) throw shopifyRes.error;
+        if (googleRes.error) throw googleRes.error;
+        if (metaRes.error) throw metaRes.error;
+
+        const shopifyRow = shopifyRes.data?.[0] ?? null;
+        const shopifyConnected = Boolean(shopifyRow?.access_token);
+        const shopifyNeedsReconnect = Boolean(shopifyRow) && !shopifyConnected;
 
         if (!cancelled) {
           setIntegrationStatus({
-            shopify: payload.shopify,
-            google: payload.google,
-            meta: payload.meta,
+            shopify: {
+              connected: shopifyConnected,
+              needsReconnect: shopifyNeedsReconnect,
+              shop: shopifyRow?.shop_domain ?? null,
+            },
+            google: { connected: (googleRes.data?.length ?? 0) > 0 },
+            meta: { connected: (metaRes.data?.length ?? 0) > 0 },
           });
         }
       } catch (e: any) {

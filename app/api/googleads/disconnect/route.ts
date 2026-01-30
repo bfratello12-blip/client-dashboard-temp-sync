@@ -32,9 +32,11 @@ export async function POST(req: Request) {
       status: "disconnected",
       google_refresh_token: null,
       google_ads_customer_id: null,
+      google_customer_id: null,
     };
 
     if (hasKey(row, "google_connected_at")) update.google_connected_at = null;
+    if (hasKey(row, "is_active")) update.is_active = false;
     if (hasKey(row, "access_token")) update.access_token = null;
     if (hasKey(row, "refresh_token")) update.refresh_token = null;
     if (hasKey(row, "token_expiry")) update.token_expiry = null;

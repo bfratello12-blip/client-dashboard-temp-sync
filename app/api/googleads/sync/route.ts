@@ -202,7 +202,7 @@ export async function GET(req: NextRequest) {
   const providerVariants = ["google", "google_ads", "googleads", "google-ads"];
   let q = supabase
     .from("client_integrations")
-    .select("client_id, provider, google_ads_customer_id, google_refresh_token, refresh_token, access_token")
+    .select("client_id, provider, google_ads_customer_id, google_customer_id, google_refresh_token, refresh_token, access_token")
     .in("provider", providerVariants);
 
   if (clientIdFilter) q = q.eq("client_id", clientIdFilter);
@@ -218,7 +218,7 @@ export async function GET(req: NextRequest) {
     const clientId = i.client_id as string;
 
     try {
-      const customerId = String(i.google_ads_customer_id ?? "").trim();
+      const customerId = String(i.google_ads_customer_id ?? i.google_customer_id ?? "").trim();
       const refreshToken = String(i.google_refresh_token ?? i.refresh_token ?? i.access_token ?? "").trim();
 
       const developerToken = String(process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? "").trim();

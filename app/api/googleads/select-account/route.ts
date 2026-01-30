@@ -5,46 +5,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const PROVIDER_KEYS = ["provider", "type", "source", "kind", "integration", "name"];
-const GOOGLE_HINT_KEYS = ["google_ads_customer_id", "google_customer_id", "customer_id", "ad_account_id"];
-const GOOGLE_TOKEN_KEYS = ["google_refresh_token", "refresh_token", "access_token"];
-
 const hasNonEmpty = (v: any) => v != null && String(v).trim().length > 0;
-
-const valueIncludes = (v: any, needle: string) => {
-  if (v == null) return false;
-  return String(v).toLowerCase().includes(needle);
-};
-
-function rowMatchesProvider(row: Record<string, any>, needles: string[]) {
-  return PROVIDER_KEYS.some((key) => {
-    if (!(key in row)) return false;
-    return needles.some((n) => valueIncludes(row[key], n));
-  });
-}
-
-function rowHasAnyKey(row: Record<string, any>, keys: string[]) {
-  return keys.some((key) => key in row && hasNonEmpty(row[key]));
-}
-
-function pickKey(row: Record<string, any>, keys: string[], regexes: RegExp[]) {
-  for (const key of keys) {
-    if (key in row) return key;
-  }
-
-  const rowKeys = Object.keys(row);
-  for (const r of regexes) {
-    const match = rowKeys.find((k) => r.test(k));
-    if (match) return match;
-  }
-
-  return null;
-}
-
-function pickValue(row: Record<string, any>, keys: string[], regexes: RegExp[]) {
-  const key = pickKey(row, keys, regexes);
-  return key ? row[key] : null;
-}
 
 export async function POST(req: Request) {
   try {
@@ -62,30 +23,26 @@ export async function POST(req: Request) {
       .from("client_integrations")
       .select("*")
       .eq("client_id", clientId)
-      .limit(50);
+      .eq("provider", "google_ads")
+      .limit(1);
 
     if (error) throw error;
 
-    const integrations = (rows ?? []) as Record<string, any>[];
-    const googleRows = integrations.filter(
-      (row) => rowMatchesProvider(row, ["google"]) || rowHasAnyKey(row, GOOGLE_HINT_KEYS)
-    );
+    const integration = (rows?.[0] as Record<string, any> | undefined) ?? null;
 
-    const googleRow =
-      googleRows.find((row) => {
-        const token = pickValue(row, GOOGLE_TOKEN_KEYS, [/google.*refresh.*token/i, /refresh.*token/i, /access.*token/i]);
-        return hasNonEmpty(token);
-      }) ?? googleRows[0];
+    if (integration) {
+      const updatePayload: Record<string, any> = {
+        google_ads_customer_id: googleAdsCustomerId,
+        google_customer_id: googleAdsCustomerId,
+      };
+      if ("status" in integration && !hasNonEmpty(integration.status)) updatePayload.status = "connected";
+      if ("is_active" in integration && integration.is_active !== true) updatePayload.is_active = true;
 
-    if (googleRow) {
-      let update = supabase.from("client_integrations").update({ google_ads_customer_id: googleAdsCustomerId }).eq("client_id", clientId);
-      if ("id" in googleRow) update = update.eq("id", googleRow.id);
-      else if ("provider" in googleRow) update = update.eq("provider", googleRow.provider);
-      else if ("type" in googleRow) update = update.eq("type", googleRow.type);
-      else if ("source" in googleRow) update = update.eq("source", googleRow.source);
-      else if ("kind" in googleRow) update = update.eq("kind", googleRow.kind);
-
-      const { error: updErr } = await update;
+      const { error: updErr } = await supabase
+        .from("client_integrations")
+        .update(updatePayload)
+        .eq("client_id", clientId)
+        .eq("provider", "google_ads");
       if (updErr) throw updErr;
 
       return NextResponse.json({ ok: true, updated: true });
@@ -93,11 +50,12 @@ export async function POST(req: Request) {
 
     const insertPayload: Record<string, any> = {
       client_id: clientId,
+      provider: "google_ads",
       google_ads_customer_id: googleAdsCustomerId,
+      google_customer_id: googleAdsCustomerId,
+      status: "connected",
+      is_active: true,
     };
-
-    if (integrations.some((row) => "provider" in row)) insertPayload.provider = "google";
-    if (integrations.some((row) => "is_active" in row)) insertPayload.is_active = true;
 
     const { error: insErr } = await supabase.from("client_integrations").insert(insertPayload);
     if (insErr) throw insErr;

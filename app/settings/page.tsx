@@ -101,6 +101,8 @@ function SettingsPage() {
   const [integrationLoading, setIntegrationLoading] = useState(false);
   const [integrationError, setIntegrationError] = useState("");
 
+  const googleAdminMode = process.env.NEXT_PUBLIC_APP_ADMIN_MODE === "true";
+
   const [googleAccounts, setGoogleAccounts] = useState<Array<{ id: string; name?: string | null }>>([]);
   const [googleAccountsLoading, setGoogleAccountsLoading] = useState(false);
   const [googleAccountsError, setGoogleAccountsError] = useState("");
@@ -269,7 +271,7 @@ function SettingsPage() {
 
     const { data, error } = await supabase
       .from("client_integrations")
-      .select("provider, google_refresh_token, google_ads_customer_id")
+      .select("provider, google_refresh_token, google_ads_customer_id, google_customer_id, status, is_active")
       .eq("client_id", clientId)
       .eq("provider", "google_ads")
       .limit(1);
@@ -280,16 +282,18 @@ function SettingsPage() {
     }
 
     const row = data?.[0] ?? null;
+    const statusOk = row?.status === "connected" || row?.is_active === true;
     const hasToken = Boolean(String(row?.google_refresh_token ?? "").trim());
-    const hasCustomerId = Boolean(String(row?.google_ads_customer_id ?? "").trim());
+    const customerId = String(row?.google_customer_id ?? row?.google_ads_customer_id ?? "").trim();
+    const hasCustomerId = Boolean(customerId);
 
     setIntegrationStatus((prev) => ({
       shopify: prev?.shopify ?? { connected: false, needsReconnect: false, shop: null },
       meta: prev?.meta ?? { connected: false },
       google: {
-        connected: hasToken && hasCustomerId,
+        connected: hasToken && hasCustomerId && statusOk,
         hasToken,
-        customerId: hasCustomerId ? String(row?.google_ads_customer_id ?? "") : null,
+        customerId: hasCustomerId ? customerId : null,
       },
     }));
   }, [clientId]);
@@ -537,6 +541,7 @@ function SettingsPage() {
     if (!clientId) return;
     if (!integrationStatus?.google?.hasToken) return;
     if (integrationStatus?.google?.customerId) return;
+    if (!googleAdminMode) return;
     if (googleAccountsLoading || googleAccounts.length > 0) return;
 
     fetchGoogleAccounts();
@@ -544,6 +549,7 @@ function SettingsPage() {
     clientId,
     integrationStatus?.google?.hasToken,
     integrationStatus?.google?.customerId,
+    googleAdminMode,
     googleAccountsLoading,
     googleAccounts.length,
     fetchGoogleAccounts,
@@ -698,44 +704,53 @@ function SettingsPage() {
                     Choose the account to sync for this client.
                   </div>
 
-                  {googleAccountsError ? (
-                    <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-2 text-xs text-rose-800">
-                      {googleAccountsError}
+                  {!googleAdminMode ? (
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
+                      Account selection is restricted to admin mode. Ask an admin to select the account or reconnect with
+                      the merchant Google login.
                     </div>
-                  ) : null}
+                  ) : (
+                    <>
+                      {googleAccountsError ? (
+                        <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-2 text-xs text-rose-800">
+                          {googleAccountsError}
+                        </div>
+                      ) : null}
 
-                  <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-                    <select
-                      value={googleSelectedAccountId}
-                      onChange={(e) => setGoogleSelectedAccountId(e.target.value)}
-                      disabled={googleAccountsLoading || googleAccounts.length === 0}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 sm:max-w-md"
-                    >
-                      {googleAccountsLoading ? (
-                        <option>Loading accounts…</option>
-                      ) : googleAccounts.length === 0 ? (
-                        <option>No accounts found</option>
-                      ) : (
-                        googleAccounts.map((acct) => (
-                          <option key={acct.id} value={acct.id}>
-                            {acct.name ? `${acct.name} (${acct.id})` : acct.id}
-                          </option>
-                        ))
-                      )}
-                    </select>
+                      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <select
+                          value={googleSelectedAccountId}
+                          onChange={(e) => setGoogleSelectedAccountId(e.target.value)}
+                          disabled={googleAccountsLoading || googleAccounts.length === 0}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 sm:max-w-md"
+                        >
+                          {googleAccountsLoading ? (
+                            <option>Loading accounts…</option>
+                          ) : googleAccounts.length === 0 ? (
+                            <option>No accounts found</option>
+                          ) : (
+                            googleAccounts.map((acct) => (
+                              <option key={acct.id} value={acct.id}>
+                                {acct.name ? `${acct.name} (${acct.id})` : acct.id}
+                              </option>
+                            ))
+                          )}
+                        </select>
 
-                    <button
-                      onClick={saveGoogleAccount}
-                      disabled={!googleSelectedAccountId || googleAccountSaving}
-                      className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
-                        !googleSelectedAccountId || googleAccountSaving
-                          ? "cursor-not-allowed bg-slate-300"
-                          : "bg-blue-600 hover:bg-blue-700"
-                      }`}
-                    >
-                      {googleAccountSaving ? "Saving…" : "Save account"}
-                    </button>
-                  </div>
+                        <button
+                          onClick={saveGoogleAccount}
+                          disabled={!googleSelectedAccountId || googleAccountSaving}
+                          className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
+                            !googleSelectedAccountId || googleAccountSaving
+                              ? "cursor-not-allowed bg-slate-300"
+                              : "bg-blue-600 hover:bg-blue-700"
+                          }`}
+                        >
+                          {googleAccountSaving ? "Saving…" : "Save account"}
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ) : null}
 

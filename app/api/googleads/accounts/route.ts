@@ -5,27 +5,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const PROVIDER_KEYS = ["provider", "type", "source", "kind", "integration", "name"];
-const GOOGLE_HINT_KEYS = ["google_ads_customer_id", "google_customer_id", "customer_id", "ad_account_id"];
-const GOOGLE_TOKEN_KEYS = ["google_refresh_token", "refresh_token", "access_token"];
-
 const hasNonEmpty = (v: any) => v != null && String(v).trim().length > 0;
-
-const valueIncludes = (v: any, needle: string) => {
-  if (v == null) return false;
-  return String(v).toLowerCase().includes(needle);
-};
-
-function rowMatchesProvider(row: Record<string, any>, needles: string[]) {
-  return PROVIDER_KEYS.some((key) => {
-    if (!(key in row)) return false;
-    return needles.some((n) => valueIncludes(row[key], n));
-  });
-}
-
-function rowHasAnyKey(row: Record<string, any>, keys: string[]) {
-  return keys.some((key) => key in row && hasNonEmpty(row[key]));
-}
 
 function pickKey(row: Record<string, any>, keys: string[], regexes: RegExp[]) {
   for (const key of keys) {
@@ -111,6 +91,10 @@ async function fetchCustomerName(args: {
 
 export async function GET(req: NextRequest) {
   try {
+    if (process.env.APP_ADMIN_MODE !== "true") {
+      return NextResponse.json({ ok: false, error: "Not authorized" }, { status: 403 });
+    }
+
     const url = new URL(req.url);
     const clientId = url.searchParams.get("client_id")?.trim();
     if (!clientId) return NextResponse.json({ ok: false, error: "Missing client_id" }, { status: 400 });
@@ -120,26 +104,19 @@ export async function GET(req: NextRequest) {
       .from("client_integrations")
       .select("*")
       .eq("client_id", clientId)
+      .eq("provider", "google_ads")
       .limit(50);
 
     if (error) throw error;
 
     const integrations = (rows ?? []) as Record<string, any>[];
-    const googleRows = integrations.filter(
-      (row) => rowMatchesProvider(row, ["google"]) || rowHasAnyKey(row, GOOGLE_HINT_KEYS)
-    );
-
-    const googleRow =
-      googleRows.find((row) => {
-        const token = pickValue(row, GOOGLE_TOKEN_KEYS, [/google.*refresh.*token/i, /refresh.*token/i, /access.*token/i]);
-        return hasNonEmpty(token);
-      }) ?? googleRows[0];
+    const googleRow = integrations[0];
 
     if (!googleRow) {
       return NextResponse.json({ ok: false, error: "Google integration not found" }, { status: 404 });
     }
 
-    const refreshToken = pickValue(googleRow, GOOGLE_TOKEN_KEYS, [/google.*refresh.*token/i, /refresh.*token/i]) as string | null;
+    const refreshToken = pickValue(googleRow, ["google_refresh_token"], [/google.*refresh.*token/i]) as string | null;
     if (!hasNonEmpty(refreshToken)) {
       return NextResponse.json({ ok: false, error: "Google token missing" }, { status: 400 });
     }

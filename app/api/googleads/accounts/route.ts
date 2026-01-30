@@ -91,10 +91,6 @@ async function fetchCustomerName(args: {
 
 export async function GET(req: NextRequest) {
   try {
-    if (process.env.APP_ADMIN_MODE !== "true") {
-      return NextResponse.json({ ok: false, error: "Not authorized" }, { status: 403 });
-    }
-
     const url = new URL(req.url);
     const clientId = url.searchParams.get("client_id")?.trim();
     if (!clientId) return NextResponse.json({ ok: false, error: "Missing client_id" }, { status: 400 });

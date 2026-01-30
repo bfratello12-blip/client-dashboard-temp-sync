@@ -202,13 +202,39 @@ export async function GET(req: NextRequest) {
   const providerVariants = ["google", "google_ads", "googleads", "google-ads"];
   let q = supabase
     .from("client_integrations")
-    .select("client_id, provider, google_ads_customer_id, google_customer_id, google_refresh_token, refresh_token, access_token")
+    .select("client_id, provider, google_ads_customer_id, google_refresh_token")
     .in("provider", providerVariants);
 
   if (clientIdFilter) q = q.eq("client_id", clientIdFilter);
 
   const { data: integrations, error: intErr } = await q;
   if (intErr) return NextResponse.json({ ok: false, error: intErr.message }, { status: 500 });
+
+  if (clientIdFilter) {
+    const row = integrations?.[0] as any;
+    if (!row) {
+      return NextResponse.json(
+        { ok: false, error: "No integration found for client_id" },
+        { status: 404 }
+      );
+    }
+
+    const token = String(row.google_refresh_token ?? "").trim();
+    if (!token) {
+      return NextResponse.json(
+        { ok: false, error: "Google Ads not connected for this client" },
+        { status: 400 }
+      );
+    }
+
+    const customerId = String(row.google_ads_customer_id ?? "").trim();
+    if (!customerId) {
+      return NextResponse.json(
+        { ok: false, error: "Google Ads account not selected for this client" },
+        { status: 400 }
+      );
+    }
+  }
 
   let daysWritten = 0;
   const errors: any[] = [];
@@ -218,8 +244,8 @@ export async function GET(req: NextRequest) {
     const clientId = i.client_id as string;
 
     try {
-      const customerId = String(i.google_ads_customer_id ?? i.google_customer_id ?? "").trim();
-      const refreshToken = String(i.google_refresh_token ?? i.refresh_token ?? i.access_token ?? "").trim();
+      const customerId = String(i.google_ads_customer_id ?? "").trim();
+      const refreshToken = String(i.google_refresh_token ?? "").trim();
 
       const developerToken = String(process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? "").trim();
       const oauthClientId = String(process.env.GOOGLE_ADS_CLIENT_ID ?? "").trim();
@@ -227,8 +253,8 @@ export async function GET(req: NextRequest) {
       const managerCustomerIdRaw = String(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID ?? "").trim();
       const managerCustomerId = managerCustomerIdRaw ? normalizeCustomerId(managerCustomerIdRaw) : undefined;
 
-      if (!customerId) throw new Error("Google Ads connected but no customer selected");
-      if (!refreshToken) throw new Error("Missing google_refresh_token on client_integrations");
+      if (!customerId) throw new Error("Google Ads account not selected for this client");
+      if (!refreshToken) throw new Error("Google Ads not connected for this client");
       if (!developerToken || !oauthClientId || !oauthClientSecret) {
         throw new Error("Missing GOOGLE_ADS_DEVELOPER_TOKEN / GOOGLE_ADS_CLIENT_ID / GOOGLE_ADS_CLIENT_SECRET env vars");
       }

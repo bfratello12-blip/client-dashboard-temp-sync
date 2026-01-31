@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isoDateUTC } from "@/lib/dates";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,12 +8,29 @@ function requireCronAuth(req: NextRequest) {
   const secret = process.env.CRON_SECRET || process.env.NEXT_PUBLIC_SYNC_TOKEN || "";
   if (!secret) return; // allow if not configured
 
-  const header = req.headers.get("authorization") || "";
-  const bearer = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
   const qp = req.nextUrl.searchParams.get("token")?.trim() || "";
+  if (!qp || qp !== secret) {
+    throw new Error("Unauthorized");
+  }
+}
 
-  const ok = bearer === secret || qp === secret || header === secret;
-  if (!ok) throw new Error("Unauthorized");
+type StepSummary = {
+  step: string;
+  ok: boolean;
+  status: number;
+  daysWritten?: number;
+  rowsWritten?: number;
+  error?: string;
+};
+
+function buildWindow(start?: string, end?: string) {
+  if (start && end) return { start, end };
+  const endDate = new Date();
+  endDate.setUTCDate(endDate.getUTCDate() - 1);
+  endDate.setUTCHours(0, 0, 0, 0);
+  const startDate = new Date(endDate);
+  startDate.setUTCDate(startDate.getUTCDate() - 29);
+  return { start: isoDateUTC(startDate), end: isoDateUTC(endDate) };
 }
 
 async function safeJson(res: Response) {
@@ -25,106 +41,138 @@ async function safeJson(res: Response) {
   }
 }
 
-export async function POST(req: NextRequest) {
+function pickCounts(body: any) {
+  const daysWritten = Number(body?.daysWritten);
+  if (Number.isFinite(daysWritten)) return { daysWritten };
+  const rowsWritten = Number(body?.rowsWritten);
+  if (Number.isFinite(rowsWritten)) return { rowsWritten };
+  return {};
+}
+
+async function runStep(args: {
+  step: string;
+  url: string;
+  headers?: Record<string, string>;
+}) {
+  const res = await fetch(args.url, {
+    method: "POST",
+    headers: args.headers,
+  });
+  const body = await safeJson(res);
+  const ok = res.ok && (body?.ok !== false);
+  const summary: StepSummary = {
+    step: args.step,
+    ok,
+    status: res.status,
+    ...pickCounts(body),
+  };
+  if (!ok) {
+    summary.error = body?.error || body?.message || `HTTP ${res.status}`;
+  }
+  return { res, body, summary };
+}
+
+export async function GET(req: NextRequest) {
   try {
     requireCronAuth(req);
 
-    const secret = process.env.CRON_SECRET || process.env.NEXT_PUBLIC_SYNC_TOKEN || "";
     const url = req.nextUrl;
     const origin = url.origin;
     const clientId = url.searchParams.get("client_id")?.trim() || "";
-
-    const endDate = new Date();
-    const endISO = isoDateUTC(endDate);
-    const startISO = isoDateUTC(new Date(endDate.getTime() - 30 * 24 * 3600 * 1000));
-
-    const baseParams = new URLSearchParams();
-    baseParams.set("start", startISO);
-    baseParams.set("end", endISO);
-    if (clientId) baseParams.set("client_id", clientId);
-
-    const tokenParams = new URLSearchParams(baseParams);
-    if (secret) tokenParams.set("token", secret);
-
-    const shopifyUrl = `${origin}/api/shopify/sync?${tokenParams.toString()}`;
-    const lineItemsUrl = `${origin}/api/shopify/daily-line-items-sync?${baseParams.toString()}`;
-    const rollingUrl = `${origin}/api/cron/rolling-30?${tokenParams.toString()}`;
-
-    const authedHeaders = secret ? { authorization: `Bearer ${secret}` } : undefined;
-    const googleUrl = `${origin}/api/googleads/sync?${baseParams.toString()}`;
-    const metaUrl = `${origin}/api/meta/sync?${baseParams.toString()}`;
-
-    const shopifyRes = await fetch(shopifyUrl, { method: "POST" });
-    const shopifyBody = await safeJson(shopifyRes);
-
-    let lineItemsBody: any = null;
-    let lineItemsRes: Response | null = null;
-    if (clientId) {
-      lineItemsRes = await fetch(lineItemsUrl, { method: "POST", headers: authedHeaders });
-      lineItemsBody = await safeJson(lineItemsRes);
-    } else {
-      const supabase = supabaseAdmin();
-      const { data: integrations, error: integErr } = await supabase
-        .from("client_integrations")
-        .select("client_id")
-        .eq("provider", "shopify")
-        .eq("is_active", true)
-        .limit(5000);
-      if (integErr) throw integErr;
-
-      const lineItemErrors: any[] = [];
-      for (const row of integrations || []) {
-        const cid = String((row as any).client_id || "");
-        if (!cid) continue;
-        const perClientParams = new URLSearchParams(baseParams);
-        perClientParams.set("client_id", cid);
-        const perClientUrl = `${origin}/api/shopify/daily-line-items-sync?${perClientParams.toString()}`;
-        const res = await fetch(perClientUrl, { method: "POST", headers: authedHeaders });
-        const body = await safeJson(res);
-        if (!res.ok) lineItemErrors.push({ client_id: cid, status: res.status, body });
-      }
-
-      lineItemsBody = {
-        ok: lineItemErrors.length === 0,
-        errors: lineItemErrors,
-      };
+    if (!clientId) {
+      return NextResponse.json({ ok: false, error: "client_id required" }, { status: 400 });
     }
 
-    const googleRes = await fetch(googleUrl, {
-      method: "POST",
-      headers: authedHeaders,
+    const providedStart = url.searchParams.get("start")?.trim() || "";
+    const providedEnd = url.searchParams.get("end")?.trim() || "";
+    const window = buildWindow(providedStart || undefined, providedEnd || undefined);
+
+    const secret = process.env.CRON_SECRET || process.env.NEXT_PUBLIC_SYNC_TOKEN || "";
+    const authHeader = secret ? { Authorization: `Bearer ${secret}` } : undefined;
+
+    const steps: StepSummary[] = [];
+
+    const shopifyParams = new URLSearchParams({
+      client_id: clientId,
+      start: window.start,
+      end: window.end,
+      force: "1",
     });
-    const googleBody = await safeJson(googleRes);
+    const shopifyUrl = `${origin}/api/shopify/sync?${shopifyParams.toString()}`;
+    const shopify = await runStep({ step: "shopify_sync", url: shopifyUrl });
+    steps.push(shopify.summary);
+    if (!shopify.summary.ok) {
+      return NextResponse.json({ ok: false, steps }, { status: shopify.summary.status || 500 });
+    }
 
-    const metaRes = await fetch(metaUrl, {
-      method: "POST",
-      headers: authedHeaders,
+    const googleParams = new URLSearchParams({
+      client_id: clientId,
+      start: window.start,
+      end: window.end,
+      fillZeros: "1",
     });
-    const metaBody = await safeJson(metaRes);
+    const googleUrl = `${origin}/api/googleads/sync?${googleParams.toString()}`;
+    const google = await runStep({ step: "googleads_sync", url: googleUrl, headers: authHeader });
+    steps.push(google.summary);
+    if (!google.summary.ok) {
+      return NextResponse.json({ ok: false, steps }, { status: google.summary.status || 500 });
+    }
 
-    const rollingRes = await fetch(rollingUrl, { method: "POST" });
-    const rollingBody = await safeJson(rollingRes);
-
-    const errors: any[] = [];
-    if (!shopifyRes.ok) errors.push({ step: "shopify", status: shopifyRes.status, body: shopifyBody });
-    if (lineItemsRes && !lineItemsRes.ok)
-      errors.push({ step: "shopify_daily_line_items", status: lineItemsRes.status, body: lineItemsBody });
-    if (!lineItemsRes && lineItemsBody?.errors?.length)
-      errors.push({ step: "shopify_daily_line_items", status: 500, body: lineItemsBody });
-    if (!googleRes.ok) errors.push({ step: "google", status: googleRes.status, body: googleBody });
-    if (!metaRes.ok) errors.push({ step: "meta", status: metaRes.status, body: metaBody });
-    if (!rollingRes.ok) errors.push({ step: "rolling30", status: rollingRes.status, body: rollingBody });
-
-    return NextResponse.json({
-      ok: errors.length === 0,
-      window: { start: startISO, end: endISO },
-      shopify: shopifyBody ?? { status: shopifyRes.status },
-      shopify_line_items: lineItemsBody ?? { status: lineItemsRes?.status },
-      google: googleBody ?? { status: googleRes.status },
-      meta: metaBody ?? { status: metaRes.status },
-      rolling30: rollingBody ?? { status: rollingRes.status },
-      errors,
+    const metaParams = new URLSearchParams({
+      client_id: clientId,
+      start: window.start,
+      end: window.end,
+      fillZeros: "1",
     });
+    const metaUrl = `${origin}/api/meta/sync?${metaParams.toString()}`;
+    const meta = await runStep({ step: "meta_sync", url: metaUrl, headers: authHeader });
+    steps.push(meta.summary);
+    if (!meta.summary.ok) {
+      return NextResponse.json({ ok: false, steps }, { status: meta.summary.status || 500 });
+    }
+
+    const lineItemsParams = new URLSearchParams({
+      client_id: clientId,
+      start: window.start,
+      end: window.end,
+    });
+    const lineItemsUrl = `${origin}/api/shopify/daily-line-items-sync?${lineItemsParams.toString()}`;
+    const lineItems = await runStep({
+      step: "shopify_daily_line_items",
+      url: lineItemsUrl,
+      headers: authHeader,
+    });
+    steps.push(lineItems.summary);
+    if (!lineItems.summary.ok) {
+      return NextResponse.json({ ok: false, steps }, { status: lineItems.summary.status || 500 });
+    }
+
+    const recomputeParams = new URLSearchParams({
+      token: secret,
+      start: window.start,
+      end: window.end,
+    });
+    const recomputeUrl = `${origin}/api/shopify/recompute?${recomputeParams.toString()}`;
+    const recompute = await runStep({ step: "shopify_recompute", url: recomputeUrl });
+    steps.push(recompute.summary);
+    if (!recompute.summary.ok) {
+      return NextResponse.json({ ok: false, steps }, { status: recompute.summary.status || 500 });
+    }
+
+    const rollingParams = new URLSearchParams({
+      client_id: clientId,
+      start: window.start,
+      end: window.end,
+      token: secret,
+    });
+    const rollingUrl = `${origin}/api/cron/rolling-30?${rollingParams.toString()}`;
+    const rolling = await runStep({ step: "rolling_30", url: rollingUrl });
+    steps.push(rolling.summary);
+    if (!rolling.summary.ok) {
+      return NextResponse.json({ ok: false, steps }, { status: rolling.summary.status || 500 });
+    }
+
+    return NextResponse.json({ ok: true, steps });
   } catch (e: any) {
     const msg = e?.message || String(e);
     const status = msg === "Unauthorized" ? 401 : 500;

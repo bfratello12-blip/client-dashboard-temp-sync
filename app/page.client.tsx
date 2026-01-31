@@ -2743,7 +2743,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       meta_spend: metaSpendSeries[index]?.spend || 0,
       google_spend: googleSpendSeries[index]?.spend || 0,
     }));
-  }, [spendSeries, metaSpendSeries, googleSpendSeries]);
+  }, [spendSeries, metaSpendSeries, googleSpendSeries, windowStartISO, windowEndISO, rangeDays]);
   /** Spend chart series configuration */
   const spendChartSeries = useMemo(() => {
     const series = [];
@@ -2760,7 +2760,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       meta_spend: metaSpendSeriesCompare[index]?.spend || 0,
       google_spend: googleSpendSeriesCompare[index]?.spend || 0,
     }));
-  }, [spendSeriesCompare, metaSpendSeriesCompare, googleSpendSeriesCompare]);
+  }, [spendSeriesCompare, metaSpendSeriesCompare, googleSpendSeriesCompare, windowStartISO, windowEndISO, rangeDays]);
   /** Revenue chart data and series configuration */
   const revenueChartData = useMemo(() => {
     return revenueSeries.map((item, index) => ({
@@ -2770,7 +2770,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       google_revenue: googleRevenueSeries[index]?.revenue || 0,
       meta_revenue: metaRevenueSeries[index]?.revenue || 0,
     }));
-  }, [revenueSeries, googleRevenueSeries, metaRevenueSeries]);
+  }, [revenueSeries, googleRevenueSeries, metaRevenueSeries, windowStartISO, windowEndISO, rangeDays]);
   const revenueChartDataCompare = useMemo(() => {
     return revenueSeriesCompare.map((item, index) => ({
       date: item.date,
@@ -2779,7 +2779,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       google_revenue: googleRevenueSeriesCompare[index]?.revenue || 0,
       meta_revenue: metaRevenueSeriesCompare[index]?.revenue || 0,
     }));
-  }, [revenueSeriesCompare, googleRevenueSeriesCompare, metaRevenueSeriesCompare]);
+  }, [revenueSeriesCompare, googleRevenueSeriesCompare, metaRevenueSeriesCompare, windowStartISO, windowEndISO, rangeDays]);
   const revenueChartSeries = useMemo(() => {
     const series = [];
     if (showShopifyRevenue) series.push({ key: 'shopify_total', name: 'Shopify Total', color: '#10b981' });
@@ -4231,7 +4231,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">Spend</span>
                 </div>
               </div>
-              <div className="mt-4 w-full h-[280px] min-h-[280px]">
+              <div className="mt-4 w-full h-[300px] min-h-[300px]">
                 {(() => {
                   console.log("[debug] spendChartRows sample", spendChartData.slice(0, 3));
                   return null;
@@ -4424,17 +4424,19 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 console.log("[debug] revenueChartRows sample", revenueChartData.slice(0, 3));
                 return null;
               })()}
-              <MultiSeriesEventfulLineChart
-                data={revenueChartData}
-                compareData={revenueChartDataCompare}
-                showComparison={effectiveShowComparison}
-                series={revenueChartSeries}
-                yTooltipFormatter={(v) => formatCurrency(v)}
-                markers={eventMarkers}
-                showMarkers={showEventMarkers}
-                xDomain={xDomain}
-                compareLabel={compareLabel}
-              />
+              <div className="w-full h-[300px] min-h-[300px]">
+                <MultiSeriesEventfulLineChart
+                  data={revenueChartData}
+                  compareData={revenueChartDataCompare}
+                  showComparison={effectiveShowComparison}
+                  series={revenueChartSeries}
+                  yTooltipFormatter={(v) => formatCurrency(v)}
+                  markers={eventMarkers}
+                  showMarkers={showEventMarkers}
+                  xDomain={xDomain}
+                  compareLabel={compareLabel}
+                />
+              </div>
             </ChartCard>
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               <ChartCard

@@ -538,6 +538,7 @@ function EventfulLineChart({
   showMarkers,
   xDomain,
   compareLabel,
+  height = 320,
 }: {
   data: { date: string; [k: string]: any }[];
   compareData?: { date: string; [k: string]: any }[];
@@ -548,6 +549,7 @@ function EventfulLineChart({
   showMarkers: boolean;
   xDomain?: [number, number];
   compareLabel: string;
+  height?: number;
 }) {
   type ChartPoint = { date: string; ts: number; [k: string]: any };
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -626,6 +628,8 @@ function EventfulLineChart({
     setHover({ marker, x: clientX - r.left, y: clientY - r.top });
   };
   const clearHover = () => setHover(null);
+  const sizeRef = useRef<HTMLDivElement | null>(null);
+  const [ready, setReady] = useState(false);
   useEffect(() => {
     if (!hover) return;
     const onScrollOrResize = () => setHover(null);
@@ -636,6 +640,29 @@ function EventfulLineChart({
       window.removeEventListener("resize", onScrollOrResize);
     };
   }, [hover]);
+  useEffect(() => {
+    if (!sizeRef.current) return;
+    let raf = 0;
+    const ro = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (!rect) return;
+      if (rect.width > 0 && rect.height > 0) {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setReady(true);
+          });
+        });
+      } else {
+        setReady(false);
+      }
+    });
+    ro.observe(sizeRef.current);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, []);
   return (
     <div
       ref={wrapRef}
@@ -644,8 +671,10 @@ function EventfulLineChart({
       onPointerLeave={clearHover}
     >
       <div className="pointer-events-none absolute inset-0 rounded-xl bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] [background-size:22px_22px] opacity-40" />
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={chartData} margin={{ top: 16, right: 24, left: 12, bottom: 12 }}>
+      <div ref={sizeRef} style={{ height: `${height}px`, minHeight: `${height}px` }} className="h-full w-full">
+        {ready ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={chartData} margin={{ top: 16, right: 24, left: 12, bottom: 12 }}>
           <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
           <defs>
             <radialGradient id="eventMarkerGradient" cx="30%" cy="30%" r="70%">
@@ -832,8 +861,10 @@ function EventfulLineChart({
             connectNulls
             activeDot={{ r: 4, stroke: "#1d4ed8", strokeWidth: 2, fill: "#fff" }}
           />
-        </ComposedChart>
-      </ResponsiveContainer>
+            </ComposedChart>
+          </ResponsiveContainer>
+        ) : null}
+      </div>
       <EventTooltipCard hover={hover} containerRef={wrapRef} />
     </div>
   );
@@ -849,6 +880,7 @@ function MultiSeriesEventfulLineChart({
   showMarkers,
   xDomain,
   compareLabel,
+  height = 320,
 }: {
   data: { date: string; [k: string]: any }[];
   compareData?: { date: string; [k: string]: any }[];
@@ -859,9 +891,12 @@ function MultiSeriesEventfulLineChart({
   showMarkers: boolean;
   xDomain?: [number, number];
   compareLabel: string;
+  height?: number;
 }) {
   type ChartPoint = { date: string; ts: number; [k: string]: any };
   const wrapRef = useRef<HTMLDivElement>(null);
+  const sizeRef = useRef<HTMLDivElement | null>(null);
+  const [ready, setReady] = useState(false);
   const [hover, setHover] = useState<HoveredEvent>(null);
   const multiUid = useId();
 
@@ -959,6 +994,29 @@ function MultiSeriesEventfulLineChart({
       window.removeEventListener("resize", onScrollOrResize);
     };
   }, [hover]);
+  useEffect(() => {
+    if (!sizeRef.current) return;
+    let raf = 0;
+    const ro = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (!rect) return;
+      if (rect.width > 0 && rect.height > 0) {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setReady(true);
+          });
+        });
+      } else {
+        setReady(false);
+      }
+    });
+    ro.observe(sizeRef.current);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, []);
 
   return (
     <div
@@ -968,11 +1026,13 @@ function MultiSeriesEventfulLineChart({
       onPointerLeave={clearHover}
     >
       <div className="pointer-events-none absolute inset-0 rounded-xl bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] [background-size:22px_22px] opacity-40" />
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart
-          data={chartData}
-          margin={{ top: 16, right: 24, left: 12, bottom: 12 }}
-        >
+      <div ref={sizeRef} style={{ height: `${height}px`, minHeight: `${height}px` }} className="h-full w-full">
+        {ready ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart
+              data={chartData}
+              margin={{ top: 16, right: 24, left: 12, bottom: 12 }}
+            >
           <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
           <defs>
             <radialGradient id="eventMarkerGradient" cx="30%" cy="30%" r="70%">
@@ -1122,8 +1182,10 @@ function MultiSeriesEventfulLineChart({
               activeDot={{ r: 4, stroke: s.color, strokeWidth: 2, fill: "#fff" }}
             />
           ))}
-        </ComposedChart>
-      </ResponsiveContainer>
+            </ComposedChart>
+          </ResponsiveContainer>
+        ) : null}
+      </div>
       <EventTooltipCard hover={hover} containerRef={wrapRef} />
     </div>
   );
@@ -1149,7 +1211,11 @@ function ChartReadyWrapper({
       if (!rect) return;
       if (rect.width > 0 && rect.height > 0) {
         cancelAnimationFrame(raf);
-        raf = requestAnimationFrame(() => setReady(true));
+        raf = requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setReady(true);
+          });
+        });
       } else {
         setReady(false);
       }

@@ -1185,12 +1185,10 @@ function ChartReadyWrapper({
 
 function SafeResponsiveContainer({
   height,
-  aspect = 3,
   className,
   children,
 }: {
   height: number | string;
-  aspect?: number;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -1225,7 +1223,7 @@ function SafeResponsiveContainer({
   return (
     <div ref={ref} className={className} style={{ height: h, minHeight: h }}>
       {ready ? (
-        <ResponsiveContainer width="100%" aspect={aspect}>
+        <ResponsiveContainer width="100%" height="100%">
           {children}
         </ResponsiveContainer>
       ) : (

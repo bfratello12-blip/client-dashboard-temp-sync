@@ -1150,7 +1150,7 @@ function ChartReadyWrapper({
     if (!ref.current) return;
     let raf = 0;
     const ro = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
+      const rect = ref.current?.getBoundingClientRect();
       if (!rect) return;
       if (rect.width > 0 && rect.height > 0) {
         cancelAnimationFrame(raf);

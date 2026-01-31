@@ -29,6 +29,10 @@ export async function GET(req: NextRequest) {
   const hasHostParam = url.searchParams.has("host");
   const hasIdTokenParam = url.searchParams.has("id_token");
   const embeddedParam = url.searchParams.get("embedded") || "";
+  const tokenParam = url.searchParams.get("token")?.trim() || "";
+  const secret = process.env.CRON_SECRET || process.env.NEXT_PUBLIC_SYNC_TOKEN || "";
+  const hasValidToken = !!secret && tokenParam === secret;
+  const hasToken = !!tokenParam;
 
   console.info("[oauth/start] HIT", {
     ts: new Date().toISOString(),
@@ -37,38 +41,30 @@ export async function GET(req: NextRequest) {
     origin,
   });
 
-  // Guard: allow internal requests or Shopify Admin app-open flow.
-  const internalRequest = req.headers.get("x-internal-request") === "1";
-  const allowed =
-    internalRequest ||
-    (shop &&
-      (isAdminReferer ||
-        isAppBaseOrigin ||
-        hasRefererAdmin ||
-        hasHostParam ||
-        hasIdTokenParam ||
-        embeddedParam === "1"));
-  if (!allowed) {
-    console.warn("[oauth/start] blocked", {
-      shop,
-      referer,
-      origin,
-      hasRefererAdmin,
-      hasHostParam,
-      hasIdTokenParam,
-      embeddedParam,
-      timestamp: new Date().toISOString(),
-    });
-    return NextResponse.json(
-      { ok: false, error: "oauth/start blocked" },
-      { status: 403 }
-    );
-  }
-
   if (!shop || !shop.endsWith(".myshopify.com")) {
     return NextResponse.json(
       { ok: false, error: "Missing/invalid shop (must be *.myshopify.com)" },
       { status: 400 }
+    );
+  }
+  // Guard: allow internal requests, embedded context, or valid override token.
+  const internalRequest = req.headers.get("x-internal-request") === "1";
+  const embeddedContext =
+    isAdminReferer ||
+    isAppBaseOrigin ||
+    hasRefererAdmin ||
+    hasHostParam ||
+    hasIdTokenParam ||
+    embeddedParam === "1";
+  const allowed = internalRequest || embeddedContext || hasValidToken;
+  if (!allowed) {
+    const reason = !embeddedContext && !hasValidToken ? "missing-embedded-or-token" : "blocked";
+    console.warn(
+      `[shopify oauth/start] blocked: reason=${reason}, shop=${shop}, hasToken=${hasToken}`
+    );
+    return NextResponse.json(
+      { ok: false, error: "oauth/start blocked" },
+      { status: 403 }
     );
   }
   if (!clientId) {

@@ -105,6 +105,12 @@ export async function GET(req: NextRequest) {
     });
     const shopifyUrl = `${origin}/api/shopify/sync?${shopifyParams.toString()}`;
     const shopify = await runStep({ step: "shopify_sync", url: shopifyUrl });
+    shopify.summary.ok =
+      shopify.res.ok && shopify.body?.ok !== false && !shopify.body?.error && !shopify.body?.errors;
+    if (!shopify.summary.ok) {
+      shopify.summary.error =
+        shopify.body?.error || shopify.body?.message || `HTTP ${shopify.summary.status}`;
+    }
     steps.push(shopify.summary);
     if (!shopify.summary.ok) {
       return NextResponse.json(

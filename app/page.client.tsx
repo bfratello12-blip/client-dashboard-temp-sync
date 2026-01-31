@@ -2018,14 +2018,18 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         const iso = toISO10(r.date);
         const spend = Number(r.spend || 0);
         const revenue = Number(r.revenue || 0);
-        spendByDatePrimary[iso] = (spendByDatePrimary[iso] || 0) + spend;
-        trackedRevByDatePrimary[iso] = (trackedRevByDatePrimary[iso] || 0) + revenue;
-        if (r.source === 'meta') {
+        if (r.source === "meta") {
+          spendByDatePrimary[iso] = (spendByDatePrimary[iso] || 0) + spend;
           metaSpendByDatePrimary[iso] = (metaSpendByDatePrimary[iso] || 0) + spend;
+          trackedRevByDatePrimary[iso] = (trackedRevByDatePrimary[iso] || 0) + revenue;
           metaRevByDatePrimary[iso] = (metaRevByDatePrimary[iso] || 0) + revenue;
-        } else if (r.source === 'google') {
+        } else if (r.source === "google") {
+          spendByDatePrimary[iso] = (spendByDatePrimary[iso] || 0) + spend;
           googleSpendByDatePrimary[iso] = (googleSpendByDatePrimary[iso] || 0) + spend;
+          trackedRevByDatePrimary[iso] = (trackedRevByDatePrimary[iso] || 0) + revenue;
           googleRevByDatePrimary[iso] = (googleRevByDatePrimary[iso] || 0) + revenue;
+        } else if (r.source === "shopify") {
+          // Shopify rows are not part of ad spend; handled separately in Shopify truth sections.
         }
       }
       const revenueByDatePrimary: Record<string, number> = {};
@@ -2248,14 +2252,18 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
           const iso = toISO10(r.date);
           const spend = Number(r.spend || 0);
           const revenue = Number(r.revenue || 0);
-          spendByDateCompare[iso] = (spendByDateCompare[iso] || 0) + spend;
-          trackedRevByDateCompare[iso] = (trackedRevByDateCompare[iso] || 0) + revenue;
-          if (r.source === 'meta') {
+          if (r.source === "meta") {
+            spendByDateCompare[iso] = (spendByDateCompare[iso] || 0) + spend;
             metaSpendByDateCompare[iso] = (metaSpendByDateCompare[iso] || 0) + spend;
+            trackedRevByDateCompare[iso] = (trackedRevByDateCompare[iso] || 0) + revenue;
             metaRevByDateCompare[iso] = (metaRevByDateCompare[iso] || 0) + revenue;
-          } else if (r.source === 'google') {
+          } else if (r.source === "google") {
+            spendByDateCompare[iso] = (spendByDateCompare[iso] || 0) + spend;
             googleSpendByDateCompare[iso] = (googleSpendByDateCompare[iso] || 0) + spend;
+            trackedRevByDateCompare[iso] = (trackedRevByDateCompare[iso] || 0) + revenue;
             googleRevByDateCompare[iso] = (googleRevByDateCompare[iso] || 0) + revenue;
+          } else if (r.source === "shopify") {
+            // Shopify rows are not part of ad spend; handled separately in Shopify truth sections.
           }
         }
         const revenueByDateCompare: Record<string, number> = {};
@@ -2409,7 +2417,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       const sumSpend = (rows: { spend: number }[]) => rows.reduce((s, r) => s + Number(r.spend || 0), 0);
       const metaTotal = sumSpend(metaSpendSeriesBuilt);
       const googleTotal = sumSpend(googleSpendSeriesBuilt);
-      const totalSpend = adAgg.spend;
+      const totalSpend = sumSpend(spendSeriesBuilt);
       const otherTotal = Math.max(0, totalSpend - metaTotal - googleTotal);
       const channel = [
         { name: "Meta Ads", value: metaTotal },

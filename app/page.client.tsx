@@ -1890,6 +1890,17 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
           .order("date", { ascending: true }),
         1000
       );
+      {
+        const sources = Array.from(new Set((metricData ?? []).map((r) => String(r.source || "").toLowerCase()))).filter(Boolean);
+        const googleSpend = (metricData ?? []).reduce((s, r) => s + (String(r.source) === "google" ? Number(r.spend || 0) : 0), 0);
+        const metaSpend = (metricData ?? []).reduce((s, r) => s + (String(r.source) === "meta" ? Number(r.spend || 0) : 0), 0);
+        console.log("[debug] daily_metrics fetched", {
+          rows: (metricData ?? []).length,
+          sources,
+          googleSpend,
+          metaSpend,
+        });
+      }
       // ✅ Shopify truth: revenue, orders, units come from daily_metrics (source='shopify').
       const shopifyAgg = (metricData ?? [])
         .filter((r) => r.source === "shopify")
@@ -2014,8 +2025,9 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       const trackedRevByDatePrimary: Record<string, number> = {};
       const googleRevByDatePrimary: Record<string, number> = {};
       const metaRevByDatePrimary: Record<string, number> = {};
-      for (const r of inPrimaryMetric) {
+      for (const r of metricData) {
         const iso = toISO10(r.date);
+        if (iso < primary.startISO || iso > primary.endISO) continue;
         const spend = Number(r.spend || 0);
         const revenue = Number(r.revenue || 0);
         if (r.source === "meta") {
@@ -2031,6 +2043,16 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         } else if (r.source === "shopify") {
           // Shopify rows are not part of ad spend; handled separately in Shopify truth sections.
         }
+      }
+      {
+        const metaEntries = Object.entries(metaSpendByDatePrimary);
+        const googleEntries = Object.entries(googleSpendByDatePrimary);
+        console.log("[debug] spend maps (primary)", {
+          metaKeys: metaEntries.length,
+          googleKeys: googleEntries.length,
+          metaSample: metaEntries.slice(0, 3),
+          googleSample: googleEntries.slice(0, 3),
+        });
       }
       const revenueByDatePrimary: Record<string, number> = {};
       const aspByDatePrimary: Record<string, number> = {};
@@ -2222,6 +2244,10 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
           d.setDate(d.getDate() + 1);
         }
       }
+      console.log("[debug] spend series sums (primary)", {
+        googleSpendSeriesSum: googleSpendSeriesBuilt.reduce((s, r) => s + Number(r.spend || 0), 0),
+        metaSpendSeriesSum: metaSpendSeriesBuilt.reduce((s, r) => s + Number(r.spend || 0), 0),
+      });
       /** COMPARE series (overlay-aligned to PRIMARY dates) */
       const spendSeriesCompareBuilt: { date: string; spend: number }[] = [];
       const metaSpendSeriesCompareBuilt: { date: string; spend: number }[] = [];
@@ -2248,8 +2274,9 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         const trackedRevByDateCompare: Record<string, number> = {};
         const googleRevByDateCompare: Record<string, number> = {};
         const metaRevByDateCompare: Record<string, number> = {};
-        for (const r of inCompareMetric) {
+        for (const r of metricData) {
           const iso = toISO10(r.date);
+          if (iso < effectiveCompareWindow.startISO || iso > effectiveCompareWindow.endISO) continue;
           const spend = Number(r.spend || 0);
           const revenue = Number(r.revenue || 0);
           if (r.source === "meta") {
@@ -4204,7 +4231,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">Spend</span>
                 </div>
               </div>
-              <div className="mt-4">
+              <div className="mt-4 w-full h-[280px] min-h-[280px]">
                 <MultiSeriesEventfulLineChart
                   data={spendChartData}
                   compareData={spendChartDataCompare}
@@ -4232,7 +4259,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
               </div>
               <div className="relative p-5">
                 <div className="absolute inset-0 opacity-30 mix-blend-multiply" style={{ background: "radial-gradient(circle at 50% 50%, rgba(59,130,246,0.08), transparent 60%)" }} />
-                <div className="relative h-72 w-full min-w-0 min-h-0">
+                <div className="relative h-[280px] w-full min-w-0 min-h-[280px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <defs>

@@ -1888,17 +1888,20 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       let metricDataError: any = null;
       let metricData: DailyMetricRow[] = [];
       try {
-        metricData = await supabaseFetchAll<DailyMetricRow>(
-          (from, to) => supabase
-            .from("daily_metrics")
-            // Include `orders` so Shopify truth can compute Orders + AOV reliably
-            .select("date, client_id, source, spend, revenue, units, clicks, impressions, conversions, orders")
-            .eq("client_id", cid)
-            .gte("date", fetchStartISO)
-            .lte("date", fetchEndISO)
-            .order("date", { ascending: true }),
-          1000
-        );
+        const dmParams = new URLSearchParams({
+          client_id: cid,
+          start: fetchStartISO,
+          end: fetchEndISO,
+        });
+        const syncToken = process.env.NEXT_PUBLIC_SYNC_TOKEN || "";
+        const dmRes = await fetch(`/api/data/daily-metrics?${dmParams.toString()}`, {
+          headers: syncToken ? { Authorization: `Bearer ${syncToken}` } : undefined,
+        });
+        const dmJson = await dmRes.json().catch(() => ({}));
+        if (!dmRes.ok || !dmJson?.ok) {
+          throw new Error(dmJson?.error || `daily-metrics fetch failed (${dmRes.status})`);
+        }
+        metricData = (dmJson?.rows || []) as DailyMetricRow[];
       } catch (e: any) {
         metricDataError = e;
         throw e;

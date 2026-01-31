@@ -1879,12 +1879,6 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         }
         return typeof count === "number" ? count : 0;
       };
-      console.log("[debug] daily_metrics query (before)", {
-        cid,
-        fetchStartISO,
-        fetchEndISO,
-        supabaseClientType: typeof window !== "undefined" ? "client (browser/anon)" : "server",
-      });
       let metricDataError: any = null;
       let metricData: DailyMetricRow[] = [];
       try {
@@ -1906,11 +1900,6 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         metricDataError = e;
         throw e;
       }
-      console.log("[debug] daily_metrics query (after)", {
-        error: metricDataError ? (metricDataError?.message || String(metricDataError)) : null,
-        rows: (metricData ?? []).length,
-        sample: (metricData ?? []).slice(0, 2),
-      });
       {
         const sources = Array.from(new Set((metricData ?? []).map((r) => String(r.source || "").toLowerCase()))).filter(Boolean);
         const googleSpend = (metricData ?? []).reduce((s, r) => s + (String(r.source) === "google" ? Number(r.spend || 0) : 0), 0);
@@ -2064,16 +2053,6 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         } else if (r.source === "shopify") {
           // Shopify rows are not part of ad spend; handled separately in Shopify truth sections.
         }
-      }
-      {
-        const metaEntries = Object.entries(metaSpendByDatePrimary);
-        const googleEntries = Object.entries(googleSpendByDatePrimary);
-        console.log("[debug] spend maps (primary)", {
-          metaKeys: metaEntries.length,
-          googleKeys: googleEntries.length,
-          metaSample: metaEntries.slice(0, 3),
-          googleSample: googleEntries.slice(0, 3),
-        });
       }
       const revenueByDatePrimary: Record<string, number> = {};
       const aspByDatePrimary: Record<string, number> = {};
@@ -2265,10 +2244,6 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
           d.setDate(d.getDate() + 1);
         }
       }
-      console.log("[debug] spend series sums (primary)", {
-        googleSpendSeriesSum: googleSpendSeriesBuilt.reduce((s, r) => s + Number(r.spend || 0), 0),
-        metaSpendSeriesSum: metaSpendSeriesBuilt.reduce((s, r) => s + Number(r.spend || 0), 0),
-      });
       /** COMPARE series (overlay-aligned to PRIMARY dates) */
       const spendSeriesCompareBuilt: { date: string; spend: number }[] = [];
       const metaSpendSeriesCompareBuilt: { date: string; spend: number }[] = [];

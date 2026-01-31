@@ -1,8 +1,9 @@
 {
   "crons": [
     {
-      "path": "/api/cron/daily-sync",
+      "path": "/api/cron/daily-sync?token=Laughing_Lab_1011",
       "schedule": "10 6 * * *"
     }
   ]
 }
+

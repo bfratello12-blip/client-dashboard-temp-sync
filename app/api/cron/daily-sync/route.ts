@@ -78,9 +78,14 @@ export async function GET(req: NextRequest) {
 
     const url = req.nextUrl;
     const origin = url.origin;
-    const clientId = url.searchParams.get("client_id")?.trim() || "";
+    const clientIdParam = url.searchParams.get("client_id")?.trim() || "";
+    const fallbackClientId = process.env.DEFAULT_CLIENT_ID || "";
+    const clientId = clientIdParam || fallbackClientId;
     if (!clientId) {
-      return NextResponse.json({ ok: false, error: "client_id required" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "client_id required (provide ?client_id= or set DEFAULT_CLIENT_ID)" },
+        { status: 400 }
+      );
     }
 
     const providedStart = url.searchParams.get("start")?.trim() || "";
@@ -102,7 +107,10 @@ export async function GET(req: NextRequest) {
     const shopify = await runStep({ step: "shopify_sync", url: shopifyUrl });
     steps.push(shopify.summary);
     if (!shopify.summary.ok) {
-      return NextResponse.json({ ok: false, steps }, { status: shopify.summary.status || 500 });
+      return NextResponse.json(
+        { ok: false, client_id: clientId, steps },
+        { status: shopify.summary.status || 500 }
+      );
     }
 
     const googleParams = new URLSearchParams({
@@ -115,7 +123,10 @@ export async function GET(req: NextRequest) {
     const google = await runStep({ step: "googleads_sync", url: googleUrl, headers: authHeader });
     steps.push(google.summary);
     if (!google.summary.ok) {
-      return NextResponse.json({ ok: false, steps }, { status: google.summary.status || 500 });
+      return NextResponse.json(
+        { ok: false, client_id: clientId, steps },
+        { status: google.summary.status || 500 }
+      );
     }
 
     const metaParams = new URLSearchParams({
@@ -128,7 +139,10 @@ export async function GET(req: NextRequest) {
     const meta = await runStep({ step: "meta_sync", url: metaUrl, headers: authHeader });
     steps.push(meta.summary);
     if (!meta.summary.ok) {
-      return NextResponse.json({ ok: false, steps }, { status: meta.summary.status || 500 });
+      return NextResponse.json(
+        { ok: false, client_id: clientId, steps },
+        { status: meta.summary.status || 500 }
+      );
     }
 
     const lineItemsParams = new URLSearchParams({
@@ -144,7 +158,10 @@ export async function GET(req: NextRequest) {
     });
     steps.push(lineItems.summary);
     if (!lineItems.summary.ok) {
-      return NextResponse.json({ ok: false, steps }, { status: lineItems.summary.status || 500 });
+      return NextResponse.json(
+        { ok: false, client_id: clientId, steps },
+        { status: lineItems.summary.status || 500 }
+      );
     }
 
     const recomputeParams = new URLSearchParams({
@@ -156,7 +173,10 @@ export async function GET(req: NextRequest) {
     const recompute = await runStep({ step: "shopify_recompute", url: recomputeUrl });
     steps.push(recompute.summary);
     if (!recompute.summary.ok) {
-      return NextResponse.json({ ok: false, steps }, { status: recompute.summary.status || 500 });
+      return NextResponse.json(
+        { ok: false, client_id: clientId, steps },
+        { status: recompute.summary.status || 500 }
+      );
     }
 
     const rollingParams = new URLSearchParams({
@@ -169,10 +189,13 @@ export async function GET(req: NextRequest) {
     const rolling = await runStep({ step: "rolling_30", url: rollingUrl });
     steps.push(rolling.summary);
     if (!rolling.summary.ok) {
-      return NextResponse.json({ ok: false, steps }, { status: rolling.summary.status || 500 });
+      return NextResponse.json(
+        { ok: false, client_id: clientId, steps },
+        { status: rolling.summary.status || 500 }
+      );
     }
 
-    return NextResponse.json({ ok: true, steps });
+    return NextResponse.json({ ok: true, client_id: clientId, steps });
   } catch (e: any) {
     const msg = e?.message || String(e);
     const status = msg === "Unauthorized" ? 401 : 500;

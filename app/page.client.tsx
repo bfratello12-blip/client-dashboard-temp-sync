@@ -538,6 +538,7 @@ function EventfulLineChart({
   showMarkers,
   xDomain,
   compareLabel,
+  debugId,
 }: {
   data: { date: string; [k: string]: any }[];
   compareData?: { date: string; [k: string]: any }[];
@@ -548,6 +549,7 @@ function EventfulLineChart({
   showMarkers: boolean;
   xDomain?: [number, number];
   compareLabel: string;
+  debugId?: string;
 }) {
   type ChartPoint = { date: string; ts: number; [k: string]: any };
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -636,6 +638,11 @@ function EventfulLineChart({
       window.removeEventListener("resize", onScrollOrResize);
     };
   }, [hover]);
+  useEffect(() => {
+    if (debugId) {
+      console.log("[recharts-render]", { chart: debugId });
+    }
+  }, [debugId]);
   return (
     <div
       ref={wrapRef}
@@ -644,7 +651,15 @@ function EventfulLineChart({
       onPointerLeave={clearHover}
     >
       <div className="pointer-events-none absolute inset-0 rounded-xl bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] [background-size:22px_22px] opacity-40" />
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer
+        width="100%"
+        height="100%"
+        onResize={(w: number, h: number) => {
+          if (w <= 0 || h <= 0) {
+            console.warn("[recharts-size]", { w, h, chart: debugId || "EventfulLineChart" });
+          }
+        }}
+      >
         <ComposedChart data={chartData} margin={{ top: 16, right: 24, left: 12, bottom: 12 }}>
           <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
           <defs>
@@ -849,6 +864,7 @@ function MultiSeriesEventfulLineChart({
   showMarkers,
   xDomain,
   compareLabel,
+  debugId,
 }: {
   data: { date: string; [k: string]: any }[];
   compareData?: { date: string; [k: string]: any }[];
@@ -859,6 +875,7 @@ function MultiSeriesEventfulLineChart({
   showMarkers: boolean;
   xDomain?: [number, number];
   compareLabel: string;
+  debugId?: string;
 }) {
   type ChartPoint = { date: string; ts: number; [k: string]: any };
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -959,6 +976,11 @@ function MultiSeriesEventfulLineChart({
       window.removeEventListener("resize", onScrollOrResize);
     };
   }, [hover]);
+  useEffect(() => {
+    if (debugId) {
+      console.log("[recharts-render]", { chart: debugId });
+    }
+  }, [debugId]);
 
   return (
     <div
@@ -968,7 +990,15 @@ function MultiSeriesEventfulLineChart({
       onPointerLeave={clearHover}
     >
       <div className="pointer-events-none absolute inset-0 rounded-xl bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] [background-size:22px_22px] opacity-40" />
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer
+        width="100%"
+        height="100%"
+        onResize={(w: number, h: number) => {
+          if (w <= 0 || h <= 0) {
+            console.warn("[recharts-size]", { w, h, chart: debugId || "MultiSeriesEventfulLineChart" });
+          }
+        }}
+      >
         <ComposedChart
           data={chartData}
           margin={{ top: 16, right: 24, left: 12, bottom: 12 }}
@@ -4253,6 +4283,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                     showMarkers={showEventMarkers}
                     xDomain={xDomain}
                     compareLabel={compareLabel}
+                    debugId="Ad Spend Trend"
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-sm text-slate-500">Loading chart…</div>
@@ -4367,6 +4398,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 showMarkers={showEventMarkers}
                 xDomain={xDomain}
                 compareLabel={compareLabel}
+                debugId="Profit Trend"
               />
             </ChartCard>
             <ChartCard
@@ -4442,6 +4474,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                     showMarkers={showEventMarkers}
                     xDomain={xDomain}
                     compareLabel={compareLabel}
+                    debugId="Revenue Trend"
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-sm text-slate-500">Loading chart…</div>
@@ -4491,6 +4524,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                   showMarkers={showEventMarkers}
                   xDomain={xDomain}
                   compareLabel={compareLabel}
+                  debugId="ASP Trend"
                 />
               </ChartCard>
               <ChartCard
@@ -4534,6 +4568,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                   showMarkers={showEventMarkers}
                   xDomain={xDomain}
                   compareLabel={compareLabel}
+                  debugId="Profit Return Trend"
                 />
               </ChartCard>
             </div>
@@ -4575,7 +4610,15 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 <div className="mt-1 text-sm text-slate-600">Profit Return (w) and ROAS(w) over time</div>
                 <div className="mt-3 w-full h-[320px] min-h-[320px]">
                   <div className="h-full w-full">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer
+                      width="100%"
+                      height="100%"
+                      onResize={(w: number, h: number) => {
+                        if (w <= 0 || h <= 0) {
+                          console.warn("[recharts-size]", { w, h, chart: "Attribution Daily Windowed Lines" });
+                        }
+                      }}
+                    >
                       <LineChart
                         data={attribSeries.map((d) => ({
                           ...d,
@@ -4623,7 +4666,15 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 <div className="mt-1 text-sm text-slate-600">Each dot is a day in the selected date range</div>
                 <div className="mt-3 w-full h-[320px] min-h-[320px]">
                   <div className="h-full w-full">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer
+                      width="100%"
+                      height="100%"
+                      onResize={(w: number, h: number) => {
+                        if (w <= 0 || h <= 0) {
+                          console.warn("[recharts-size]", { w, h, chart: "Attribution Scatter" });
+                        }
+                      }}
+                    >
                       <LineChart
                         data={attribSeries.map((d) => ({
                           x: d.roas_w,

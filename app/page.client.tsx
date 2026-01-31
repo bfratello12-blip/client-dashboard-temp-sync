@@ -4242,10 +4242,6 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 </div>
               </div>
               <div className="mt-4 w-full h-[320px] min-h-[320px]">
-                {(() => {
-                  console.log("[debug] spendChartRows sample", spendChartRows.slice(0, 3));
-                  return null;
-                })()}
                 {spendChartRows.length > 0 ? (
                   <MultiSeriesEventfulLineChart
                     data={spendChartRows}
@@ -4434,10 +4430,6 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 <span className="text-[11px] text-slate-400">{seriesDebug(revenueChartData)}</span>
               </div>
               <div className="mb-2 text-[11px] text-slate-400">{seriesDebug(revenueChartData)}</div>
-              {(() => {
-                console.log("[debug] revenueChartRows sample", revenueChartRows.slice(0, 3));
-                return null;
-              })()}
               <div className="w-full h-[320px] min-h-[320px]">
                 {revenueChartRows.length > 0 ? (
                   <MultiSeriesEventfulLineChart
@@ -4581,14 +4573,15 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
               <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
                 <div className="text-sm font-semibold text-slate-900">Daily windowed lines</div>
                 <div className="mt-1 text-sm text-slate-600">Profit Return (w) and ROAS(w) over time</div>
-                <div className="mt-3 h-72 w-full min-w-0 min-h-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart
-                      data={attribSeries.map((d) => ({
-                        ...d,
-                        ts: isoToTsUTC(d.date),
-                      }))}
-                    >
+                <div className="mt-3 w-full h-[320px] min-h-[320px]">
+                  <div className="h-full w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart
+                        data={attribSeries.map((d) => ({
+                          ...d,
+                          ts: isoToTsUTC(d.date),
+                        }))}
+                      >
                       <XAxis
                         dataKey="ts"
                         type="number"
@@ -4614,10 +4607,11 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                         formatter={(value: any) => String(value)}
                         wrapperStyle={{ fontSize: 12 }}
                       />
-                      <Line type="monotone" dataKey="mer_w" name="Profit Return (windowed)" stroke="#10b981" strokeWidth={2} dot={false} />
-                      <Line type="monotone" dataKey="roas_w" name="ROAS (windowed)" stroke="#3b82f6" strokeWidth={2} dot={false} />
-                    </LineChart>
-                  </ResponsiveContainer>
+                        <Line type="monotone" dataKey="mer_w" name="Profit Return (windowed)" stroke="#10b981" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="roas_w" name="ROAS (windowed)" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
                 <div className="mt-3 text-xs text-slate-600">
                   Interpretation: if Profit Return (w) is consistently above ROAS(w), revenue is being driven by more than
@@ -4627,14 +4621,15 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
               <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
                 <div className="text-sm font-semibold text-slate-900">Scatter: Profit Return (w) vs ROAS(w)</div>
                 <div className="mt-1 text-sm text-slate-600">Each dot is a day in the selected date range</div>
-                <div className="mt-3 h-72 w-full min-w-0 min-h-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart
-                      data={attribSeries.map((d) => ({
-                        x: d.roas_w,
-                        y: d.mer_w,
-                      }))}
-                    >
+                <div className="mt-3 w-full h-[320px] min-h-[320px]">
+                  <div className="h-full w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart
+                        data={attribSeries.map((d) => ({
+                          x: d.roas_w,
+                          y: d.mer_w,
+                        }))}
+                      >
                       <XAxis
                         dataKey="x"
                         tick={{ fontSize: 12 }}
@@ -4668,13 +4663,14 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                           );
                         }}
                       />
-                      <Scatter
-                        data={attribSeries.map((d) => ({ x: d.roas_w, y: d.mer_w }))}
-                        dataKey="y"
-                        isAnimationActive={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
+                        <Scatter
+                          data={attribSeries.map((d) => ({ x: d.roas_w, y: d.mer_w }))}
+                          dataKey="y"
+                          isAnimationActive={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
                 <div className="mt-3 text-xs text-slate-600">
                   This helps explain when “ROAS looks fine” but “Profit Return deteriorates” (or vice versa).

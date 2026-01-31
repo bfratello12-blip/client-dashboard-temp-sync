@@ -75,6 +75,7 @@ type DailyMetricRow = {
   source: "google" | "meta" | "shopify" | string;
   spend: number;
   revenue: number; // tracked ad revenue
+  units: number;
   clicks: number;
   impressions: number;
   conversions: number;
@@ -1882,31 +1883,14 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         (from, to) => supabase
           .from("daily_metrics")
           // Include `orders` so Shopify truth can compute Orders + AOV reliably
-          .select("date, client_id, source, spend, revenue, clicks, impressions, conversions, orders")
+          .select("date, client_id, source, spend, revenue, units, clicks, impressions, conversions, orders")
           .eq("client_id", cid)
           .gte("date", fetchStartISO)
           .lte("date", fetchEndISO)
           .order("date", { ascending: true }),
         1000
       );
-      // ✅ Sales summary (Shopify truth) — revenue/orders/units/AOV/ASP
-      const salesRows = await supabaseFetchAll<any>(
-        (from, to) => supabase
-          .from("daily_sales_summary")
-          .select("date, client_id, revenue, orders, units, aov, asp")
-          .eq("client_id", cid)
-          .gte("date", fetchStartISO)
-          .lte("date", fetchEndISO)
-          .order("date", { ascending: true }),
-        1000
-      );
-      // ✅ Shopify truth: revenue + orders come from daily_metrics (source='shopify').
-      // Units (for ASP) come from daily_sales_summary when available.
-      const unitsByDate: Record<string, number> = {};
-      for (const r of (salesRows ?? []) as any[]) {
-        const iso = toISO10(r.date);
-        unitsByDate[iso] = Number(r.units ?? 0);
-      }
+      // ✅ Shopify truth: revenue, orders, units come from daily_metrics (source='shopify').
       const shopifyAgg = (metricData ?? [])
         .filter((r) => r.source === "shopify")
         .reduce<Record<string, SalesSummaryRow>>((acc, r) => {
@@ -1916,13 +1900,14 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
           }
           acc[iso].revenue += Number(r.revenue ?? 0);
           acc[iso].orders += Number(r.orders ?? 0);
+          acc[iso].units += Number(r.units ?? 0);
           return acc;
         }, {});
       const salesDataAll: SalesSummaryRow[] = Object.values(shopifyAgg)
         .map((r) => {
-          const units = unitsByDate[r.date] ?? 0;
           const revenue = Number(r.revenue ?? 0);
           const orders = Number(r.orders ?? 0);
+          const units = Number(r.units ?? 0);
           return {
             ...r,
             units,
@@ -2077,7 +2062,8 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       const bizOrders = inPrimarySales.reduce((s, r) => s + Number(r.orders || 0), 0);
       const bizUnits = inPrimarySales.reduce((s, r) => s + Number(r.units || 0), 0);
       const bizAov = bizOrders > 0 ? bizRevenue / bizOrders : 0;
-      const bizAsp = bizUnits > 0 ? bizRevenue / bizUnits : 0;
+      const shopifyRevenuePrimary = inPrimarySales.reduce((s, r) => s + Number(r.revenue || 0), 0);
+      const bizAsp = bizUnits > 0 ? shopifyRevenuePrimary / bizUnits : 0;
       /** Profit totals (PRIMARY + COMPARE) */
       const profitPrimaryAgg = inPrimaryProfit.reduce(
         (acc, r) => {

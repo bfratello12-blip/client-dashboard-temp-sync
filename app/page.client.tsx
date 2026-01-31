@@ -628,8 +628,6 @@ function EventfulLineChart({
     setHover({ marker, x: clientX - r.left, y: clientY - r.top });
   };
   const clearHover = () => setHover(null);
-  const sizeRef = useRef<HTMLDivElement | null>(null);
-  const [ready, setReady] = useState(false);
   useEffect(() => {
     if (!hover) return;
     const onScrollOrResize = () => setHover(null);
@@ -640,29 +638,6 @@ function EventfulLineChart({
       window.removeEventListener("resize", onScrollOrResize);
     };
   }, [hover]);
-  useEffect(() => {
-    if (!sizeRef.current) return;
-    let raf = 0;
-    const ro = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (!rect) return;
-      if (rect.width > 0 && rect.height > 0) {
-        cancelAnimationFrame(raf);
-        raf = requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            setReady(true);
-          });
-        });
-      } else {
-        setReady(false);
-      }
-    });
-    ro.observe(sizeRef.current);
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-    };
-  }, []);
   return (
     <div
       ref={wrapRef}
@@ -672,10 +647,8 @@ function EventfulLineChart({
       onPointerLeave={clearHover}
     >
       <div className="pointer-events-none absolute inset-0 rounded-xl bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] [background-size:22px_22px] opacity-40" />
-      <div ref={sizeRef} className="h-full w-full">
-        {ready ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chartData} margin={{ top: 16, right: 24, left: 12, bottom: 12 }}>
+      <SafeResponsiveContainer height={height} className="h-full w-full">
+        <ComposedChart data={chartData} margin={{ top: 16, right: 24, left: 12, bottom: 12 }}>
           <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
           <defs>
             <radialGradient id="eventMarkerGradient" cx="30%" cy="30%" r="70%">
@@ -862,10 +835,8 @@ function EventfulLineChart({
             connectNulls
             activeDot={{ r: 4, stroke: "#1d4ed8", strokeWidth: 2, fill: "#fff" }}
           />
-            </ComposedChart>
-          </ResponsiveContainer>
-        ) : null}
-      </div>
+        </ComposedChart>
+      </SafeResponsiveContainer>
       <EventTooltipCard hover={hover} containerRef={wrapRef} />
     </div>
   );
@@ -896,8 +867,6 @@ function MultiSeriesEventfulLineChart({
 }) {
   type ChartPoint = { date: string; ts: number; [k: string]: any };
   const wrapRef = useRef<HTMLDivElement>(null);
-  const sizeRef = useRef<HTMLDivElement | null>(null);
-  const [ready, setReady] = useState(false);
   const [hover, setHover] = useState<HoveredEvent>(null);
   const multiUid = useId();
 
@@ -995,30 +964,6 @@ function MultiSeriesEventfulLineChart({
       window.removeEventListener("resize", onScrollOrResize);
     };
   }, [hover]);
-  useEffect(() => {
-    if (!sizeRef.current) return;
-    let raf = 0;
-    const ro = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (!rect) return;
-      if (rect.width > 0 && rect.height > 0) {
-        cancelAnimationFrame(raf);
-        raf = requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            setReady(true);
-          });
-        });
-      } else {
-        setReady(false);
-      }
-    });
-    ro.observe(sizeRef.current);
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-    };
-  }, []);
-
   return (
     <div
       ref={wrapRef}
@@ -1028,13 +973,11 @@ function MultiSeriesEventfulLineChart({
       onPointerLeave={clearHover}
     >
       <div className="pointer-events-none absolute inset-0 rounded-xl bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] [background-size:22px_22px] opacity-40" />
-      <div ref={sizeRef} className="h-full w-full">
-        {ready ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart
-              data={chartData}
-              margin={{ top: 16, right: 24, left: 12, bottom: 12 }}
-            >
+      <SafeResponsiveContainer height={height} className="h-full w-full">
+        <ComposedChart
+          data={chartData}
+          margin={{ top: 16, right: 24, left: 12, bottom: 12 }}
+        >
           <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
           <defs>
             <radialGradient id="eventMarkerGradient" cx="30%" cy="30%" r="70%">
@@ -1184,10 +1127,8 @@ function MultiSeriesEventfulLineChart({
               activeDot={{ r: 4, stroke: s.color, strokeWidth: 2, fill: "#fff" }}
             />
           ))}
-            </ComposedChart>
-          </ResponsiveContainer>
-        ) : null}
-      </div>
+        </ComposedChart>
+      </SafeResponsiveContainer>
       <EventTooltipCard hover={hover} containerRef={wrapRef} />
     </div>
   );
@@ -1235,6 +1176,56 @@ function ChartReadyWrapper({
     <div ref={ref} className={className} style={{ height: h, minHeight: h }}>
       {ready ? (
         <div className="h-full w-full">{children}</div>
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-sm text-slate-500">Loading chart…</div>
+      )}
+    </div>
+  );
+}
+
+function SafeResponsiveContainer({
+  height,
+  className,
+  children,
+}: {
+  height: number | string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [ready, setReady] = useState(false);
+  const h = typeof height === "number" ? `${height}px` : height;
+
+  useEffect(() => {
+    if (!ref.current) return;
+    let raf = 0;
+    const ro = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (!rect) return;
+      if (rect.width > 0 && rect.height > 0) {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setReady(true);
+          });
+        });
+      } else {
+        setReady(false);
+      }
+    });
+    ro.observe(ref.current);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, []);
+
+  return (
+    <div ref={ref} className={className} style={{ height: h, minHeight: h }}>
+      {ready ? (
+        <ResponsiveContainer width="100%" height="100%">
+          {children}
+        </ResponsiveContainer>
       ) : (
         <div className="flex h-full w-full items-center justify-center text-sm text-slate-500">Loading chart…</div>
       )}
@@ -2014,17 +2005,6 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       } catch (e: any) {
         metricDataError = e;
         throw e;
-      }
-      {
-        const sources = Array.from(new Set((metricData ?? []).map((r) => String(r.source || "").toLowerCase()))).filter(Boolean);
-        const googleSpend = (metricData ?? []).reduce((s, r) => s + (String(r.source) === "google" ? Number(r.spend || 0) : 0), 0);
-        const metaSpend = (metricData ?? []).reduce((s, r) => s + (String(r.source) === "meta" ? Number(r.spend || 0) : 0), 0);
-        console.log("[debug] daily_metrics fetched", {
-          rows: (metricData ?? []).length,
-          sources,
-          googleSpend,
-          metaSpend,
-        });
       }
       // ✅ Shopify truth: revenue, orders, units come from daily_metrics (source='shopify').
       const shopifyAgg = (metricData ?? [])
@@ -4379,7 +4359,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
               <div className="relative p-5">
                 <div className="absolute inset-0 opacity-30 mix-blend-multiply" style={{ background: "radial-gradient(circle at 50% 50%, rgba(59,130,246,0.08), transparent 60%)" }} />
                 <div className="relative w-full h-[320px] min-h-[320px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <SafeResponsiveContainer height={320} className="h-full w-full">
                     <PieChart>
                       <defs>
                         <filter id="pieGlow">
@@ -4418,7 +4398,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                         formatter={(value) => <span className="text-sm font-medium text-slate-700">{value}</span>}
                       />
                     </PieChart>
-                  </ResponsiveContainer>
+                  </SafeResponsiveContainer>
                 </div>
               </div>
             </div>
@@ -4676,14 +4656,13 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 <div className="text-sm font-semibold text-slate-900">Daily windowed lines</div>
                 <div className="mt-1 text-sm text-slate-600">Profit Return (w) and ROAS(w) over time</div>
                 <div className="mt-3 w-full h-[320px] min-h-[320px]">
-                  <div className="h-full w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart
-                        data={attribSeries.map((d) => ({
-                          ...d,
-                          ts: isoToTsUTC(d.date),
-                        }))}
-                      >
+                  <SafeResponsiveContainer height={320} className="h-full w-full">
+                    <LineChart
+                      data={attribSeries.map((d) => ({
+                        ...d,
+                        ts: isoToTsUTC(d.date),
+                      }))}
+                    >
                       <XAxis
                         dataKey="ts"
                         type="number"
@@ -4711,9 +4690,8 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                       />
                         <Line type="monotone" dataKey="mer_w" name="Profit Return (windowed)" stroke="#10b981" strokeWidth={2} dot={false} />
                         <Line type="monotone" dataKey="roas_w" name="ROAS (windowed)" stroke="#3b82f6" strokeWidth={2} dot={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
+                    </LineChart>
+                  </SafeResponsiveContainer>
                 </div>
                 <div className="mt-3 text-xs text-slate-600">
                   Interpretation: if Profit Return (w) is consistently above ROAS(w), revenue is being driven by more than
@@ -4724,14 +4702,13 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 <div className="text-sm font-semibold text-slate-900">Scatter: Profit Return (w) vs ROAS(w)</div>
                 <div className="mt-1 text-sm text-slate-600">Each dot is a day in the selected date range</div>
                 <div className="mt-3 w-full h-[320px] min-h-[320px]">
-                  <div className="h-full w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart
-                        data={attribSeries.map((d) => ({
-                          x: d.roas_w,
-                          y: d.mer_w,
-                        }))}
-                      >
+                  <SafeResponsiveContainer height={320} className="h-full w-full">
+                    <LineChart
+                      data={attribSeries.map((d) => ({
+                        x: d.roas_w,
+                        y: d.mer_w,
+                      }))}
+                    >
                       <XAxis
                         dataKey="x"
                         tick={{ fontSize: 12 }}
@@ -4770,9 +4747,8 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                           dataKey="y"
                           isAnimationActive={false}
                         />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
+                    </LineChart>
+                  </SafeResponsiveContainer>
                 </div>
                 <div className="mt-3 text-xs text-slate-600">
                   This helps explain when “ROAS looks fine” but “Profit Return deteriorates” (or vice versa).

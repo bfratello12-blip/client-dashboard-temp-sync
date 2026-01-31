@@ -666,12 +666,13 @@ function EventfulLineChart({
   return (
     <div
       ref={wrapRef}
-      className="relative h-72 w-full min-w-0 min-h-0 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white shadow-sm"
+      className="relative w-full min-w-0 min-h-0 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white shadow-sm"
+      style={{ height: `${height}px`, minHeight: `${height}px` }}
       onMouseLeave={clearHover}
       onPointerLeave={clearHover}
     >
       <div className="pointer-events-none absolute inset-0 rounded-xl bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] [background-size:22px_22px] opacity-40" />
-      <div ref={sizeRef} style={{ height: `${height}px`, minHeight: `${height}px` }} className="h-full w-full">
+      <div ref={sizeRef} className="h-full w-full">
         {ready ? (
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={chartData} margin={{ top: 16, right: 24, left: 12, bottom: 12 }}>
@@ -1021,12 +1022,13 @@ function MultiSeriesEventfulLineChart({
   return (
     <div
       ref={wrapRef}
-      className="relative h-72 w-full min-w-0 min-h-0 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white shadow-sm"
+      className="relative w-full min-w-0 min-h-0 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white shadow-sm"
+      style={{ height: `${height}px`, minHeight: `${height}px` }}
       onMouseLeave={clearHover}
       onPointerLeave={clearHover}
     >
       <div className="pointer-events-none absolute inset-0 rounded-xl bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] [background-size:22px_22px] opacity-40" />
-      <div ref={sizeRef} style={{ height: `${height}px`, minHeight: `${height}px` }} className="h-full w-full">
+      <div ref={sizeRef} className="h-full w-full">
         {ready ? (
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
@@ -3465,11 +3467,6 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     contribProfitSeriesCompare,
     profitMerDailySeriesCompare,
   ]);
-  const seriesDebug = (arr: { date: string }[]) => {
-    const start = arr?.[0]?.date ?? "—";
-    const end = arr?.[arr.length - 1]?.date ?? "—";
-    return `${arr.length} pts • ${start} → ${end}`;
-  };
   const coverageLabel = useMemo(() => {
     const sales = `Shopify ${coverage.primarySales}/${rangeDays}`;
     const ads = `Ads ${coverage.primaryAds}/${rangeDays}`;
@@ -4319,7 +4316,6 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">Ad Spend Trend</h2>
                   <p className="text-sm text-slate-600">Daily ad spend ({rangeDays} days)</p>
-                  <p className="mt-1 text-[11px] text-slate-400">{seriesDebug(spendChartData)}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer transition-colors text-xs font-medium">
@@ -4463,9 +4459,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                     <option value={30}>30d</option>
                   </select>
                 </label>
-                <span className="text-[11px] text-slate-400">{seriesDebug(profitTrendSeries)}</span>
               </div>
-              <div className="mb-2 text-[11px] text-slate-400">{seriesDebug(profitTrendSeries)}</div>
               <ChartReadyWrapper minHeight={320} className="w-full">
                 <EventfulLineChart
                   data={profitTrendSeries}
@@ -4538,9 +4532,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                     <span className="text-slate-700">Meta</span>
                   </label>
                 </div>
-                <span className="text-[11px] text-slate-400">{seriesDebug(revenueChartData)}</span>
               </div>
-              <div className="mb-2 text-[11px] text-slate-400">{seriesDebug(revenueChartData)}</div>
               <ChartReadyWrapper minHeight={320} className="w-full">
                 {revenueChartRows.length > 0 ? (
                   <MultiSeriesEventfulLineChart
@@ -4587,9 +4579,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                     <option value={30}>30d</option>
                   </select>
                 </label>
-                <span className="text-[11px] text-slate-400">{seriesDebug(aspTrendSeries)}</span>
               </div>
-                <div className="mb-2 text-[11px] text-slate-400">{seriesDebug(aspTrendSeries)}</div>
                 <ChartReadyWrapper minHeight={320} className="w-full">
                   <EventfulLineChart
                     data={aspTrendSeries}
@@ -4633,7 +4623,6 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                       <option value={30}>30d</option>
                     </select>
                   </label>
-                  <span className="text-[11px] text-slate-400">{seriesDebug(profitReturnTrendSeries)}</span>
                 </div>
                 <ChartReadyWrapper minHeight={320} className="w-full">
                   <EventfulLineChart

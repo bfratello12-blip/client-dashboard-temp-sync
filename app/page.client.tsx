@@ -1286,6 +1286,7 @@ export default function Home({ initialClientId }: { initialClientId?: string }) 
   const [loading, setLoading] = useState(true);
   const [clientName, setClientName] = useState<string>("");
   const [clientId, setClientId] = useState<string>(initialClientId || "");
+  const [metricDataCount, setMetricDataCount] = useState<number>(0);
   /** Monthly rollup table */
   type MonthlyRow = {
     month: string;
@@ -1896,6 +1897,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
           throw new Error(dmJson?.error || `daily-metrics fetch failed (${dmRes.status})`);
         }
         metricData = (dmJson?.rows || []) as DailyMetricRow[];
+        if (!cancelled) setMetricDataCount(metricData.length);
       } catch (e: any) {
         metricDataError = e;
         throw e;
@@ -2744,6 +2746,10 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       google_spend: googleSpendSeries[index]?.spend || 0,
     }));
   }, [spendSeries, metaSpendSeries, googleSpendSeries, windowStartISO, windowEndISO, rangeDays]);
+  const spendChartRows = useMemo(() => {
+    if (metricDataCount === 0) return [] as typeof spendChartData;
+    return spendChartData;
+  }, [metricDataCount, spendChartData, windowStartISO, windowEndISO, rangeDays]);
   /** Spend chart series configuration */
   const spendChartSeries = useMemo(() => {
     const series = [];
@@ -2771,6 +2777,10 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       meta_revenue: metaRevenueSeries[index]?.revenue || 0,
     }));
   }, [revenueSeries, googleRevenueSeries, metaRevenueSeries, windowStartISO, windowEndISO, rangeDays]);
+  const revenueChartRows = useMemo(() => {
+    if (metricDataCount === 0) return [] as typeof revenueChartData;
+    return revenueChartData;
+  }, [metricDataCount, revenueChartData, windowStartISO, windowEndISO, rangeDays]);
   const revenueChartDataCompare = useMemo(() => {
     return revenueSeriesCompare.map((item, index) => ({
       date: item.date,
@@ -4231,22 +4241,26 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">Spend</span>
                 </div>
               </div>
-              <div className="mt-4 w-full h-[300px] min-h-[300px]">
+              <div className="mt-4 w-full h-[320px] min-h-[320px]">
                 {(() => {
-                  console.log("[debug] spendChartRows sample", spendChartData.slice(0, 3));
+                  console.log("[debug] spendChartRows sample", spendChartRows.slice(0, 3));
                   return null;
                 })()}
-                <MultiSeriesEventfulLineChart
-                  data={spendChartData}
-                  compareData={spendChartDataCompare}
-                  showComparison={effectiveShowComparison}
-                  series={spendChartSeries}
-                  yTooltipFormatter={(v) => formatCurrency(v)}
-                  markers={eventMarkers}
-                  showMarkers={showEventMarkers}
-                  xDomain={xDomain}
-                  compareLabel={compareLabel}
-                />
+                {spendChartRows.length > 0 ? (
+                  <MultiSeriesEventfulLineChart
+                    data={spendChartRows}
+                    compareData={spendChartDataCompare}
+                    showComparison={effectiveShowComparison}
+                    series={spendChartSeries}
+                    yTooltipFormatter={(v) => formatCurrency(v)}
+                    markers={eventMarkers}
+                    showMarkers={showEventMarkers}
+                    xDomain={xDomain}
+                    compareLabel={compareLabel}
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-sm text-slate-500">Loading chart…</div>
+                )}
               </div>
             </div>
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-white shadow-md min-w-0">
@@ -4263,7 +4277,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
               </div>
               <div className="relative p-5">
                 <div className="absolute inset-0 opacity-30 mix-blend-multiply" style={{ background: "radial-gradient(circle at 50% 50%, rgba(59,130,246,0.08), transparent 60%)" }} />
-                <div className="relative h-[280px] w-full min-w-0 min-h-[280px]">
+                <div className="relative w-full h-[320px] min-h-[320px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <defs>
@@ -4421,21 +4435,25 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
               </div>
               <div className="mb-2 text-[11px] text-slate-400">{seriesDebug(revenueChartData)}</div>
               {(() => {
-                console.log("[debug] revenueChartRows sample", revenueChartData.slice(0, 3));
+                console.log("[debug] revenueChartRows sample", revenueChartRows.slice(0, 3));
                 return null;
               })()}
-              <div className="w-full h-[300px] min-h-[300px]">
-                <MultiSeriesEventfulLineChart
-                  data={revenueChartData}
-                  compareData={revenueChartDataCompare}
-                  showComparison={effectiveShowComparison}
-                  series={revenueChartSeries}
-                  yTooltipFormatter={(v) => formatCurrency(v)}
-                  markers={eventMarkers}
-                  showMarkers={showEventMarkers}
-                  xDomain={xDomain}
-                  compareLabel={compareLabel}
-                />
+              <div className="w-full h-[320px] min-h-[320px]">
+                {revenueChartRows.length > 0 ? (
+                  <MultiSeriesEventfulLineChart
+                    data={revenueChartRows}
+                    compareData={revenueChartDataCompare}
+                    showComparison={effectiveShowComparison}
+                    series={revenueChartSeries}
+                    yTooltipFormatter={(v) => formatCurrency(v)}
+                    markers={eventMarkers}
+                    showMarkers={showEventMarkers}
+                    xDomain={xDomain}
+                    compareLabel={compareLabel}
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-sm text-slate-500">Loading chart…</div>
+                )}
               </div>
             </ChartCard>
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

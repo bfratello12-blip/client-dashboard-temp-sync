@@ -538,7 +538,6 @@ function EventfulLineChart({
   showMarkers,
   xDomain,
   compareLabel,
-  debugId,
 }: {
   data: { date: string; [k: string]: any }[];
   compareData?: { date: string; [k: string]: any }[];
@@ -549,7 +548,6 @@ function EventfulLineChart({
   showMarkers: boolean;
   xDomain?: [number, number];
   compareLabel: string;
-  debugId?: string;
 }) {
   type ChartPoint = { date: string; ts: number; [k: string]: any };
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -638,11 +636,6 @@ function EventfulLineChart({
       window.removeEventListener("resize", onScrollOrResize);
     };
   }, [hover]);
-  useEffect(() => {
-    if (debugId) {
-      console.log("[recharts-render]", { chart: debugId });
-    }
-  }, [debugId]);
   return (
     <div
       ref={wrapRef}
@@ -651,15 +644,7 @@ function EventfulLineChart({
       onPointerLeave={clearHover}
     >
       <div className="pointer-events-none absolute inset-0 rounded-xl bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] [background-size:22px_22px] opacity-40" />
-      <ResponsiveContainer
-        width="100%"
-        height="100%"
-        onResize={(w: number, h: number) => {
-          if (w <= 0 || h <= 0) {
-            console.warn("[recharts-size]", { w, h, chart: debugId || "EventfulLineChart" });
-          }
-        }}
-      >
+      <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={chartData} margin={{ top: 16, right: 24, left: 12, bottom: 12 }}>
           <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
           <defs>
@@ -864,7 +849,6 @@ function MultiSeriesEventfulLineChart({
   showMarkers,
   xDomain,
   compareLabel,
-  debugId,
 }: {
   data: { date: string; [k: string]: any }[];
   compareData?: { date: string; [k: string]: any }[];
@@ -875,7 +859,6 @@ function MultiSeriesEventfulLineChart({
   showMarkers: boolean;
   xDomain?: [number, number];
   compareLabel: string;
-  debugId?: string;
 }) {
   type ChartPoint = { date: string; ts: number; [k: string]: any };
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -976,11 +959,6 @@ function MultiSeriesEventfulLineChart({
       window.removeEventListener("resize", onScrollOrResize);
     };
   }, [hover]);
-  useEffect(() => {
-    if (debugId) {
-      console.log("[recharts-render]", { chart: debugId });
-    }
-  }, [debugId]);
 
   return (
     <div
@@ -990,15 +968,7 @@ function MultiSeriesEventfulLineChart({
       onPointerLeave={clearHover}
     >
       <div className="pointer-events-none absolute inset-0 rounded-xl bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] [background-size:22px_22px] opacity-40" />
-      <ResponsiveContainer
-        width="100%"
-        height="100%"
-        onResize={(w: number, h: number) => {
-          if (w <= 0 || h <= 0) {
-            console.warn("[recharts-size]", { w, h, chart: debugId || "MultiSeriesEventfulLineChart" });
-          }
-        }}
-      >
+      <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
           data={chartData}
           margin={{ top: 16, right: 24, left: 12, bottom: 12 }}
@@ -1155,6 +1125,51 @@ function MultiSeriesEventfulLineChart({
         </ComposedChart>
       </ResponsiveContainer>
       <EventTooltipCard hover={hover} containerRef={wrapRef} />
+    </div>
+  );
+}
+
+function ChartReadyWrapper({
+  minHeight,
+  className,
+  children,
+}: {
+  minHeight: number | string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    let raf = 0;
+    const ro = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (!rect) return;
+      if (rect.width > 0 && rect.height > 0) {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(() => setReady(true));
+      } else {
+        setReady(false);
+      }
+    });
+    ro.observe(ref.current);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, []);
+
+  const h = typeof minHeight === "number" ? `${minHeight}px` : minHeight;
+
+  return (
+    <div ref={ref} className={className} style={{ height: h, minHeight: h }}>
+      {ready ? (
+        <div className="h-full w-full">{children}</div>
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-sm text-slate-500">Loading chart…</div>
+      )}
     </div>
   );
 }
@@ -4271,7 +4286,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">Spend</span>
                 </div>
               </div>
-              <div className="mt-4 w-full h-[320px] min-h-[320px]">
+              <ChartReadyWrapper minHeight={320} className="mt-4 w-full">
                 {spendChartRows.length > 0 ? (
                   <MultiSeriesEventfulLineChart
                     data={spendChartRows}
@@ -4283,12 +4298,9 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                     showMarkers={showEventMarkers}
                     xDomain={xDomain}
                     compareLabel={compareLabel}
-                    debugId="Ad Spend Trend"
                   />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-sm text-slate-500">Loading chart…</div>
-                )}
-              </div>
+                ) : null}
+              </ChartReadyWrapper>
             </div>
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-white shadow-md min-w-0">
               <div className="border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white px-5 py-4">
@@ -4388,18 +4400,19 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 <span className="text-[11px] text-slate-400">{seriesDebug(profitTrendSeries)}</span>
               </div>
               <div className="mb-2 text-[11px] text-slate-400">{seriesDebug(profitTrendSeries)}</div>
-              <EventfulLineChart
-                data={profitTrendSeries}
-                compareData={profitTrendSeriesCompare}
-                showComparison={effectiveShowComparison}
-                yKey="profit"
-                yTooltipFormatter={(v) => formatCurrency(v)}
-                markers={eventMarkers}
-                showMarkers={showEventMarkers}
-                xDomain={xDomain}
-                compareLabel={compareLabel}
-                debugId="Profit Trend"
-              />
+              <ChartReadyWrapper minHeight={320} className="w-full">
+                <EventfulLineChart
+                  data={profitTrendSeries}
+                  compareData={profitTrendSeriesCompare}
+                  showComparison={effectiveShowComparison}
+                  yKey="profit"
+                  yTooltipFormatter={(v) => formatCurrency(v)}
+                  markers={eventMarkers}
+                  showMarkers={showEventMarkers}
+                  xDomain={xDomain}
+                  compareLabel={compareLabel}
+                />
+              </ChartReadyWrapper>
             </ChartCard>
             <ChartCard
               title="Revenue Trend"
@@ -4462,7 +4475,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 <span className="text-[11px] text-slate-400">{seriesDebug(revenueChartData)}</span>
               </div>
               <div className="mb-2 text-[11px] text-slate-400">{seriesDebug(revenueChartData)}</div>
-              <div className="w-full h-[320px] min-h-[320px]">
+              <ChartReadyWrapper minHeight={320} className="w-full">
                 {revenueChartRows.length > 0 ? (
                   <MultiSeriesEventfulLineChart
                     data={revenueChartRows}
@@ -4474,12 +4487,9 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                     showMarkers={showEventMarkers}
                     xDomain={xDomain}
                     compareLabel={compareLabel}
-                    debugId="Revenue Trend"
                   />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-sm text-slate-500">Loading chart…</div>
-                )}
-              </div>
+                ) : null}
+              </ChartReadyWrapper>
             </ChartCard>
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               <ChartCard
@@ -4514,18 +4524,19 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 <span className="text-[11px] text-slate-400">{seriesDebug(aspTrendSeries)}</span>
               </div>
                 <div className="mb-2 text-[11px] text-slate-400">{seriesDebug(aspTrendSeries)}</div>
-                <EventfulLineChart
-                  data={aspTrendSeries}
-                  compareData={aspTrendSeriesCompare}
-                  showComparison={effectiveShowComparison}
-                  yKey="asp"
-                  yTooltipFormatter={(v) => formatCurrency(v)}
-                  markers={eventMarkers}
-                  showMarkers={showEventMarkers}
-                  xDomain={xDomain}
-                  compareLabel={compareLabel}
-                  debugId="ASP Trend"
-                />
+                <ChartReadyWrapper minHeight={320} className="w-full">
+                  <EventfulLineChart
+                    data={aspTrendSeries}
+                    compareData={aspTrendSeriesCompare}
+                    showComparison={effectiveShowComparison}
+                    yKey="asp"
+                    yTooltipFormatter={(v) => formatCurrency(v)}
+                    markers={eventMarkers}
+                    showMarkers={showEventMarkers}
+                    xDomain={xDomain}
+                    compareLabel={compareLabel}
+                  />
+                </ChartReadyWrapper>
               </ChartCard>
               <ChartCard
                 title="Profit Return Trend"
@@ -4558,18 +4569,19 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                   </label>
                   <span className="text-[11px] text-slate-400">{seriesDebug(profitReturnTrendSeries)}</span>
                 </div>
-                <EventfulLineChart
-                  data={profitReturnTrendSeries}
-                  compareData={profitReturnTrendSeriesCompare}
-                  showComparison={effectiveShowComparison}
-                  yKey="mer"
-                  yTooltipFormatter={(v) => `${Number(v).toFixed(2)}x`}
-                  markers={eventMarkers}
-                  showMarkers={showEventMarkers}
-                  xDomain={xDomain}
-                  compareLabel={compareLabel}
-                  debugId="Profit Return Trend"
-                />
+                <ChartReadyWrapper minHeight={320} className="w-full">
+                  <EventfulLineChart
+                    data={profitReturnTrendSeries}
+                    compareData={profitReturnTrendSeriesCompare}
+                    showComparison={effectiveShowComparison}
+                    yKey="mer"
+                    yTooltipFormatter={(v) => `${Number(v).toFixed(2)}x`}
+                    markers={eventMarkers}
+                    showMarkers={showEventMarkers}
+                    xDomain={xDomain}
+                    compareLabel={compareLabel}
+                  />
+                </ChartReadyWrapper>
               </ChartCard>
             </div>
           </section>
@@ -4610,15 +4622,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 <div className="mt-1 text-sm text-slate-600">Profit Return (w) and ROAS(w) over time</div>
                 <div className="mt-3 w-full h-[320px] min-h-[320px]">
                   <div className="h-full w-full">
-                    <ResponsiveContainer
-                      width="100%"
-                      height="100%"
-                      onResize={(w: number, h: number) => {
-                        if (w <= 0 || h <= 0) {
-                          console.warn("[recharts-size]", { w, h, chart: "Attribution Daily Windowed Lines" });
-                        }
-                      }}
-                    >
+                    <ResponsiveContainer width="100%" height="100%">
                       <LineChart
                         data={attribSeries.map((d) => ({
                           ...d,
@@ -4666,15 +4670,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 <div className="mt-1 text-sm text-slate-600">Each dot is a day in the selected date range</div>
                 <div className="mt-3 w-full h-[320px] min-h-[320px]">
                   <div className="h-full w-full">
-                    <ResponsiveContainer
-                      width="100%"
-                      height="100%"
-                      onResize={(w: number, h: number) => {
-                        if (w <= 0 || h <= 0) {
-                          console.warn("[recharts-size]", { w, h, chart: "Attribution Scatter" });
-                        }
-                      }}
-                    >
+                    <ResponsiveContainer width="100%" height="100%">
                       <LineChart
                         data={attribSeries.map((d) => ({
                           x: d.roas_w,

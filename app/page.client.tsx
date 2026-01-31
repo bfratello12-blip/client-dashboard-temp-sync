@@ -2738,6 +2738,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
   const spendChartData = useMemo(() => {
     return spendSeries.map((item, index) => ({
       date: item.date,
+      ts: new Date(`${item.date}T00:00:00Z`).getTime(),
       total_spend: item.spend,
       meta_spend: metaSpendSeries[index]?.spend || 0,
       google_spend: googleSpendSeries[index]?.spend || 0,
@@ -2754,6 +2755,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
   const spendChartDataCompare = useMemo(() => {
     return spendSeriesCompare.map((item, index) => ({
       date: item.date,
+      ts: new Date(`${item.date}T00:00:00Z`).getTime(),
       total_spend: item.spend,
       meta_spend: metaSpendSeriesCompare[index]?.spend || 0,
       google_spend: googleSpendSeriesCompare[index]?.spend || 0,
@@ -2763,6 +2765,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
   const revenueChartData = useMemo(() => {
     return revenueSeries.map((item, index) => ({
       date: item.date,
+      ts: new Date(`${item.date}T00:00:00Z`).getTime(),
       shopify_total: item.revenue,
       google_revenue: googleRevenueSeries[index]?.revenue || 0,
       meta_revenue: metaRevenueSeries[index]?.revenue || 0,
@@ -2771,6 +2774,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
   const revenueChartDataCompare = useMemo(() => {
     return revenueSeriesCompare.map((item, index) => ({
       date: item.date,
+      ts: new Date(`${item.date}T00:00:00Z`).getTime(),
       shopify_total: item.revenue,
       google_revenue: googleRevenueSeriesCompare[index]?.revenue || 0,
       meta_revenue: metaRevenueSeriesCompare[index]?.revenue || 0,
@@ -4228,6 +4232,10 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 </div>
               </div>
               <div className="mt-4 w-full h-[280px] min-h-[280px]">
+                {(() => {
+                  console.log("[debug] spendChartRows sample", spendChartData.slice(0, 3));
+                  return null;
+                })()}
                 <MultiSeriesEventfulLineChart
                   data={spendChartData}
                   compareData={spendChartDataCompare}
@@ -4412,6 +4420,10 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 <span className="text-[11px] text-slate-400">{seriesDebug(revenueChartData)}</span>
               </div>
               <div className="mb-2 text-[11px] text-slate-400">{seriesDebug(revenueChartData)}</div>
+              {(() => {
+                console.log("[debug] revenueChartRows sample", revenueChartData.slice(0, 3));
+                return null;
+              })()}
               <MultiSeriesEventfulLineChart
                 data={revenueChartData}
                 compareData={revenueChartDataCompare}

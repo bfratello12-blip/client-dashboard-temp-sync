@@ -1879,17 +1879,35 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         }
         return typeof count === "number" ? count : 0;
       };
-      const metricData = await supabaseFetchAll<DailyMetricRow>(
-        (from, to) => supabase
-          .from("daily_metrics")
-          // Include `orders` so Shopify truth can compute Orders + AOV reliably
-          .select("date, client_id, source, spend, revenue, units, clicks, impressions, conversions, orders")
-          .eq("client_id", cid)
-          .gte("date", fetchStartISO)
-          .lte("date", fetchEndISO)
-          .order("date", { ascending: true }),
-        1000
-      );
+      console.log("[debug] daily_metrics query (before)", {
+        cid,
+        fetchStartISO,
+        fetchEndISO,
+        supabaseClientType: typeof window !== "undefined" ? "client (browser/anon)" : "server",
+      });
+      let metricDataError: any = null;
+      let metricData: DailyMetricRow[] = [];
+      try {
+        metricData = await supabaseFetchAll<DailyMetricRow>(
+          (from, to) => supabase
+            .from("daily_metrics")
+            // Include `orders` so Shopify truth can compute Orders + AOV reliably
+            .select("date, client_id, source, spend, revenue, units, clicks, impressions, conversions, orders")
+            .eq("client_id", cid)
+            .gte("date", fetchStartISO)
+            .lte("date", fetchEndISO)
+            .order("date", { ascending: true }),
+          1000
+        );
+      } catch (e: any) {
+        metricDataError = e;
+        throw e;
+      }
+      console.log("[debug] daily_metrics query (after)", {
+        error: metricDataError ? (metricDataError?.message || String(metricDataError)) : null,
+        rows: (metricData ?? []).length,
+        sample: (metricData ?? []).slice(0, 2),
+      });
       {
         const sources = Array.from(new Set((metricData ?? []).map((r) => String(r.source || "").toLowerCase()))).filter(Boolean);
         const googleSpend = (metricData ?? []).reduce((s, r) => s + (String(r.source) === "google" ? Number(r.spend || 0) : 0), 0);

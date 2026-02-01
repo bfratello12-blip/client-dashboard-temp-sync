@@ -4452,7 +4452,17 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
                 <div>
                   {showProfitTrendline && profitTrendline?.slope != null ? (
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                    <span
+                      className={[
+                        "inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold shadow-md shadow-black/30",
+                        profitTrendline.slope > 0
+                          ? "bg-emerald-500/90 text-white"
+                          : profitTrendline.slope < 0
+                          ? "bg-rose-500/90 text-white"
+                          : "bg-slate-500/80 text-white",
+                      ].join(" ")}
+                    >
+                      <span className="h-2 w-2 rounded-full bg-white/90" aria-hidden />
                       {profitTrendline.slope > 0 ? "Trending up" : profitTrendline.slope < 0 ? "Trending down" : "Flat"}
                       {" · "}
                       {`${profitTrendline.slope >= 0 ? "+" : "-"}${formatCurrency(Math.abs(profitTrendline.slope))}/day`}

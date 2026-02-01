@@ -1381,7 +1381,7 @@ export default function Home({ initialClientId }: { initialClientId?: string }) 
   /** Rolling controls for other trend charts */
   const [profitRollingEnabled, setProfitRollingEnabled] = useState(false);
   const [profitRollingWindowDays, setProfitRollingWindowDays] = useState<number>(7);
-  const [showProfitTrendline, setShowProfitTrendline] = useState<boolean>(false);
+  const [showProfitTrendline, setShowProfitTrendline] = useState<boolean>(true);
   const [revenueRollingEnabled, setRevenueRollingEnabled] = useState(false);
   const [revenueRollingWindowDays, setRevenueRollingWindowDays] = useState<number>(7);
   const [aspRollingEnabled, setAspRollingEnabled] = useState(false);
@@ -4485,7 +4485,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                   {showProfitTrendline && profitTrendline?.slope != null ? (
                     <span
                       className={[
-                        "inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold shadow-md shadow-black/30",
+                        "inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold",
                         profitTrendline.slope > 0
                           ? "bg-emerald-500/90 text-white"
                           : profitTrendline.slope < 0

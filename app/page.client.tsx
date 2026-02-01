@@ -2150,8 +2150,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         }
       }
       const revenueByDatePrimary: Record<string, number> = {};
-      const shopifyRevenueByDatePrimary: Record<string, number> = {};
-      const aspByDatePrimary: Record<string, number | null> = {};
+      const aspByDatePrimary: Record<string, number> = {};
       const unitsByDatePrimary: Record<string, number> = {};
       const ordersByDatePrimary: Record<string, number> = {};
       for (const r of profitDataAll) {
@@ -2160,12 +2159,9 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       }
       for (const r of salesDataAll) {
         const iso = toISO10(r.date);
-        const units = Number(r.units || 0);
-        const revenue = Number(r.revenue || 0);
-        shopifyRevenueByDatePrimary[iso] = revenue;
-        unitsByDatePrimary[iso] = units;
+        aspByDatePrimary[iso] = Number(r.asp || 0);
+        unitsByDatePrimary[iso] = Number(r.units || 0);
         ordersByDatePrimary[iso] = Number(r.orders || 0);
-        aspByDatePrimary[iso] = units > 0 ? revenue / units : null;
       }
       /** PRIMARY totals */
       const adAgg = inPrimaryMetric.reduce(
@@ -2271,7 +2267,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       const revenueSeriesBuilt: { date: string; revenue: number }[] = [];
       const googleRevenueSeriesBuilt: { date: string; revenue: number }[] = [];
       const metaRevenueSeriesBuilt: { date: string; revenue: number }[] = [];
-      const aspSeriesBuilt: { date: string; asp: number | null }[] = [];
+      const aspSeriesBuilt: { date: string; asp: number }[] = [];
       const merSeriesBuilt: { date: string; mer: number }[] = [];
       const profitMerSeriesBuilt: { date: string; profit_mer: number }[] = [];
       const contribProfitSeriesBuilt: { date: string; contribution_profit: number }[] = [];
@@ -2285,7 +2281,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
           const rev = Number(revenueByDatePrimary[iso] || 0);
           const googleRev = Number(googleRevByDatePrimary[iso] || 0);
           const metaRev = Number(metaRevByDatePrimary[iso] || 0);
-          const asp = aspByDatePrimary[iso] ?? null;
+          const asp = Number(aspByDatePrimary[iso] || 0);
           const mer = spend > 0 ? rev / spend : 0;
           const totalCosts = computeTotalCosts(iso);
           spendSeriesBuilt.push({ date: iso, spend });
@@ -2312,7 +2308,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       const revenueSeriesCompareBuilt: { date: string; revenue: number }[] = [];
       const googleRevenueSeriesCompareBuilt: { date: string; revenue: number }[] = [];
       const metaRevenueSeriesCompareBuilt: { date: string; revenue: number }[] = [];
-      const aspSeriesCompareBuilt: { date: string; asp: number | null }[] = [];
+      const aspSeriesCompareBuilt: { date: string; asp: number }[] = [];
       const merSeriesCompareBuilt: { date: string; mer: number }[] = [];
       const profitMerSeriesCompareBuilt: { date: string; profit_mer: number }[] = [];
       const contribProfitSeriesCompareBuilt: { date: string; contribution_profit: number }[] = [];
@@ -2350,9 +2346,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
           }
         }
         const revenueByDateCompare: Record<string, number> = {};
-        const shopifyRevenueByDateCompare: Record<string, number> = {};
-        const unitsByDateCompare: Record<string, number> = {};
-        const aspByDateCompare: Record<string, number | null> = {};
+        const aspByDateCompare: Record<string, number> = {};
         // Profit series for compare window can reuse the same per-day profit maps we built above.
         for (const r of rawInCompareProfit) {
           const iso = toISO10(r.date);
@@ -2360,11 +2354,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         }
         for (const r of rawInCompareSales) {
           const iso = toISO10(r.date);
-          const units = Number(r.units || 0);
-          const revenue = Number(r.revenue || 0);
-          shopifyRevenueByDateCompare[iso] = revenue;
-          unitsByDateCompare[iso] = units;
-          aspByDateCompare[iso] = units > 0 ? revenue / units : null;
+          aspByDateCompare[iso] = Number(r.asp || 0);
         }
         for (let i = 0; i < primary.days; i++) {
           const primaryISO = addDaysISO(primary.startISO, i);
@@ -2375,7 +2365,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
           const rev = Number(revenueByDateCompare[compareISO] || 0);
           const googleRev = Number(googleRevByDateCompare[compareISO] || 0);
           const metaRev = Number(metaRevByDateCompare[compareISO] || 0);
-          const asp = aspByDateCompare[compareISO] ?? null;
+          const asp = Number(aspByDateCompare[compareISO] || 0);
           const mer = spend > 0 ? rev / spend : 0;
           const totalCosts = computeTotalCosts(compareISO);
           spendSeriesCompareBuilt.push({ date: primaryISO, spend });
@@ -2727,29 +2717,17 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     windowDays: number
   ): T[] {
     const src = (series ?? []) as any[];
-    if (!src.length) return [] as T[];
     const w = Math.max(1, Math.floor(Number(windowDays) || 1));
-    if (w > src.length) return src as T[];
     const out: any[] = [];
-    const q: { v: number; ok: boolean }[] = [];
+    const q: number[] = [];
     let sum = 0;
-    let count = 0;
     for (let i = 0; i < src.length; i++) {
       const v = Number(src[i]?.[key as any]);
       const ok = Number.isFinite(v);
-      q.push({ v: ok ? v : 0, ok });
-      if (ok) {
-        sum += v;
-        count += 1;
-      }
-      if (q.length > w) {
-        const dropped = q.shift();
-        if (dropped?.ok) {
-          sum -= dropped.v;
-          count -= 1;
-        }
-      }
-      out.push({ ...src[i], [key]: count > 0 ? sum / count : null });
+      q.push(ok ? v : 0);
+      sum += ok ? v : 0;
+      if (q.length > w) sum -= q.shift() || 0;
+      out.push({ ...src[i], [key]: ok ? sum / q.length : null });
     }
     return out as T[];
   }
@@ -2804,8 +2782,9 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     }));
   }, [spendSeries, metaSpendSeries, googleSpendSeries, windowStartISO, windowEndISO, rangeDays]);
   const spendChartRows = useMemo(() => {
+    if (metricDataCount === 0) return [] as typeof spendChartData;
     return spendChartData;
-  }, [spendChartData, windowStartISO, windowEndISO, rangeDays]);
+  }, [metricDataCount, spendChartData, windowStartISO, windowEndISO, rangeDays]);
   /** Spend chart series configuration */
   const spendChartSeries = useMemo(() => {
     const series = [];

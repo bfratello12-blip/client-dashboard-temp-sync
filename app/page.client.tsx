@@ -2254,49 +2254,10 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         );
       };
       const computeContributionProfit = (iso: string): number => {
-        // IMPORTANT:
-        // Profit Trend should match the KPI Profit calculation.
-        const validMarginOverride =
-          marginAfterCostsPct != null &&
-          Number.isFinite(marginAfterCostsPct) &&
-          marginAfterCostsPct > 0 &&
-          marginAfterCostsPct < 1;
-        const revPrimary = Number(revenueByDatePrimary[iso] || 0);
-        const spendPrimary = Number(spendByDatePrimary[iso] || 0);
         const row = profitRowByDate[iso];
-        if (row) {
-          let cp = Number(row.contribution_profit);
-          const rev = Number(row.revenue);
-          const pm = Number(row.profit_mer);
-          const hasCosts =
-            Number.isFinite(Number(row.est_cogs)) ||
-            Number.isFinite(Number(row.est_processing_fees)) ||
-            Number.isFinite(Number(row.est_fulfillment_costs)) ||
-            Number.isFinite(Number(row.est_other_variable_costs)) ||
-            Number.isFinite(Number(row.est_other_fixed_costs));
-          const hasUsableRow =
-            Number.isFinite(cp) ||
-            (Number.isFinite(rev) && rev > 0 && hasCosts) ||
-            Number.isFinite(Number(row.paid_spend));
-          if (hasUsableRow) {
-            if (
-              (!Number.isFinite(cp) || (cp === 0 && Number.isFinite(rev) && rev > 0)) &&
-              Number.isFinite(rev) &&
-              rev > 0 &&
-              Number.isFinite(pm) &&
-              pm > 0
-            ) {
-              const derived = rev - rev / pm;
-              if (Number.isFinite(derived)) cp = derived;
-            }
-            return Number.isFinite(cp) ? Number(cp.toFixed(2)) : 0;
-          }
-        }
-        if (validMarginOverride && (revPrimary !== 0 || spendPrimary !== 0)) {
-          const v = revPrimary * Number(marginAfterCostsPct) - spendPrimary;
-          return Number.isFinite(v) ? Number(v.toFixed(2)) : 0;
-        }
-        return 0;
+        if (!row) return 0;
+        const cp = Number(row.contribution_profit);
+        return Number.isFinite(cp) ? Number(cp.toFixed(2)) : 0;
       };
       /** PRIMARY series (forced full window) */
       const spendSeriesBuilt: { date: string; spend: number }[] = [];

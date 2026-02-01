@@ -11,6 +11,10 @@ if (!base || !clientId || !token) {
   process.exit(1);
 }
 
+if (!process.stdout.isTTY) {
+  console.error("[gen_backfill_cmds] stdout is not a TTY; generating script to stdout...");
+}
+
 const START = new Date("2023-01-01T00:00:00Z");
 const END = new Date("2026-01-31T00:00:00Z");
 

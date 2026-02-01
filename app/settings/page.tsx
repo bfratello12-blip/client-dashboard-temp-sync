@@ -29,6 +29,28 @@ type IntegrationStatus = {
 };
 
 const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
+const TIMEZONE = "America/New_York";
+
+function isoDateInTimeZone(d: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(d);
+  const yyyy = parts.find((p) => p.type === "year")?.value ?? "";
+  const mm = parts.find((p) => p.type === "month")?.value ?? "";
+  const dd = parts.find((p) => p.type === "day")?.value ?? "";
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function last30DaysRangeISO(timeZone: string) {
+  const endISO = isoDateInTimeZone(new Date(), timeZone);
+  const endDate = new Date(`${endISO}T00:00:00Z`);
+  endDate.setUTCDate(endDate.getUTCDate() - 29);
+  const startISO = isoDateInTimeZone(endDate, timeZone);
+  return { startISO, endISO };
+}
 
 function Field({
   label,
@@ -164,17 +186,46 @@ function SettingsPage() {
         margin_after_costs_pct: normPct(cs.margin_after_costs_pct),
       };
 
-      const { error } = await supabase.from("client_cost_settings").upsert(payload, { onConflict: "client_id" });
-      if (error) throw error;
+      const syncToken = process.env.NEXT_PUBLIC_SYNC_TOKEN || "";
+      const res = await fetch("/api/client-cost-settings", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(syncToken ? { Authorization: `Bearer ${syncToken}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || body?.ok === false) {
+        throw new Error(body?.error || `Save failed (${res.status})`);
+      }
 
-      setSaveSuccess("Saved");
+      const { startISO, endISO } = last30DaysRangeISO(TIMEZONE);
+      const recomputeParams = new URLSearchParams({
+        client_id: clientId,
+        start: startISO,
+        end: endISO,
+      });
+      if (syncToken) recomputeParams.set("token", syncToken);
+      const recomputeUrl = `/api/shopify/recompute?${recomputeParams.toString()}`;
+      const recomputeRes = await fetch(recomputeUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+      });
+      if (!recomputeRes.ok) {
+        const t = await recomputeRes.text().catch(() => "");
+        throw new Error(t || `Recompute failed (${recomputeRes.status})`);
+      }
+
+      setSaveSuccess("Saved & updated last 30 days");
+      router.refresh();
     } catch (e: any) {
       console.error(e);
       setSaveError(e?.message ?? "Save failed");
     } finally {
       setSaving(false);
     }
-  }, [clientId, costSettings]);
+  }, [clientId, costSettings, router]);
 
   const runRecompute = useCallback(async () => {
     try {
@@ -201,37 +252,25 @@ function SettingsPage() {
       setSaveError("");
       setSaveSuccess("");
 
-      // Get the last 30 days for sync
-      const endDate = new Date();
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - 30);
-      
-      const startISO = startDate.toISOString().split('T')[0];
-      const endISO = endDate.toISOString().split('T')[0];
-
-      const res = await fetch(
-        `/api/cron/rolling-30?start=${startISO}&end=${endISO}&fillZeros=1`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${process.env.NEXT_PUBLIC_SYNC_TOKEN}`,
-          },
-        }
-      );
+      const syncToken = process.env.NEXT_PUBLIC_SYNC_TOKEN || "";
+      const syncParams = new URLSearchParams({ client_id: clientId });
+      if (syncToken) syncParams.set("token", syncToken);
+      const res = await fetch(`/api/cron/daily-sync?${syncParams.toString()}`, { method: "POST" });
 
       if (!res.ok) {
         const t = await res.text();
         throw new Error(t || `Sync failed (${res.status})`);
       }
 
-      setSaveSuccess("Data sync completed successfully");
+      setSaveSuccess("Sync completed successfully");
+      router.refresh();
     } catch (e: any) {
       console.error(e);
       setSyncError(e?.message ?? "Sync failed");
     } finally {
       setSyncing(false);
     }
-  }, []);
+  }, [clientId, router]);
 
   const logout = useCallback(async () => {
     await supabase.auth.signOut();
@@ -621,14 +660,14 @@ function SettingsPage() {
                 }`}
                 title="Pull latest Meta, Google, and Shopify data"
               >
-                {syncing ? "Syncing..." : "Sync data"}
+                {syncing ? "Syncing..." : "Sync & Refresh (Last 30 Days)"}
               </button>
               <button
                 onClick={save}
                 disabled={saving || !clientId}
                 className="rounded-xl bg-gradient-to-b from-[#2B72D7] to-[#1f5fb8] px-4 py-2 text-sm font-semibold text-white hover:bg-gradient-to-b hover:from-[#1f5fb8] hover:to-[#1a4a9a] disabled:opacity-50"
               >
-                {saving ? "Saving…" : "Save changes"}
+                {saving ? "Saving & Updating…" : "Save changes"}
               </button>
             </div>
           </header>

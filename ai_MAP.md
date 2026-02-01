@@ -72,7 +72,7 @@ ScaleAble prioritizes metrics that reflect actual business health:
 
 #### daily_profit_summary
 - Derived daily profit metrics.
-- Stores revenue, spend, estimated costs, contribution_profit, mer, profit_mer.
+- Stores revenue, paid_spend, estimated costs, contribution_profit, mer, profit_mer.
 
 #### daily_shopify_cogs_coverage
 - Coverage summary for unit cost availability on daily Shopify revenue.
@@ -118,10 +118,12 @@ ScaleAble prioritizes metrics that reflect actual business health:
 - Defaults are stored in client cost settings.
 
 ### Contribution profit and profit MER
-Computed in daily recompute and stored in `daily_profit_summary`:
-- contribution_profit = revenue - (paid_spend + variable_costs + fixed_costs + estimated_cogs)
+Computed during recompute and stored in `daily_profit_summary`:
+- contribution_profit = revenue - (paid_spend + est_cogs + est_processing_fees + est_fulfillment_costs + est_other_variable_costs + est_other_fixed_costs)
 - mer = revenue ÷ paid_spend
 - profit_mer = contribution_profit ÷ paid_spend
+
+Contribution profit is **fully net of all estimated costs** and must be treated as the canonical profit metric downstream.
 
 ---
 
@@ -152,10 +154,28 @@ Computed in daily recompute and stored in `daily_profit_summary`:
 5) Shopify recompute (profit + COGS coverage)
 6) Rolling-30 recompute
 
-### How rolling-30 works
-- Reads daily_metrics + cost settings.
-- Writes daily_profit_summary and aggregates 30-day windows.
-- Produces stable KPI trends for dashboards.
+### **Rolling-30 KPI Computation (Canonical)**
+
+**Important: this supersedes any older rolling-30 logic.**
+
+- Rolling-30 KPIs are **derived dynamically from daily tables**.
+- **Profit source of truth:** `daily_profit_summary.contribution_profit`.
+- **Spend source of truth:** `daily_metrics.spend` where source in (`google`, `meta`).
+- Profit and spend are **aggregated independently** over the same 30-day window.
+- **The UI must never recompute profit** from revenue or subtract cost fields.
+- **No `est_*` cost columns are used in frontend calculations.**
+
+**Rolling-30 formulas:**
+- Rolling Profit = `sum(contribution_profit)`
+- Rolling Spend = `sum(spend)`
+- Profit Return / Profit MER = `Rolling Profit ÷ Rolling Spend`
+
+This design prevents:
+- Double-subtraction of processing fees
+- Duplication of profit across multiple ad sources
+- Drift between SQL truth and dashboard KPIs
+
+Rolling-30 values are validated against SQL ground truth and must match exactly.
 
 ### Why each Vercel deployment has the same cron path
 - Each deployment is self-contained; cron endpoints are identical across deploys.
@@ -259,3 +279,4 @@ curl -sS -X POST "https://YOUR_DOMAIN/api/cron/rolling-30?client_id=<CLIENT_ID>&
 - Ensure daily cron runs are healthy.
 - Monitor OAuth token freshness in `shopify_app_installs`.
 - Validate integrations in `client_integrations` (token + account IDs).
+

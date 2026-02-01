@@ -2686,6 +2686,8 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     Number.isFinite(Number(compareProfitTotals.contributionProfit))
       ? Number(compareProfitTotals.contributionProfit)
       : 0;
+  const totalCostsPrimaryKpi = bizTotals.revenue - profitPrimaryValue;
+  const totalCostsCompareKpi = compareTotals.bizRevenue - profitCompareValue;
   const totalCostsPrimary = Number(profitTotals.paidSpend || 0);
   const totalCostsCompare = Number(compareProfitTotals.paidSpend || 0);
   const mer = adTotals.spend > 0 ? bizTotals.revenue / adTotals.spend : 0;
@@ -3162,6 +3164,12 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       return [
         { label: "Total Revenue", value: formatCurrency(bizTotals.revenue), sub: `${rangeDays} day(s) • Shopify revenue`, trend: undefined },
         {
+          label: "Total Costs",
+          value: formatCurrency(totalCostsPrimaryKpi),
+          sub: "Total operating costs including COGS, fulfillment, fees, and paid advertising.",
+          trend: undefined,
+        },
+        {
           label: "Profit",
           value:
             profitPrimary != null ? formatCurrency(profitPrimary) : "—",
@@ -3194,9 +3202,16 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     const spendDelta = pctChange(adTotals.spend, compareTotals.adSpend);
     const roasDelta = pctChange(adRoas, prevRoas);
     const ctrDelta = pctChange(ctr, prevCtr);
+    const totalCostsDelta = pctChange(totalCostsPrimaryKpi, totalCostsCompareKpi);
     const merDelta = pctChange(profitReturnOnCosts, prevProfitReturnOnCosts);
     return [
       { label: "Total Revenue", value: formatCurrency(bizTotals.revenue), sub: `vs prev: ${fmtDelta(revDelta, allowPct)}`, trend: allowPct ? revDelta : undefined },
+      {
+        label: "Total Costs",
+        value: formatCurrency(totalCostsPrimaryKpi),
+        sub: `vs prev: ${fmtDelta(totalCostsDelta, allowPct)}`,
+        trend: allowPct ? totalCostsDelta : undefined,
+      },
       {
         label: "Profit",
         value:
@@ -3237,6 +3252,8 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     prevProfitReturnOnCosts,
     profitPrimaryValue,
     profitCompareValue,
+    totalCostsPrimaryKpi,
+    totalCostsCompareKpi,
     totalCostsPrimary,
     totalCostsCompare,
     rangeDays,

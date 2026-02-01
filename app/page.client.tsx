@@ -2678,39 +2678,18 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
   /** Derived metrics */
   const adRoas = adTotals.spend > 0 ? adTotals.revenue / adTotals.spend : 0;
   const ctr = adTotals.impressions > 0 ? (adTotals.clicks / adTotals.impressions) * 100 : 0;
-  const validMarginOverride =
-    marginAfterCostsPct != null &&
-    Number.isFinite(marginAfterCostsPct) &&
-    marginAfterCostsPct > 0 &&
-    marginAfterCostsPct < 1;
   const profitPrimaryValue =
     Number.isFinite(Number(profitTotals.contributionProfit))
       ? Number(profitTotals.contributionProfit)
-      : validMarginOverride
-      ? bizTotals.revenue * marginAfterCostsPct - adTotals.spend
       : 0;
   const profitCompareValue =
     Number.isFinite(Number(compareProfitTotals.contributionProfit))
       ? Number(compareProfitTotals.contributionProfit)
-      : validMarginOverride
-      ? compareTotals.bizRevenue * marginAfterCostsPct - compareTotals.adSpend
       : 0;
-  const totalCostsPrimary =
-    Number(profitTotals.paidSpend || 0) +
-    Number(profitTotals.estCogs || 0) +
-    Number(profitTotals.estProcessingFees || 0) +
-    Number(profitTotals.estFulfillmentCosts || 0) +
-    Number(profitTotals.estOtherVariableCosts || 0) +
-    Number(profitTotals.estOtherFixedCosts || 0);
-  const totalCostsCompare =
-    Number(compareProfitTotals.paidSpend || 0) +
-    Number(compareProfitTotals.estCogs || 0) +
-    Number(compareProfitTotals.estProcessingFees || 0) +
-    Number(compareProfitTotals.estFulfillmentCosts || 0) +
-    Number(compareProfitTotals.estOtherVariableCosts || 0) +
-    Number(compareProfitTotals.estOtherFixedCosts || 0);
+  const totalCostsPrimary = Number(profitTotals.paidSpend || 0);
+  const totalCostsCompare = Number(compareProfitTotals.paidSpend || 0);
   const mer = adTotals.spend > 0 ? bizTotals.revenue / adTotals.spend : 0;
-  const profitReturnOnCosts = totalCostsPrimary > 0 ? bizTotals.revenue / totalCostsPrimary : 0;
+  const profitReturnOnCosts = totalCostsPrimary > 0 ? profitPrimaryValue / totalCostsPrimary : 0;
   const prevAov =
     effectiveShowComparison && compareTotals.bizOrders > 0 ? compareTotals.bizRevenue / compareTotals.bizOrders : 0;
   const prevAsp =
@@ -2718,7 +2697,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
   const prevMer =
     effectiveShowComparison && compareTotals.adSpend > 0 ? compareTotals.bizRevenue / compareTotals.adSpend : 0;
   const prevProfitReturnOnCosts =
-    effectiveShowComparison && totalCostsCompare > 0 ? compareTotals.bizRevenue / totalCostsCompare : 0;
+    effectiveShowComparison && totalCostsCompare > 0 ? profitCompareValue / totalCostsCompare : 0;
   const prevRoas =
     effectiveShowComparison && compareTotals.adSpend > 0 ? compareTotals.adRevenue / compareTotals.adSpend : 0;
   const prevCtr =
@@ -3185,17 +3164,9 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         {
           label: "Profit",
           value:
-            profitPrimary != null
-              ? formatCurrency(profitPrimary)
-              : marginAfterCostsPct != null
-              ? formatCurrency(bizTotals.revenue * marginAfterCostsPct - adTotals.spend)
-              : "—",
+            profitPrimary != null ? formatCurrency(profitPrimary) : "—",
           sub:
-            profitPrimary != null
-              ? "Contribution profit after costs & ad spend"
-              : marginAfterCostsPct != null
-              ? "Estimated profit after costs & ad spend"
-              : "Add margin in settings",
+            profitPrimary != null ? "Contribution profit after costs & ad spend" : "—",
           trend: undefined,
         },
         { label: "Orders", value: formatNumber(bizTotals.orders), sub: "Shopify orders", trend: undefined },
@@ -3206,7 +3177,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         {
           label: "Profit Return",
           value: `${profitReturnOnCosts.toFixed(2)}x`,
-          sub: "Revenue generated per $1 of total costs",
+          sub: "Contribution profit per $1 of ad spend",
           trend: undefined,
         },
         { label: "CTR", value: formatPct(ctr), sub: "Click-through-rate", trend: undefined },
@@ -3229,25 +3200,14 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       {
         label: "Profit",
         value:
-          profitPrimary != null
-            ? formatCurrency(profitPrimary)
-            : marginAfterCostsPct != null
-            ? formatCurrency(bizTotals.revenue * marginAfterCostsPct - adTotals.spend)
-            : "—",
+          profitPrimary != null ? formatCurrency(profitPrimary) : "—",
         sub:
           profitPrimary != null && profitCompare != null
             ? `vs prev: ${formatSignedCurrency(profitPrimary - profitCompare)}`
-            : marginAfterCostsPct != null
-            ? `vs prev: ${formatSignedCurrency(
-                (bizTotals.revenue * marginAfterCostsPct - adTotals.spend) -
-                  (compareTotals.bizRevenue * marginAfterCostsPct - compareTotals.adSpend)
-              )}`
-            : "Add margin in settings",
+            : "—",
         trend:
           profitPrimary != null && profitCompare != null && allowPct
             ? pctChange(profitPrimary, profitCompare)
-            : marginAfterCostsPct != null && allowPct
-            ? pctChange(bizTotals.revenue * marginAfterCostsPct - adTotals.spend, compareTotals.bizRevenue * marginAfterCostsPct - compareTotals.adSpend)
             : undefined,
       },
       { label: "Orders", value: formatNumber(bizTotals.orders), sub: `vs prev: ${fmtDelta(ordDelta, allowPct)}`, trend: allowPct ? ordDelta : undefined },

@@ -4441,11 +4441,6 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
               subtitle={`Estimated profit (after costs & ad spend • ${profitRollingEnabled ? `rolling ${profitRollingWindowDays}d` : "daily"} • ${rangeDays} days)`}
               badge="Profit"
             >
-              {marginAfterCostsPct == null ? (
-                <div className="mb-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800 ring-1 ring-amber-200">
-                  Add your margin in settings to see Profit.
-                </div>
-              ) : null}
               <div className="mb-2 flex flex-wrap items-center gap-3 text-xs text-slate-600">
                 <label className="flex items-center gap-2">
                   <input

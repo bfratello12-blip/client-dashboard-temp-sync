@@ -908,10 +908,19 @@ function SettingsPage() {
                       {productCostMode === "shopify" ? (
                         <div className="mt-2 text-xs text-slate-600">
                           <div className="font-semibold text-slate-700">COGS coverage (last 7 days)</div>
-                          <div className="mt-0.5 text-slate-600">
-                            {cogsCoveragePct == null
-                              ? "—"
-                              : `${Math.round(cogsCoveragePct * 100)}%`}
+                          <div
+                            className={[
+                              "mt-0.5",
+                              cogsCoveragePct == null
+                                ? "text-slate-600"
+                                : cogsCoveragePct >= 0.75
+                                ? "text-emerald-600"
+                                : cogsCoveragePct >= 0.5
+                                ? "text-amber-600"
+                                : "text-rose-600",
+                            ].join(" ")}
+                          >
+                            {cogsCoveragePct == null ? "—" : `${Math.round(cogsCoveragePct * 100)}%`}
                           </div>
                           <div className="mt-0.5 text-[11px] text-slate-500">
                             % of revenue from products with a Shopify unit cost.

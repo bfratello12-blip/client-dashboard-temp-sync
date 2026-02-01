@@ -20,6 +20,7 @@ type ClientCostSettings = {
   other_variable_pct_revenue: number | null;
   other_fixed_per_day: number | null;
   margin_after_costs_pct: number | null;
+  exclude_pos_orders: boolean | null;
 };
 
 type IntegrationStatus = {
@@ -164,6 +165,18 @@ function SettingsPage() {
     [clientId]
   );
 
+  const setCSBool = useCallback(
+    (key: keyof ClientCostSettings, value: boolean) => {
+      setSaveSuccess("");
+      setSaveError("");
+      setCostSettings((base) => {
+        const next = (base || { client_id: clientId }) as ClientCostSettings;
+        return { ...next, [key]: value } as ClientCostSettings;
+      });
+    },
+    [clientId]
+  );
+
   const save = useCallback(async () => {
     if (!clientId) return;
     setSaving(true);
@@ -184,6 +197,7 @@ function SettingsPage() {
         other_variable_pct_revenue: normPct(cs.other_variable_pct_revenue),
         other_fixed_per_day: normNum(cs.other_fixed_per_day),
         margin_after_costs_pct: normPct(cs.margin_after_costs_pct),
+        exclude_pos_orders: Boolean(cs.exclude_pos_orders),
       };
 
       const syncToken = process.env.NEXT_PUBLIC_SYNC_TOKEN || "";
@@ -524,7 +538,7 @@ function SettingsPage() {
       const { data: csRow } = await supabase
         .from("client_cost_settings")
         .select(
-          "client_id, default_gross_margin_pct, avg_cogs_per_unit, processing_fee_pct, processing_fee_fixed, pick_pack_per_order, shipping_subsidy_per_order, materials_per_order, other_variable_pct_revenue, other_fixed_per_day, margin_after_costs_pct"
+          "client_id, default_gross_margin_pct, avg_cogs_per_unit, processing_fee_pct, processing_fee_fixed, pick_pack_per_order, shipping_subsidy_per_order, materials_per_order, other_variable_pct_revenue, other_fixed_per_day, margin_after_costs_pct, exclude_pos_orders"
         )
         .eq("client_id", cid)
         .limit(1);
@@ -542,6 +556,7 @@ function SettingsPage() {
         other_variable_pct_revenue: row?.other_variable_pct_revenue != null ? Number(row.other_variable_pct_revenue) : null,
         other_fixed_per_day: row?.other_fixed_per_day != null ? Number(row.other_fixed_per_day) : null,
         margin_after_costs_pct: row?.margin_after_costs_pct != null ? Number(row.margin_after_costs_pct) : null,
+        exclude_pos_orders: row?.exclude_pos_orders === true,
       };
 
       if (!cancelled) {
@@ -995,6 +1010,26 @@ function SettingsPage() {
                     </div>
                   ) : null}
                 </div>
+              </Field>
+
+              <Field
+                label="Shopify orders"
+                help="Exclude Shopify POS (Point of Sale) orders from Shopify-derived metrics and line items."
+              >
+                <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-3 hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(costs.exclude_pos_orders)}
+                    onChange={(e) => setCSBool("exclude_pos_orders", e.target.checked)}
+                    className="mt-1 h-4 w-4"
+                  />
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-slate-900">Exclude POS orders</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      Filters out Point of Sale sales from daily revenue, orders, units, and line items.
+                    </div>
+                  </div>
+                </label>
               </Field>
 
               <Field

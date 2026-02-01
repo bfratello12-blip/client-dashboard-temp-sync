@@ -28,6 +28,15 @@ function safeStr(...vals: any[]): string | undefined {
   return undefined;
 }
 
+function isPosSourceName(sourceName?: string | null): boolean {
+  const s = String(sourceName || "").trim().toLowerCase();
+  if (!s) return false;
+  if (s === "pos") return true;
+  if (s.includes("shopify_pos") || s.includes("shopify pos")) return true;
+  if (s.includes("point of sale") || s.includes("point-of-sale")) return true;
+  return /\bpos\b/.test(s);
+}
+
 
 function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
   // Returns the offset in minutes between UTC and the provided IANA timeZone at the given instant.
@@ -295,7 +304,14 @@ const idxNetItems = (() => {
 
 
 // Fallback: aggregate orders by createdAt, using shop timezone day-bucketing
-async function queryOrdersFallback(shop: string, token: string, startISO: string, endISO: string, timeZone: string) {
+async function queryOrdersFallback(
+  shop: string,
+  token: string,
+  startISO: string,
+  endISO: string,
+  timeZone: string,
+  excludePosOrders: boolean
+) {
   // Orders-based approximation of Shopify "Total sales over time":
   // - Bucket orders by order.createdAt day in shop timezone
   // - Bucket refunds/returns by refund.createdAt day in shop timezone
@@ -306,6 +322,11 @@ async function queryOrdersFallback(shop: string, token: string, startISO: string
   const bucketsOrders: Record<string, number> = {};
   const bucketsRefunds: Record<string, number> = {};
   const bucketsUnits: Record<string, number> = {};
+  let excludedOrders = 0;
+  let excludedUnits = 0;
+  let excludedRevenue = 0;
+  let excludedRefunds = 0;
+  let excludedRefundsAmount = 0;
 
   // Build an explicit UTC timestamp window that corresponds to [startISO 00:00:00 .. endISO 23:59:59] in shop TZ.
   const startUtc = zonedDateTimeToUtcISO(startISO, "00:00:00", timeZone);
@@ -331,6 +352,7 @@ async function queryOrdersFallback(shop: string, token: string, startISO: string
                 processedAt
                 createdAt
                 cancelledAt
+                sourceName
                 totalPriceSet { shopMoney { amount } }
                 lineItems(first: 250) { edges { node { quantity } } }
               }
@@ -351,6 +373,16 @@ async function queryOrdersFallback(shop: string, token: string, startISO: string
         const n = e?.node;
         if (!n?.processedAt && !n?.createdAt) continue;
         if (n?.cancelledAt) continue; // ignore cancelled orders
+        if (excludePosOrders && isPosSourceName(n?.sourceName)) {
+          excludedOrders += 1;
+          const excludedAmt = Number(n?.totalPriceSet?.shopMoney?.amount ?? 0) || 0;
+          excludedRevenue += excludedAmt;
+          const items = n?.lineItems?.edges ?? [];
+          let qty = 0;
+          for (const it of items) qty += Number(it?.node?.quantity ?? 0) || 0;
+          excludedUnits += qty;
+          continue;
+        }
         const stamp = n.processedAt || n.createdAt;
         if (!stamp) continue;
         const day = bucketShopifyOrderDay({ processedAt: n.processedAt, createdAt: n.createdAt });
@@ -399,6 +431,7 @@ async function queryOrdersFallback(shop: string, token: string, startISO: string
             edges {
               node {
                 updatedAt
+                sourceName
                 refunds {
                   createdAt
                   totalRefundedSet { shopMoney { amount } }
@@ -419,6 +452,21 @@ async function queryOrdersFallback(shop: string, token: string, startISO: string
       const edges = conn?.edges || [];
       for (const e of edges) {
         const n = e?.node;
+        if (excludePosOrders && isPosSourceName(n?.sourceName)) {
+          const refundsList = n?.refunds || [];
+          for (const ref of refundsList) {
+            if (!ref?.createdAt) continue;
+            const ms = Date.parse(ref.createdAt);
+            if (Number.isFinite(startMs) && Number.isFinite(endMs)) {
+              if (ms < startMs || ms > endMs) continue;
+            }
+            const amt = Number(ref?.totalRefundedSet?.shopMoney?.amount ?? 0) || 0;
+            if (amt <= 0) continue;
+            excludedRefunds += 1;
+            excludedRefundsAmount += amt;
+          }
+          continue;
+        }
         const refundsList = n?.refunds || [];
         for (const ref of refundsList) {
           if (!ref?.createdAt) continue;
@@ -444,7 +492,18 @@ async function queryOrdersFallback(shop: string, token: string, startISO: string
     bucketsRevenue[day] = (bucketsRevenue[day] || 0) - (Number(refundAmt) || 0);
   }
 
-  return { bucketsRevenue, bucketsOrders, bucketsUnits };
+  return {
+    bucketsRevenue,
+    bucketsOrders,
+    bucketsUnits,
+    excluded: {
+      orders: excludedOrders,
+      units: excludedUnits,
+      revenue: excludedRevenue,
+      refunds: excludedRefunds,
+      refundsAmount: excludedRefundsAmount,
+    },
+  };
 }
 
 async function queryDailyCogsCoverage(
@@ -452,13 +511,16 @@ async function queryDailyCogsCoverage(
   token: string,
   startISO: string,
   endISO: string,
-  timeZone: string
+  timeZone: string,
+  excludePosOrders: boolean
 ) {
   let scannedLineItems = 0;
   let withVariant = 0;
   let withInventoryItem = 0;
   let withUnitCost = 0;
   let loggedNoUnitCost = 0;
+  let excludedOrders = 0;
+  let excludedLineItems = 0;
 
   const productCogsKnownByDay: Record<string, number> = {};
   const revenueWithCogsByDay: Record<string, number> = {};
@@ -485,6 +547,7 @@ async function queryDailyCogsCoverage(
               processedAt
               createdAt
               cancelledAt
+              sourceName
               lineItems(first: 250) {
                 edges {
                   node {
@@ -513,6 +576,12 @@ async function queryDailyCogsCoverage(
       const n = e?.node;
       if (!n) continue;
       if (n?.cancelledAt) continue;
+      if (excludePosOrders && isPosSourceName(n?.sourceName)) {
+        excludedOrders += 1;
+        const items = n?.lineItems?.edges ?? [];
+        excludedLineItems += items.length;
+        continue;
+      }
       const stamp = n.processedAt || n.createdAt;
       if (!stamp) continue;
       const day = bucketShopifyOrderDay({ processedAt: n.processedAt, createdAt: n.createdAt });
@@ -572,7 +641,13 @@ async function queryDailyCogsCoverage(
     withUnitCost,
   });
 
-  return { productCogsKnownByDay, revenueWithCogsByDay, unitsWithCogsByDay };
+  return {
+    productCogsKnownByDay,
+    revenueWithCogsByDay,
+    unitsWithCogsByDay,
+    excludedOrders,
+    excludedLineItems,
+  };
 }
 
 
@@ -1032,6 +1107,7 @@ const days = dateRange(startDay, endDay);
       let coverageAttempted = false;
       let coverageRowsUpserted = 0;
       let dailyTotalsSucceeded = false;
+      let excludePosOrders = false;
 
       try {
         // Token from shopify_app_installs (authoritative OAuth install)
@@ -1039,6 +1115,21 @@ const days = dateRange(startDay, endDay);
         const installToken = await getInstallTokenForShop(supabase, clientId, shop);
         const integrationToken = await getIntegrationTokenForShop(supabase, clientId, shop);
         const token = await pickWorkingShopifyToken(normalizeShop(shop), [installToken, integrationToken]);
+
+        try {
+          const { data: csRow, error: csErr } = await supabase
+            .from("client_cost_settings")
+            .select("exclude_pos_orders")
+            .eq("client_id", clientId)
+            .maybeSingle();
+          if (csErr) {
+            console.warn("[shopify/sync] client_cost_settings lookup failed:", csErr.message);
+          } else {
+            excludePosOrders = csRow?.exclude_pos_orders === true;
+          }
+        } catch (e: any) {
+          console.warn("[shopify/sync] client_cost_settings lookup failed:", e?.message || String(e));
+        }
 
         if (debugScopes) {
           try {
@@ -1079,12 +1170,35 @@ const days = dateRange(startDay, endDay);
 
         const normalizedShop = normalizeShop(shop);
 
-        if (modeParam === "orders") {
-          const fallback = await queryOrdersFallback(normalizedShop, token, startDay, endDay, tz);
+        if (modeParam === "orders" || excludePosOrders) {
+          if (excludePosOrders && modeParam !== "orders") {
+            console.info("[shopify/sync] exclude_pos_orders enabled; using orders fallback", {
+              client_id: clientId,
+              shop: normalizedShop,
+            });
+          }
+          const fallback = await queryOrdersFallback(
+            normalizedShop,
+            token,
+            startDay,
+            endDay,
+            tz,
+            excludePosOrders
+          );
           bucketsRevenue = fallback.bucketsRevenue;
           bucketsOrders = fallback.bucketsOrders;
           bucketsUnits = fallback.bucketsUnits || {};
           revenueSource = "fallback";
+          if (excludePosOrders) {
+            console.info("[shopify/sync] excluded POS orders", {
+              client_id: clientId,
+              orders: fallback.excluded?.orders || 0,
+              units: fallback.excluded?.units || 0,
+              revenue: fallback.excluded?.revenue || 0,
+              refunds: fallback.excluded?.refunds || 0,
+              refundsAmount: fallback.excluded?.refundsAmount || 0,
+            });
+          }
         } else if (modeParam === "shopifyql") {
           try {
             const ql = await querySalesShopifyQL(normalizedShop, token, startDay, endDay);
@@ -1093,11 +1207,28 @@ const days = dateRange(startDay, endDay);
             bucketsUnits = ql.bucketsUnits || {};
             revenueSource = "shopifyql";
           } catch (e: any) {
-            const fallback = await queryOrdersFallback(normalizedShop, token, startDay, endDay, tz);
+            const fallback = await queryOrdersFallback(
+              normalizedShop,
+              token,
+              startDay,
+              endDay,
+              tz,
+              excludePosOrders
+            );
             bucketsRevenue = fallback.bucketsRevenue;
             bucketsOrders = fallback.bucketsOrders;
             bucketsUnits = fallback.bucketsUnits || {};
             revenueSource = "fallback";
+            if (excludePosOrders) {
+              console.info("[shopify/sync] excluded POS orders", {
+                client_id: clientId,
+                orders: fallback.excluded?.orders || 0,
+                units: fallback.excluded?.units || 0,
+                revenue: fallback.excluded?.revenue || 0,
+                refunds: fallback.excluded?.refunds || 0,
+                refundsAmount: fallback.excluded?.refundsAmount || 0,
+              });
+            }
           }
         } else {
           // auto
@@ -1108,11 +1239,28 @@ const days = dateRange(startDay, endDay);
             bucketsUnits = ql.bucketsUnits || {};
             revenueSource = "shopifyql";
           } catch (e: any) {
-            const fallback = await queryOrdersFallback(normalizedShop, token, startDay, endDay, tz);
+            const fallback = await queryOrdersFallback(
+              normalizedShop,
+              token,
+              startDay,
+              endDay,
+              tz,
+              excludePosOrders
+            );
             bucketsRevenue = fallback.bucketsRevenue;
             bucketsOrders = fallback.bucketsOrders;
             bucketsUnits = fallback.bucketsUnits || {};
             revenueSource = "fallback";
+            if (excludePosOrders) {
+              console.info("[shopify/sync] excluded POS orders", {
+                client_id: clientId,
+                orders: fallback.excluded?.orders || 0,
+                units: fallback.excluded?.units || 0,
+                revenue: fallback.excluded?.revenue || 0,
+                refunds: fallback.excluded?.refunds || 0,
+                refundsAmount: fallback.excluded?.refundsAmount || 0,
+              });
+            }
           }
         }
 
@@ -1205,8 +1353,17 @@ const rows = days.map((day) => {
             token,
             startDay,
             endDay,
-            tz
+            tz,
+            excludePosOrders
           );
+
+          if (excludePosOrders) {
+            console.info("[shopify/sync] excluded POS orders from COGS coverage", {
+              client_id: clientId,
+              orders: coverage.excludedOrders || 0,
+              lineItems: coverage.excludedLineItems || 0,
+            });
+          }
 
           const coverageRows = days
             .map((day) => {

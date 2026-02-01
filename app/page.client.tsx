@@ -150,6 +150,7 @@ type ClientCostSettings = {
   other_fixed_per_day: number | null;
   // Legacy / optional input used previously in the UI
   margin_after_costs_pct: number | null;
+  exclude_pos_orders: boolean | null;
 };
 /** -----------------------------
  *  Formatting & Utils
@@ -1747,6 +1748,7 @@ export default function Home({ initialClientId }: { initialClientId?: string }) 
         other_variable_pct_revenue: normPct(cs.other_variable_pct_revenue),
         other_fixed_per_day: normNum(cs.other_fixed_per_day),
         margin_after_costs_pct: normPct(cs.margin_after_costs_pct),
+        exclude_pos_orders: Boolean(cs.exclude_pos_orders),
       };
       const { error } = await supabase
         .from("client_cost_settings")
@@ -1800,6 +1802,7 @@ export default function Home({ initialClientId }: { initialClientId?: string }) 
             other_variable_pct_revenue: null,
             other_fixed_per_day: null,
             margin_after_costs_pct: null,
+            exclude_pos_orders: null,
           } as ClientCostSettings);
         return { ...base, [key]: nextVal } as any;
       });
@@ -1904,7 +1907,7 @@ export default function Home({ initialClientId }: { initialClientId?: string }) 
         const { data: csRow, error: csErr } = await supabase
           .from("client_cost_settings")
           .select(
-            "client_id, default_gross_margin_pct, avg_cogs_per_unit, processing_fee_pct, processing_fee_fixed, pick_pack_per_order, shipping_subsidy_per_order, materials_per_order, other_variable_pct_revenue, other_fixed_per_day, margin_after_costs_pct"
+            "client_id, default_gross_margin_pct, avg_cogs_per_unit, processing_fee_pct, processing_fee_fixed, pick_pack_per_order, shipping_subsidy_per_order, materials_per_order, other_variable_pct_revenue, other_fixed_per_day, margin_after_costs_pct, exclude_pos_orders"
           )
           .eq("client_id", cid)
           .limit(1);
@@ -1923,6 +1926,7 @@ export default function Home({ initialClientId }: { initialClientId?: string }) 
               other_variable_pct_revenue: row?.other_variable_pct_revenue != null ? Number(row.other_variable_pct_revenue) : null,
               other_fixed_per_day: row?.other_fixed_per_day != null ? Number(row.other_fixed_per_day) : null,
               margin_after_costs_pct: row?.margin_after_costs_pct != null ? Number(row.margin_after_costs_pct) : null,
+              exclude_pos_orders: row?.exclude_pos_orders === true,
             };
             setCostSettings(settings);
             // Backward compat: normalize margin_after_costs_pct for the existing UI calculations
@@ -1945,6 +1949,7 @@ export default function Home({ initialClientId }: { initialClientId?: string }) 
               other_variable_pct_revenue: null,
               other_fixed_per_day: null,
               margin_after_costs_pct: null,
+              exclude_pos_orders: null,
             });
             setMarginAfterCostsPct(null);
           }

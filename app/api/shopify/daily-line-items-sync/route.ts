@@ -24,6 +24,54 @@ function n(v: any): number {
   return Number.isFinite(x) ? x : 0;
 }
 
+function isPosSourceName(sourceName?: string | null): boolean {
+  const s = String(sourceName || "").trim().toLowerCase();
+  if (!s) return false;
+  if (s === "pos") return true;
+  if (s.includes("shopify_pos") || s.includes("shopify pos")) return true;
+  if (s.includes("point of sale") || s.includes("point-of-sale")) return true;
+  return /\bpos\b/.test(s);
+}
+
+function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+
+  const parts = dtf.formatToParts(date);
+  const map: any = {};
+  for (const p of parts) {
+    if (p.type !== "literal") map[p.type] = p.value;
+  }
+  const asUTC = Date.UTC(
+    Number(map.year),
+    Number(map.month) - 1,
+    Number(map.day),
+    Number(map.hour),
+    Number(map.minute),
+    Number(map.second)
+  );
+
+  return (asUTC - date.getTime()) / 60000;
+}
+
+function zonedDateTimeToUtcISO(dayISO: string, timeHHMMSS: string, timeZone: string): string {
+  const [y, m, d] = dayISO.split("-").map((v) => Number(v));
+  const [hh, mm, ss] = timeHHMMSS.split(":").map((v) => Number(v));
+
+  const guess = new Date(Date.UTC(y, m - 1, d, hh, mm, ss));
+  const offsetMin = getTimeZoneOffsetMinutes(guess, timeZone);
+  const utcMs = Date.UTC(y, m - 1, d, hh, mm, ss) - offsetMin * 60_000;
+  return new Date(utcMs).toISOString();
+}
+
 function gidToInventoryItemId(gid: string | null | undefined): number | null {
   // gid: "gid://shopify/InventoryItem/1234567890"
   if (!gid) return null;
@@ -162,6 +210,7 @@ query OrdersWithLineItems($cursor: String, $queryStr: String!) {
         id
         createdAt
         processedAt
+        sourceName
         lineItems(first: 250) {
           edges {
             node {
@@ -236,10 +285,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Shopify Admin "orders" search query
-    // Use UTC midnight bounds. This keeps it deterministic.
-    // Note: Shopify search expects timestamps; this form is commonly accepted.
-    const queryStr = `processed_at:>=${start}T00:00:00Z processed_at:<=${end}T23:59:59Z status:any`;
+    let excludePosOrders = false;
+    try {
+      const { data: csRow, error: csErr } = await supabase
+        .from("client_cost_settings")
+        .select("exclude_pos_orders")
+        .eq("client_id", clientId)
+        .maybeSingle();
+      if (csErr) {
+        console.warn("[daily-line-items-sync] client_cost_settings lookup failed:", csErr.message);
+      } else {
+        excludePosOrders = csRow?.exclude_pos_orders === true;
+      }
+    } catch (e: any) {
+      console.warn("[daily-line-items-sync] client_cost_settings lookup failed:", e?.message || String(e));
+    }
 
     // Aggregate in memory: key = `${day}|${inventoryItemId}`
     const agg = new Map<
@@ -259,11 +319,21 @@ export async function POST(req: NextRequest) {
     let pages = 0;
     let ordersSeen = 0;
     let lineItemsSeen = 0;
+    let excludedOrders = 0;
+    let excludedLineItems = 0;
+    let excludedUnits = 0;
+    let excludedRevenue = 0;
     let minCreatedAt = "";
     let maxCreatedAt = "";
     let sampleLogged = false;
 
     const shopTimeZone = await getShopTimeZone(shopDomain, accessToken);
+    const startUtc = zonedDateTimeToUtcISO(start, "00:00:00", shopTimeZone);
+    const endUtc = zonedDateTimeToUtcISO(end, "23:59:59", shopTimeZone);
+
+    // Shopify Admin "orders" search query
+    // Use shop timezone bounds converted to UTC to match day-bucketing.
+    const queryStr = `processed_at:>=${startUtc} processed_at:<=${endUtc} status:any`;
 
     while (true) {
       const data = await shopifyGraphQL({
@@ -285,6 +355,21 @@ export async function POST(req: NextRequest) {
         const processedAt = String(o?.processedAt || "");
         const day = bucketShopifyOrderDay({ processedAt, createdAt });
         ordersSeen += 1;
+
+        if (excludePosOrders && isPosSourceName(o?.sourceName)) {
+          excludedOrders += 1;
+          const liEdges = o?.lineItems?.edges || [];
+          excludedLineItems += liEdges.length;
+          for (const le of liEdges) {
+            const li = le?.node;
+            const qty = n(li?.quantity);
+            if (qty > 0) excludedUnits += qty;
+            const amt = li?.discountedTotalSet?.shopMoney?.amount;
+            const lineRevenue = amt != null ? Number(amt) : 0;
+            if (Number.isFinite(lineRevenue)) excludedRevenue += lineRevenue;
+          }
+          continue;
+        }
 
         if (!sampleLogged && day) {
           console.info("[daily-line-items-sync] sample order", {
@@ -435,6 +520,16 @@ export async function POST(req: NextRequest) {
       rowsUpserted,
       unitCostsUpserted,
     });
+
+    if (excludePosOrders) {
+      console.info("[daily-line-items-sync] excluded POS orders", {
+        client_id: clientId,
+        orders: excludedOrders,
+        lineItems: excludedLineItems,
+        units: excludedUnits,
+        revenue: excludedRevenue,
+      });
+    }
 
     return NextResponse.json({
       ok: true,

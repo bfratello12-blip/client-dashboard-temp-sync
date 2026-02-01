@@ -538,6 +538,7 @@ function EventfulLineChart({
   showMarkers,
   xDomain,
   compareLabel,
+  trendlineData,
   height = 320,
 }: {
   data: { date: string; [k: string]: any }[];
@@ -549,6 +550,7 @@ function EventfulLineChart({
   showMarkers: boolean;
   xDomain?: [number, number];
   compareLabel: string;
+  trendlineData?: { date: string; trend: number }[];
   height?: number;
 }) {
   type ChartPoint = { date: string; ts: number; [k: string]: any };
@@ -825,6 +827,18 @@ function EventfulLineChart({
             connectNulls
             fillOpacity={1}
           />
+          {trendlineData && trendlineData.length >= 2 ? (
+            <Line
+              type="linear"
+              data={trendlineData as any}
+              dataKey="trend"
+              stroke="#94a3b8"
+              strokeWidth={1.5}
+              dot={false}
+              connectNulls
+              isAnimationActive={false}
+            />
+          ) : null}
           {/* primary line */}
           <Line
             type="linear"
@@ -1367,6 +1381,7 @@ export default function Home({ initialClientId }: { initialClientId?: string }) 
   /** Rolling controls for other trend charts */
   const [profitRollingEnabled, setProfitRollingEnabled] = useState(false);
   const [profitRollingWindowDays, setProfitRollingWindowDays] = useState<number>(7);
+  const [showProfitTrendline, setShowProfitTrendline] = useState<boolean>(false);
   const [revenueRollingEnabled, setRevenueRollingEnabled] = useState(false);
   const [revenueRollingWindowDays, setRevenueRollingWindowDays] = useState<number>(7);
   const [aspRollingEnabled, setAspRollingEnabled] = useState(false);
@@ -2764,6 +2779,36 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
   const profitTrendSeries = useMemo(() => {
     return profitRollingEnabled ? buildRollingAvgSeries(profitSeries, "profit", profitRollingWindowDays) : profitSeries;
   }, [profitRollingEnabled, profitRollingWindowDays, profitSeries]);
+  const profitTrendline = useMemo(() => {
+    if (!showProfitTrendline) return null;
+    const series = profitTrendSeries ?? [];
+    if (series.length < 2) return null;
+    const points = series
+      .map((d, i) => ({ x: i, y: Number((d as any).profit) }))
+      .filter((p) => Number.isFinite(p.y));
+    if (points.length < 2) return null;
+    const n = points.length;
+    const sumX = points.reduce((s, p) => s + p.x, 0);
+    const sumY = points.reduce((s, p) => s + p.y, 0);
+    const sumXX = points.reduce((s, p) => s + p.x * p.x, 0);
+    const sumXY = points.reduce((s, p) => s + p.x * p.y, 0);
+    const denom = n * sumXX - sumX * sumX;
+    if (denom === 0) return null;
+    const slope = (n * sumXY - sumX * sumY) / denom;
+    const intercept = (sumY - slope * sumX) / n;
+    const firstDate = series[0]?.date;
+    const lastDate = series[series.length - 1]?.date;
+    if (!firstDate || !lastDate) return null;
+    const y0 = intercept + slope * 0;
+    const y1 = intercept + slope * (series.length - 1);
+    return {
+      data: [
+        { date: firstDate, trend: Number.isFinite(y0) ? y0 : 0 },
+        { date: lastDate, trend: Number.isFinite(y1) ? y1 : 0 },
+      ],
+      slope,
+    };
+  }, [showProfitTrendline, profitTrendSeries]);
   const profitTrendSeriesCompare = useMemo(() => {
     return profitRollingEnabled
       ? buildRollingAvgSeries(profitSeriesCompare, "profit", profitRollingWindowDays)
@@ -4381,6 +4426,15 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                   Rolling
                 </label>
                 <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={showProfitTrendline}
+                    onChange={(e) => setShowProfitTrendline(e.target.checked)}
+                  />
+                  Show trendline
+                </label>
+                <label className="flex items-center gap-2">
                   <span className="text-slate-500">Window</span>
                   <select
                     className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs"
@@ -4395,6 +4449,17 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                   </select>
                 </label>
               </div>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+                <div>
+                  {showProfitTrendline && profitTrendline?.slope != null ? (
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                      {profitTrendline.slope > 0 ? "Trending up" : profitTrendline.slope < 0 ? "Trending down" : "Flat"}
+                      {" · "}
+                      {`${profitTrendline.slope >= 0 ? "+" : "-"}${formatCurrency(Math.abs(profitTrendline.slope))}/day`}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
               <ChartReadyWrapper minHeight={320} className="w-full">
                 <EventfulLineChart
                   data={profitTrendSeries}
@@ -4406,6 +4471,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                   showMarkers={showEventMarkers}
                   xDomain={xDomain}
                   compareLabel={compareLabel}
+                  trendlineData={showProfitTrendline ? profitTrendline?.data : undefined}
                 />
               </ChartReadyWrapper>
             </ChartCard>

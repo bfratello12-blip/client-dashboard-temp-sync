@@ -1035,6 +1035,9 @@ const days = dateRange(startDay, endDay);
       let coverageAttempted = false;
       let coverageRowsUpserted = 0;
       let dailyTotalsSucceeded = false;
+      let revenueSource: "shopifyql" | "fallback" = "shopifyql";
+      let shopifyqlError: string | null = null;
+      let tz = "UTC";
 
       try {
         // Token from shopify_app_installs (authoritative OAuth install)
@@ -1068,7 +1071,7 @@ const days = dateRange(startDay, endDay);
         }
 
         // Shop timezone (still used for fallback)
-        let tz = "UTC";
+        tz = "UTC";
         try {
           tz = await getShopTimeZone(normalizeShop(shop), token);
         } catch {
@@ -1078,8 +1081,6 @@ const days = dateRange(startDay, endDay);
         let bucketsRevenue: Record<string, number> = {};
         let bucketsOrders: Record<string, number> = {};
         let bucketsUnits: Record<string, number> = {};
-        let revenueSource: "shopifyql" | "fallback" = "shopifyql";
-
         const normalizedShop = normalizeShop(shop);
 
         if (modeParam === "orders") {
@@ -1096,11 +1097,17 @@ const days = dateRange(startDay, endDay);
             bucketsUnits = ql.bucketsUnits || {};
             revenueSource = "shopifyql";
           } catch (e: any) {
-            const fallback = await queryOrdersFallback(normalizedShop, token, startDay, endDay, tz);
-            bucketsRevenue = fallback.bucketsRevenue;
-            bucketsOrders = fallback.bucketsOrders;
-            bucketsUnits = fallback.bucketsUnits || {};
-            revenueSource = "fallback";
+            shopifyqlError = e?.message || String(e);
+            return NextResponse.json(
+              {
+                ok: false,
+                error: "ShopifyQL failed",
+                shopifyqlError,
+                tz,
+                modeParam,
+              },
+              { status: 500 }
+            );
           }
         } else {
           // auto
@@ -1111,6 +1118,7 @@ const days = dateRange(startDay, endDay);
             bucketsUnits = ql.bucketsUnits || {};
             revenueSource = "shopifyql";
           } catch (e: any) {
+            shopifyqlError = e?.message || String(e);
             const fallback = await queryOrdersFallback(normalizedShop, token, startDay, endDay, tz);
             bucketsRevenue = fallback.bucketsRevenue;
             bucketsOrders = fallback.bucketsOrders;
@@ -1250,7 +1258,17 @@ const rows = days.map((day) => {
         }
 
         daysWritten += rows.length;
-        results.push({ client_id: clientId, status: "ok", daysReturned: rows.length });
+        results.push({
+          client_id: clientId,
+          status: "ok",
+          daysReturned: rows.length,
+          revenueSource,
+          tz,
+          modeParam,
+          startDay,
+          endDay,
+          ...(revenueSource === "fallback" && shopifyqlError ? { shopifyqlError } : {}),
+        });
       } catch (e: any) {
         integrationStatus = "error";
         integrationError = e?.message || String(e);

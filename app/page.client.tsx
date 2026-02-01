@@ -2688,7 +2688,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
   }, [clientId, monthlyMonths, marginAfterCostsPct]);
   /** Derived metrics */
   const adRoas = adTotals.spend > 0 ? bizTotals.revenue / adTotals.spend : 0;
-  const ctr = adTotals.impressions > 0 ? (adTotals.clicks / adTotals.impressions) * 100 : 0;
+  const ctr = adTotals.impressions > 0 ? (adTotals.clicks / adTotals.impressions) * 100 : null;
   const profitPrimaryValue =
     Number.isFinite(Number(profitTotals.contributionProfit))
       ? Number(profitTotals.contributionProfit)
@@ -2716,7 +2716,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
   const prevCtr =
     effectiveShowComparison && compareTotals.adImpressions > 0
       ? (compareTotals.adClicks / compareTotals.adImpressions) * 100
-      : 0;
+      : null;
   const prevRevenue = effectiveShowComparison ? compareTotals.bizRevenue : 0;
   const prevOrders = effectiveShowComparison ? compareTotals.bizOrders : 0;
   /** Profit (estimated) series for charting (margin × revenue − ad spend) */
@@ -3200,7 +3200,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
           sub: "Contribution profit per $1 of ad spend",
           trend: undefined,
         },
-        { label: "CTR", value: formatPct(ctr), sub: "Click-through-rate", trend: undefined },
+        { label: "CTR", value: ctr != null ? formatPct(ctr) : "—", sub: "Click-through-rate", trend: undefined },
       ];
     }
     // For custom ranges, use lower threshold (50%) for showing comparison data
@@ -3213,7 +3213,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     const aspDelta = pctChange(bizTotals.asp, prevAsp);
     const spendDelta = pctChange(adTotals.spend, compareTotals.adSpend);
     const roasDelta = pctChange(adRoas, prevRoas);
-    const ctrDelta = pctChange(ctr, prevCtr);
+    const ctrDelta = ctr != null && prevCtr != null ? pctChange(ctr, prevCtr) : 0;
     const totalCostsDelta = pctChange(totalCostsPrimaryKpi, totalCostsCompareKpi);
     const merDelta = pctChange(profitReturnOnCosts, prevProfitReturnOnCosts);
     return [
@@ -3248,7 +3248,12 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         sub: `vs prev: ${fmtDelta(merDelta, allowPct)}`,
         trend: allowPct ? merDelta : undefined,
       },
-      { label: "CTR", value: formatPct(ctr), sub: `vs prev: ${fmtDelta(ctrDelta, allowPct)}`, trend: allowPct ? ctrDelta : undefined },
+      {
+        label: "CTR",
+        value: ctr != null ? formatPct(ctr) : "—",
+        sub: `vs prev: ${fmtDelta(ctrDelta, allowPct)}`,
+        trend: ctr != null && prevCtr != null && allowPct ? ctrDelta : undefined,
+      },
     ];
   }, [
     effectiveShowComparison,

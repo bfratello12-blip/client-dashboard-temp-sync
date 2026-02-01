@@ -17,7 +17,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { addDays, format, parseISO, differenceInCalendarDays, startOfDay, isBefore } from "date-fns";
-import { bucketShopifyOrderDay } from "@/lib/dates";
+import { bucketShopifyOrderDay, bucketShopifyOrderDayInTZ } from "@/lib/dates";
 
 type AnyObj = Record<string, any>;
 
@@ -353,7 +353,10 @@ async function queryOrdersFallback(shop: string, token: string, startISO: string
         if (n?.cancelledAt) continue; // ignore cancelled orders
         const stamp = n.processedAt || n.createdAt;
         if (!stamp) continue;
-        const day = bucketShopifyOrderDay({ processedAt: n.processedAt, createdAt: n.createdAt });
+        const day = bucketShopifyOrderDayInTZ(
+          { processedAt: n.processedAt, createdAt: n.createdAt },
+          timeZone
+        );
         if (!day) continue;
         if (!sampleLogged) {
           console.info("[shopify/sync] sample order", {

@@ -2803,8 +2803,8 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     const y1 = intercept + slope * (series.length - 1);
     return {
       data: [
-        { date: firstDate, trend: Number.isFinite(y0) ? y0 : 0 },
-        { date: lastDate, trend: Number.isFinite(y1) ? y1 : 0 },
+        { date: firstDate, ts: isoToTsUTC(firstDate), trend: Number.isFinite(y0) ? y0 : 0 },
+        { date: lastDate, ts: isoToTsUTC(lastDate), trend: Number.isFinite(y1) ? y1 : 0 },
       ],
       slope,
     };

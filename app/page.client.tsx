@@ -3072,6 +3072,10 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         profitLiftPct: null,
         procLift: null,
         procLiftPct: null,
+        spendLift: null,
+        spendLiftPct: null,
+        roasLift: null,
+        roasLiftPct: null,
         merLift: 0,
         merLiftPct: 0,
         priceDriven: 0,
@@ -3083,6 +3087,12 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     const ordLift = primarySales.orders - compareSales.orders;
     const aspLift = primarySales.asp - compareSales.asp;
     const aovLift = primarySales.aov - compareSales.aov;
+    const spendLift = primarySpend.spend - compareSpend.spend;
+    const spendLiftPct = compareSpend.spend !== 0 ? (spendLift / compareSpend.spend) * 100 : null;
+    const roasP = primarySpend.spend > 0 ? primarySales.revenue / primarySpend.spend : 0;
+    const roasC = compareSpend.spend > 0 ? compareSales.revenue / compareSpend.spend : 0;
+    const roasLift = roasP - roasC;
+    const roasLiftPct = roasC !== 0 ? (roasLift / roasC) * 100 : null;
     const profitP = primaryProfitValue;
     const profitC = compareProfitValue;
     const profitLift = profitP != null && profitC != null ? profitP - profitC : null;
@@ -3155,6 +3165,10 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       profitLiftPct,
       procLift,
       procLiftPct,
+      spendLift,
+      spendLiftPct,
+      roasLift,
+      roasLiftPct,
       merLift,
       merLiftPct,
       priceDriven,
@@ -3949,6 +3963,14 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                           <span className="font-semibold text-slate-900">{formatCurrency(lift.primary.aov)}</span>
                         </div>
                         <div className="flex items-center justify-between">
+                          <span className="text-slate-500">Ad Spend</span>
+                          <span className="font-semibold text-slate-900">{formatCurrency(lift.primary.spend)}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500">ROAS</span>
+                          <span className="font-semibold text-slate-900">{lift.primary.roas.toFixed(2)}x</span>
+                        </div>
+                        <div className="flex items-center justify-between">
                           <span className="text-slate-500">Profit</span>
                           <span className="font-semibold text-slate-900">
                             {lift.primary.profit == null ? "—" : formatCurrency(lift.primary.profit)}
@@ -3984,6 +4006,14 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500">AOV</span>
                           <span className="font-semibold text-slate-900">{formatCurrency(lift.compare.aov)}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500">Ad Spend</span>
+                          <span className="font-semibold text-slate-900">{formatCurrency(lift.compare.spend)}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500">ROAS</span>
+                          <span className="font-semibold text-slate-900">{lift.compare.roas.toFixed(2)}x</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500">Profit</span>
@@ -4026,6 +4056,16 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                         label="AOV"
                         value={`${formatSignedCurrency(lift.aovLift)} (${compareFrac >= 0.95 ? formatSignedPct(lift.aovLiftPct) : "—"})`}
                         good={lift.aovLift >= 0}
+                      />
+                      <LiftRow
+                        label="Ad Spend"
+                        value={`${formatSignedCurrency(lift.spendLift ?? 0)} (${compareFrac >= 0.95 && lift.spendLiftPct != null ? formatSignedPct(lift.spendLiftPct) : "—"})`}
+                        good={lift.spendLift != null ? lift.spendLift <= 0 : true}
+                      />
+                      <LiftRow
+                        label="ROAS"
+                        value={`${(lift.roasLift ?? 0) >= 0 ? "+" : "−"}${Math.abs(lift.roasLift ?? 0).toFixed(2)}x (${compareFrac >= 0.95 && lift.roasLiftPct != null ? formatSignedPct(lift.roasLiftPct) : "—"})`}
+                        good={lift.roasLift != null ? lift.roasLift >= 0 : true}
                       />
                       <LiftRow
                         label="Profit"

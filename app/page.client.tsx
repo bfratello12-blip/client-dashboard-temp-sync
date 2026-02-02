@@ -474,6 +474,40 @@ function DualLineTooltip({
     </div>
   );
 }
+/** ✅ Multi-series tooltip (styled like Profit Trend card) */
+function MultiSeriesTooltip({
+  active,
+  label,
+  payload,
+  valueFormatter,
+}: {
+  active?: boolean;
+  label?: any;
+  payload?: any[];
+  valueFormatter: (v: number) => string;
+}) {
+  if (!active || !payload?.length || label == null) return null;
+  const ts = Number(label);
+  const iso = Number.isFinite(ts) ? new Date(ts).toISOString().slice(0, 10) : "";
+  const dateLabel = iso?.length === 10 ? `${mmdd(iso)} (${iso})` : String(label);
+  return (
+    <div className="rounded-xl bg-slate-900 text-white shadow-xl ring-1 ring-white/10">
+      <div className="px-3 py-2">
+        <div className="text-xs text-slate-300">{dateLabel}</div>
+        <div className="mt-2 space-y-1">
+          {payload
+            .filter((p) => p && Number.isFinite(Number(p.value)))
+            .map((p, i) => (
+              <div key={`${p.name}-${i}`} className="flex items-center justify-between gap-4">
+                <div className="text-xs text-slate-300">{String(p.name ?? "")}</div>
+                <div className="text-sm font-semibold">{valueFormatter(Number(p.value))}</div>
+              </div>
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 /** ✅ Event hover card */
 function EventTooltipCard({
   hover,
@@ -1037,11 +1071,14 @@ function MultiSeriesEventfulLineChart({
             }}
           />
           <Tooltip
-            formatter={(v: any, name: any) => [yTooltipFormatter(Number(v)), String(name)]}
-            labelFormatter={(label: any) => {
-              const iso = new Date(Number(label)).toISOString().slice(0, 10);
-              return `${mmdd(iso)} (${iso})`;
-            }}
+            content={(p: any) => (
+              <MultiSeriesTooltip
+                active={p.active}
+                label={p.label}
+                payload={p.payload}
+                valueFormatter={yTooltipFormatter}
+              />
+            )}
           />
           <Legend />
           {/* Event markers */}
@@ -1356,6 +1393,32 @@ export default function Home({ initialClientId }: { initialClientId?: string }) 
   /** Lift focus */
   const [liftFocusEventId, setLiftFocusEventId] = useState<string | null>(null);
   const [showAdvancedLift, setShowAdvancedLift] = useState(false);
+  const [eventCompare, setEventCompare] = useState<null | {
+    window: { beforeStart: string; beforeEnd: string; afterStart: string; afterEnd: string };
+    before: {
+      revenue: number;
+      orders: number;
+      paid_spend: number;
+      contribution_profit: number;
+      asp: number;
+      aov: number;
+      roas: number;
+      profit_return: number;
+    };
+    after: {
+      revenue: number;
+      orders: number;
+      paid_spend: number;
+      contribution_profit: number;
+      asp: number;
+      aov: number;
+      roas: number;
+      profit_return: number;
+    };
+  }>(null);
+  const [eventCompareLoading, setEventCompareLoading] = useState(false);
+  const [eventCompareError, setEventCompareError] = useState<string>("");
+  const [eventCompareWindowDays, setEventCompareWindowDays] = useState(7);
   /** Events: create/delete */
   const EVENT_TYPES = [
     "budget_change",
@@ -2947,6 +3010,53 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     const labelBase = ev.title?.trim() ? ev.title.trim() : "Selected change";
     return { primary, compare, label: `${labelBase} • ${evStart}` };
   }, [liftFocusEventId, eventsPrimary, windows.primary.startISO, windows.primary.endISO, windows.compare, windows.primary, windows.compare, compareMode]);
+  useEffect(() => {
+    if (!clientId || !liftFocusEventId) {
+      setEventCompare(null);
+      setEventCompareError("");
+      setEventCompareLoading(false);
+      return;
+    }
+    const ev = [...eventsPrimary, ...events30].find((e) => String(e.id) === String(liftFocusEventId));
+    if (!ev?.event_date) {
+      setEventCompare(null);
+      setEventCompareError("");
+      setEventCompareLoading(false);
+      return;
+    }
+    const eventDate = String(ev.event_date).slice(0, 10);
+    const windowDays = Math.max(1, Number(ev.impact_window_days) || 7);
+    setEventCompareWindowDays(windowDays);
+    let cancelled = false;
+    const run = async () => {
+      setEventCompareLoading(true);
+      setEventCompareError("");
+      try {
+        const params = new URLSearchParams({
+          client_id: clientId,
+          event_date: eventDate,
+          window_days: String(windowDays),
+        });
+        const res = await fetch(`/api/events/compare?${params.toString()}`);
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json?.ok) {
+          throw new Error(json?.error || `events/compare failed (${res.status})`);
+        }
+        if (!cancelled) setEventCompare(json);
+      } catch (e: any) {
+        if (!cancelled) {
+          setEventCompare(null);
+          setEventCompareError(e?.message || String(e));
+        }
+      } finally {
+        if (!cancelled) setEventCompareLoading(false);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId, liftFocusEventId, eventsPrimary, events30]);
   const lift = useMemo(() => {
     const scopePrimary = liftWindows.primary;
     const scopeCompare = liftWindows.compare;
@@ -3411,6 +3521,33 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         prefNum.push(prefNum[i] + numArr[i]);
       }
       const out: { date: string; mer: number }[] = [];
+    const eventPerf = useMemo(() => {
+      if (!eventCompare) return null;
+      const before = eventCompare.before;
+      const after = eventCompare.after;
+      const pct = (curr: number, prev: number) => pctChange(curr, prev);
+      return {
+        before,
+        after,
+        lifts: {
+          revenue: { delta: after.revenue - before.revenue, pct: pct(after.revenue, before.revenue) },
+          orders: { delta: after.orders - before.orders, pct: pct(after.orders, before.orders) },
+          asp: { delta: after.asp - before.asp, pct: pct(after.asp, before.asp) },
+          aov: { delta: after.aov - before.aov, pct: pct(after.aov, before.aov) },
+          spend: { delta: after.paid_spend - before.paid_spend, pct: pct(after.paid_spend, before.paid_spend) },
+          roas: { delta: after.roas - before.roas, pct: pct(after.roas, before.roas) },
+          profit: {
+            delta: after.contribution_profit - before.contribution_profit,
+            pct: pct(after.contribution_profit, before.contribution_profit),
+          },
+          profitReturn: {
+            delta: after.profit_return - before.profit_return,
+            pct: pct(after.profit_return, before.profit_return),
+          },
+        },
+      };
+    }, [eventCompare]);
+    const formatLiftPct = (v: number) => (v === 999 ? "↑" : formatSignedPct(v));
       const w = Math.max(1, Math.floor(windowDays || 1));
       for (let i = 0; i < dates.length; i++) {
         const j0 = Math.max(0, i - w + 1);
@@ -3881,6 +4018,11 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                   <p className="mt-1 text-[11px] text-slate-400">
                     Tip: Use this to answer “what changed after we made the change?” not “what caused it”.
                   </p>
+                  {eventCompareLoading ? (
+                    <p className="mt-1 text-[11px] text-slate-500">Loading event comparison…</p>
+                  ) : eventCompareError ? (
+                    <p className="mt-1 text-[11px] text-rose-600">{eventCompareError}</p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="flex items-center gap-2">
@@ -3939,43 +4081,61 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                       <div className="mt-2 space-y-2 text-sm text-slate-700">
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500">Revenue</span>
-                          <span className="font-semibold text-slate-900">{formatCurrency(lift.primary.revenue)}</span>
+                          <span className="font-semibold text-slate-900">
+                            {eventPerf ? formatCurrency(eventPerf.after.revenue) : "—"}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500">Orders</span>
-                          <span className="font-semibold text-slate-900">{formatNumber(lift.primary.orders)}</span>
+                          <span className="font-semibold text-slate-900">
+                            {eventPerf ? formatNumber(eventPerf.after.orders) : "—"}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500">Avg selling price</span>
-                          <span className="font-semibold text-slate-900">{formatCurrency(lift.primary.asp)}</span>
+                          <span className="font-semibold text-slate-900">
+                            {eventPerf ? formatCurrency(eventPerf.after.asp) : "—"}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500">AOV</span>
-                          <span className="font-semibold text-slate-900">{formatCurrency(lift.primary.aov)}</span>
+                          <span className="font-semibold text-slate-900">
+                            {eventPerf ? formatCurrency(eventPerf.after.aov) : "—"}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500">Ad Spend</span>
-                          <span className="font-semibold text-slate-900">{formatCurrency(lift.primary.spend)}</span>
+                          <span className="font-semibold text-slate-900">
+                            {eventPerf ? formatCurrency(eventPerf.after.paid_spend) : "—"}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500">ROAS</span>
-                          <span className="font-semibold text-slate-900">{lift.primary.roas.toFixed(2)}x</span>
+                          <span className="font-semibold text-slate-900">
+                            {eventPerf ? `${eventPerf.after.roas.toFixed(2)}x` : "—"}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500">Profit</span>
                           <span className="font-semibold text-slate-900">
-                            {lift.primary.profit == null ? "—" : formatCurrency(lift.primary.profit)}
+                            {eventPerf ? formatCurrency(eventPerf.after.contribution_profit) : "—"}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500">Profit Return</span>
                           <span className="font-semibold text-slate-900">
-                            {lift.primary.profitReturnOnCosts == null ? "—" : `${lift.primary.profitReturnOnCosts.toFixed(2)}x`}
+                            {eventPerf ? `${eventPerf.after.profit_return.toFixed(2)}x` : "—"}
                           </span>
                         </div>
                         <div className="pt-2 text-[11px] text-slate-500">
-                          Daily avg: {formatCurrency(lift.primary.revenue / Math.max(1, lift.days))} revenue •{" "}
-                          {formatNumber(Math.round(lift.primary.orders / Math.max(1, lift.days)))} orders
+                          {eventPerf ? (
+                            <>
+                              Daily avg: {formatCurrency(eventPerf.after.revenue / Math.max(1, eventCompareWindowDays))} revenue •{" "}
+                              {formatNumber(Math.round(eventPerf.after.orders / Math.max(1, eventCompareWindowDays)))} orders
+                            </>
+                          ) : (
+                            "—"
+                          )}
                         </div>
                       </div>
                     </div>
@@ -3984,43 +4144,61 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                       <div className="mt-2 space-y-2 text-sm text-slate-700">
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500">Revenue</span>
-                          <span className="font-semibold text-slate-900">{formatCurrency(lift.compare.revenue)}</span>
+                          <span className="font-semibold text-slate-900">
+                            {eventPerf ? formatCurrency(eventPerf.before.revenue) : "—"}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500">Orders</span>
-                          <span className="font-semibold text-slate-900">{formatNumber(lift.compare.orders)}</span>
+                          <span className="font-semibold text-slate-900">
+                            {eventPerf ? formatNumber(eventPerf.before.orders) : "—"}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500">Avg selling price</span>
-                          <span className="font-semibold text-slate-900">{formatCurrency(lift.compare.asp)}</span>
+                          <span className="font-semibold text-slate-900">
+                            {eventPerf ? formatCurrency(eventPerf.before.asp) : "—"}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500">AOV</span>
-                          <span className="font-semibold text-slate-900">{formatCurrency(lift.compare.aov)}</span>
+                          <span className="font-semibold text-slate-900">
+                            {eventPerf ? formatCurrency(eventPerf.before.aov) : "—"}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500">Ad Spend</span>
-                          <span className="font-semibold text-slate-900">{formatCurrency(lift.compare.spend)}</span>
+                          <span className="font-semibold text-slate-900">
+                            {eventPerf ? formatCurrency(eventPerf.before.paid_spend) : "—"}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500">ROAS</span>
-                          <span className="font-semibold text-slate-900">{lift.compare.roas.toFixed(2)}x</span>
+                          <span className="font-semibold text-slate-900">
+                            {eventPerf ? `${eventPerf.before.roas.toFixed(2)}x` : "—"}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500">Profit</span>
                           <span className="font-semibold text-slate-900">
-                            {lift.compare.profit == null ? "—" : formatCurrency(lift.compare.profit)}
+                            {eventPerf ? formatCurrency(eventPerf.before.contribution_profit) : "—"}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500">Profit Return</span>
                           <span className="font-semibold text-slate-900">
-                            {lift.compare.profitReturnOnCosts == null ? "—" : `${lift.compare.profitReturnOnCosts.toFixed(2)}x`}
+                            {eventPerf ? `${eventPerf.before.profit_return.toFixed(2)}x` : "—"}
                           </span>
                         </div>
                         <div className="pt-2 text-[11px] text-slate-500">
-                          Daily avg: {formatCurrency(lift.compare.revenue / Math.max(1, lift.days))} revenue •{" "}
-                          {formatNumber(Math.round(lift.compare.orders / Math.max(1, lift.days)))} orders
+                          {eventPerf ? (
+                            <>
+                              Daily avg: {formatCurrency(eventPerf.before.revenue / Math.max(1, eventCompareWindowDays))} revenue •{" "}
+                              {formatNumber(Math.round(eventPerf.before.orders / Math.max(1, eventCompareWindowDays)))} orders
+                            </>
+                          ) : (
+                            "—"
+                          )}
                         </div>
                       </div>
                     </div>
@@ -4030,53 +4208,75 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                     <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                       <LiftRow
                         label="Revenue"
-                        value={`${formatSignedCurrency(lift.revenueLift)} (${compareFrac >= 0.95 ? formatSignedPct(lift.revenueLiftPct) : "—"})`}
-                        good={lift.revenueLift >= 0}
+                        value={
+                          eventPerf
+                            ? `${formatSignedCurrency(eventPerf.lifts.revenue.delta)} (${formatLiftPct(eventPerf.lifts.revenue.pct)})`
+                            : "—"
+                        }
+                        good={eventPerf ? eventPerf.lifts.revenue.delta >= 0 : true}
                       />
                       <LiftRow
                         label="Orders"
-                        value={`${formatSignedNumber(lift.ordersLift)} (${compareFrac >= 0.95 ? formatSignedPct(lift.ordersLiftPct) : "—"})`}
-                        good={lift.ordersLift >= 0}
+                        value={
+                          eventPerf
+                            ? `${formatSignedNumber(eventPerf.lifts.orders.delta)} (${formatLiftPct(eventPerf.lifts.orders.pct)})`
+                            : "—"
+                        }
+                        good={eventPerf ? eventPerf.lifts.orders.delta >= 0 : true}
                       />
                       <LiftRow
                         label="Avg selling price"
-                        value={`${formatSignedCurrency(lift.aspLift)} (${compareFrac >= 0.95 ? formatSignedPct(lift.aspLiftPct) : "—"})`}
-                        good={lift.aspLift >= 0}
+                        value={
+                          eventPerf
+                            ? `${formatSignedCurrency(eventPerf.lifts.asp.delta)} (${formatLiftPct(eventPerf.lifts.asp.pct)})`
+                            : "—"
+                        }
+                        good={eventPerf ? eventPerf.lifts.asp.delta >= 0 : true}
                       />
                       <LiftRow
                         label="AOV"
-                        value={`${formatSignedCurrency(lift.aovLift)} (${compareFrac >= 0.95 ? formatSignedPct(lift.aovLiftPct) : "—"})`}
-                        good={lift.aovLift >= 0}
+                        value={
+                          eventPerf
+                            ? `${formatSignedCurrency(eventPerf.lifts.aov.delta)} (${formatLiftPct(eventPerf.lifts.aov.pct)})`
+                            : "—"
+                        }
+                        good={eventPerf ? eventPerf.lifts.aov.delta >= 0 : true}
                       />
                       <LiftRow
                         label="Ad Spend"
-                        value={`${formatSignedCurrency(lift.spendLift ?? 0)} (${compareFrac >= 0.95 && lift.spendLiftPct != null ? formatSignedPct(lift.spendLiftPct) : "—"})`}
-                        good={lift.spendLift != null ? lift.spendLift <= 0 : true}
+                        value={
+                          eventPerf
+                            ? `${formatSignedCurrency(eventPerf.lifts.spend.delta)} (${formatLiftPct(eventPerf.lifts.spend.pct)})`
+                            : "—"
+                        }
+                        good={eventPerf ? eventPerf.lifts.spend.delta <= 0 : true}
                       />
                       <LiftRow
                         label="ROAS"
-                        value={`${(lift.roasLift ?? 0) >= 0 ? "+" : "−"}${Math.abs(lift.roasLift ?? 0).toFixed(2)}x (${compareFrac >= 0.95 && lift.roasLiftPct != null ? formatSignedPct(lift.roasLiftPct) : "—"})`}
-                        good={lift.roasLift != null ? lift.roasLift >= 0 : true}
+                        value={
+                          eventPerf
+                            ? `${eventPerf.lifts.roas.delta >= 0 ? "+" : "−"}${Math.abs(eventPerf.lifts.roas.delta).toFixed(2)}x (${formatLiftPct(eventPerf.lifts.roas.pct)})`
+                            : "—"
+                        }
+                        good={eventPerf ? eventPerf.lifts.roas.delta >= 0 : true}
                       />
                       <LiftRow
                         label="Profit"
                         value={
-                          lift.profitLift == null
-                            ? "—"
-                            : `${formatSignedCurrency(lift.profitLift)} (${compareFrac >= 0.95 && lift.profitLiftPct != null ? formatSignedPct(lift.profitLiftPct) : "—"})`
+                          eventPerf
+                            ? `${formatSignedCurrency(eventPerf.lifts.profit.delta)} (${formatLiftPct(eventPerf.lifts.profit.pct)})`
+                            : "—"
                         }
-                        good={lift.profitLift != null ? lift.profitLift >= 0 : true}
+                        good={eventPerf ? eventPerf.lifts.profit.delta >= 0 : true}
                       />
                       <LiftRow
                         label="Profit Return"
                         value={
-                          lift.procLift == null
-                            ? "—"
-                            : `${(lift.procLift >= 0 ? "+" : "−")}${Math.abs(lift.procLift).toFixed(2)}x (${ 
-                                compareFrac >= 0.95 && lift.procLiftPct != null ? formatSignedPct(lift.procLiftPct) : "—"
-                              })`
+                          eventPerf
+                            ? `${eventPerf.lifts.profitReturn.delta >= 0 ? "+" : "−"}${Math.abs(eventPerf.lifts.profitReturn.delta).toFixed(2)}x (${formatLiftPct(eventPerf.lifts.profitReturn.pct)})`
+                            : "—"
                         }
-                        good={lift.procLift != null ? lift.procLift >= 0 : true}
+                        good={eventPerf ? eventPerf.lifts.profitReturn.delta >= 0 : true}
                       />
                     </div>
                     {compareFrac < 0.95 ? (
@@ -4768,42 +4968,21 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 <div className="text-sm font-semibold text-slate-900">Daily windowed lines</div>
                 <div className="mt-1 text-sm text-slate-600">Profit Return (w) and ROAS(w) over time</div>
                 <div className="mt-3 w-full h-[320px] min-h-[320px]">
-                  <SafeResponsiveContainer height={320} className="h-full w-full">
-                    <LineChart
-                      data={attribSeries.map((d) => ({
-                        ...d,
-                        ts: isoToTsUTC(d.date),
-                      }))}
-                    >
-                      <XAxis
-                        dataKey="ts"
-                        type="number"
-                        scale="time"
-                        domain={xDomain}
-                        tick={{ fontSize: 12 }}
-                        tickFormatter={(v) => mmdd(new Date(Number(v)).toISOString().slice(0, 10))}
-                        interval="preserveStartEnd"
-                        minTickGap={28}
-                      />
-                      <YAxis tick={{ fontSize: 12 }} />
-                      <Tooltip
-                        formatter={(v: any, name: any) => {
-                          // name comes from <Line name="..." />
-                          return [`${Number(v).toFixed(2)}x`, String(name)];
-                        }}
-                        labelFormatter={(label: any) => {
-                          const iso = new Date(Number(label)).toISOString().slice(0, 10);
-                          return `${mmdd(iso)} (${iso})`;
-                        }}
-                      />
-                      <Legend
-                        formatter={(value: any) => String(value)}
-                        wrapperStyle={{ fontSize: 12 }}
-                      />
-                        <Line type="monotone" dataKey="mer_w" name="Profit Return (windowed)" stroke="#10b981" strokeWidth={2} dot={false} />
-                        <Line type="monotone" dataKey="roas_w" name="ROAS (windowed)" stroke="#3b82f6" strokeWidth={2} dot={false} />
-                    </LineChart>
-                  </SafeResponsiveContainer>
+                  <MultiSeriesEventfulLineChart
+                    data={attribSeries}
+                    compareData={[]}
+                    showComparison={false}
+                    series={[
+                      { key: "mer_w", name: "Profit Return (windowed)", color: "#10b981" },
+                      { key: "roas_w", name: "ROAS (windowed)", color: "#3b82f6" },
+                    ]}
+                    yTooltipFormatter={(v) => `${Number(v).toFixed(2)}x`}
+                    markers={eventMarkers}
+                    showMarkers={showEventMarkers}
+                    xDomain={xDomain}
+                    compareLabel={compareLabel}
+                    height={320}
+                  />
                 </div>
                 <div className="mt-3 text-xs text-slate-600">
                   Interpretation: if Profit Return (w) is consistently above ROAS(w), revenue is being driven by more than

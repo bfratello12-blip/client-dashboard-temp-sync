@@ -3286,6 +3286,33 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     spendSeriesCompare,
     marginAfterCostsPct,
   ]);
+  const eventPerf = useMemo(() => {
+    if (!eventCompare) return null;
+    const before = eventCompare.before;
+    const after = eventCompare.after;
+    const pct = (curr: number, prev: number) => pctChange(curr, prev);
+    return {
+      before,
+      after,
+      lifts: {
+        revenue: { delta: after.revenue - before.revenue, pct: pct(after.revenue, before.revenue) },
+        orders: { delta: after.orders - before.orders, pct: pct(after.orders, before.orders) },
+        asp: { delta: after.asp - before.asp, pct: pct(after.asp, before.asp) },
+        aov: { delta: after.aov - before.aov, pct: pct(after.aov, before.aov) },
+        spend: { delta: after.paid_spend - before.paid_spend, pct: pct(after.paid_spend, before.paid_spend) },
+        roas: { delta: after.roas - before.roas, pct: pct(after.roas, before.roas) },
+        profit: {
+          delta: after.contribution_profit - before.contribution_profit,
+          pct: pct(after.contribution_profit, before.contribution_profit),
+        },
+        profitReturn: {
+          delta: after.profit_return - before.profit_return,
+          pct: pct(after.profit_return, before.profit_return),
+        },
+      },
+    };
+  }, [eventCompare]);
+  const formatLiftPct = (v: number) => (v === 999 ? "↑" : formatSignedPct(v));
   /** Events to markers */
   const eventMarkers = useMemo<EventMarker[]>(() => {
     const mapped = (eventsPrimary ?? [])

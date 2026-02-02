@@ -19,7 +19,7 @@ function assertCronAuth(req: Request) {
 }
 
 async function runShopifyQL(shop: string, accessToken: string, shopifyQL: string) {
-  const endpoint = `https://${shop}/admin/api/2024-10/graphql.json`;
+  const endpoint = `https://${shop}/admin/api/2025-10/graphql.json`;
 
   const gql = `
     query RunShopifyQL($query: String!) {

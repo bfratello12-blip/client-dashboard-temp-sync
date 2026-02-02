@@ -25,16 +25,12 @@ async function runShopifyQL(shop: string, accessToken: string, shopifyQL: string
     query RunShopifyQL($query: String!) {
       shopifyqlQuery(query: $query) {
         __typename
-        ... on ShopifyqlResponse {
-          columns {
-            name
-          }
-          tableData {
-            rowData
-          }
+        parseErrors
+        columns {
+          name
         }
-        ... on ShopifyqlQueryError {
-          message
+        tableData {
+          rowData
         }
       }
     }
@@ -106,8 +102,11 @@ SINCE startOfDay(-30d) UNTIL today
     const node = raw?.data?.shopifyqlQuery;
     if (!node) throw new Error("No shopifyqlQuery in response");
 
-    if (node.__typename === "ShopifyqlQueryError") {
-      return NextResponse.json({ ok: false, error: "shopifyql_error", details: node.message }, { status: 400 });
+    if (Array.isArray(node?.parseErrors) && node.parseErrors.length > 0) {
+      return NextResponse.json(
+        { ok: false, error: "shopifyql_parse_error", details: node.parseErrors },
+        { status: 400 }
+      );
     }
 
     return NextResponse.json({ ok: true, columns: node.columns, tableData: node.tableData });

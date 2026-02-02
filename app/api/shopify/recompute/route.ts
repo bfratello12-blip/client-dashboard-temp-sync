@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dateRangeInclusiveUTC } from "@/lib/dates";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireCronAuth } from "@/lib/cronAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -142,11 +143,8 @@ function computeDailyProfitSummary(args: {
 
 export async function POST(req: NextRequest) {
   try {
-    const secret = process.env.CRON_SECRET || process.env.NEXT_PUBLIC_SYNC_TOKEN || "";
-    const token = req.nextUrl.searchParams.get("token")?.trim() || "";
-    if (secret && token !== secret) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = requireCronAuth(req);
+    if (auth instanceof NextResponse) return auth;
 
     const start = req.nextUrl.searchParams.get("start")?.trim() || "";
     const end = req.nextUrl.searchParams.get("end")?.trim() || "";

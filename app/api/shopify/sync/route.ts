@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { addDays, format, parseISO, differenceInCalendarDays, startOfDay, isBefore } from "date-fns";
 import { bucketShopifyOrderDay, bucketShopifyOrderDayInTZ } from "@/lib/dates";
+import { requireCronAuth } from "@/lib/cronAuth";
 
 type AnyObj = Record<string, any>;
 
@@ -762,6 +763,9 @@ async function pickWorkingShopifyToken(
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = requireCronAuth(req);
+    if (auth instanceof NextResponse) return auth;
+
     const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(req.url);
 

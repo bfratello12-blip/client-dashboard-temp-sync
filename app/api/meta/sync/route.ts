@@ -1,6 +1,7 @@
 // app/api/meta/sync/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireCronAuth } from "@/lib/cronAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,18 +13,6 @@ type IntegrationRow = {
   meta_ad_account_id: string | null; // e.g. "act_123..."
   meta_access_token: string | null;
 };
-
-async function requireCronAuthIfConfigured(req: NextRequest): Promise<NextResponse | null> {
-  const expected = process.env.CRON_SECRET;
-  if (!expected) return null;
-
-  const authHeader = req.headers.get("authorization") || "";
-  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-  if (token !== expected) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  }
-  return null;
-}
 
 function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -259,8 +248,8 @@ async function gapFillZerosIfMissing(args: {
 }
 
 async function handler(req: NextRequest) {
-  const authFail = await requireCronAuthIfConfigured(req);
-  if (authFail) return authFail;
+  const auth = requireCronAuth(req);
+  if (auth instanceof NextResponse) return auth;
 
   const body = req.method === "POST" ? await req.json().catch(() => null) : null;
   const { startISO, endISO, fillZeros, client_id } = parseWindow(req, body);

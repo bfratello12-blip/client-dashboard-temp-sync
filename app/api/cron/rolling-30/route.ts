@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isoDateUTC, dateRangeInclusiveUTC } from "@/lib/dates";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireCronAuth } from "@/lib/cronAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,18 +17,6 @@ export const dynamic = "force-dynamic";
  * "profit_mer" is contribution_profit / paid_spend.
  * contribution_profit here is AFTER paid spend and variable costs.
  */
-
-function requireCronAuth(req: NextRequest) {
-  const secret = process.env.CRON_SECRET || process.env.NEXT_PUBLIC_SYNC_TOKEN || "";
-  if (!secret) return; // allow if not configured
-
-  const header = req.headers.get("authorization") || "";
-  const bearer = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-  const qp = req.nextUrl.searchParams.get("token")?.trim() || "";
-
-  const ok = bearer === secret || qp === secret || header === secret;
-  if (!ok) throw new Error("Unauthorized");
-}
 
 type CostSettingsRow = {
   client_id: string;
@@ -209,7 +198,8 @@ function computeDailyProfitSummary(args: {
 
 export async function POST(req: NextRequest) {
   try {
-    requireCronAuth(req);
+    const auth = requireCronAuth(req);
+    if (auth instanceof NextResponse) return auth;
 
     const supabase = getSupabaseAdmin();
 

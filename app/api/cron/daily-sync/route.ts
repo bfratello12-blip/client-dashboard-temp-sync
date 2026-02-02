@@ -1,18 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isoDateUTC } from "@/lib/dates";
+import { requireCronAuth } from "@/lib/cronAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function requireCronAuth(req: NextRequest) {
-  const secret = process.env.CRON_SECRET || process.env.NEXT_PUBLIC_SYNC_TOKEN || "";
-  if (!secret) return; // allow if not configured
-
-  const qp = req.nextUrl.searchParams.get("token")?.trim() || "";
-  if (!qp || qp !== secret) {
-    throw new Error("Unauthorized");
-  }
-}
 
 type StepSummary = {
   step: string;
@@ -74,7 +65,8 @@ async function runStep(args: {
 
 export async function GET(req: NextRequest) {
   try {
-    requireCronAuth(req);
+    const auth = requireCronAuth(req);
+    if (auth instanceof NextResponse) return auth;
 
     const url = req.nextUrl;
     const origin = url.origin;
@@ -92,8 +84,8 @@ export async function GET(req: NextRequest) {
     const providedEnd = url.searchParams.get("end")?.trim() || "";
     const window = buildWindow(providedStart || undefined, providedEnd || undefined);
 
-    const secret = process.env.CRON_SECRET || process.env.NEXT_PUBLIC_SYNC_TOKEN || "";
-    const authHeader = secret ? { Authorization: `Bearer ${secret}` } : undefined;
+    const secret = String(process.env.CRON_SECRET || "").trim();
+    const authHeader = { Authorization: `Bearer ${secret}` };
 
     const steps: StepSummary[] = [];
 
@@ -103,8 +95,9 @@ export async function GET(req: NextRequest) {
       end: window.end,
       force: "1",
     });
+    shopifyParams.set("token", secret);
     const shopifyUrl = `${origin}/api/shopify/sync?${shopifyParams.toString()}`;
-    const shopify = await runStep({ step: "shopify_sync", url: shopifyUrl });
+    const shopify = await runStep({ step: "shopify_sync", url: shopifyUrl, headers: authHeader });
     steps.push(shopify.summary);
     if (!shopify.summary.ok) {
       return NextResponse.json(
@@ -119,6 +112,7 @@ export async function GET(req: NextRequest) {
       end: window.end,
       fillZeros: "1",
     });
+    googleParams.set("token", secret);
     const googleUrl = `${origin}/api/googleads/sync?${googleParams.toString()}`;
     const google = await runStep({ step: "googleads_sync", url: googleUrl, headers: authHeader });
     steps.push(google.summary);
@@ -135,6 +129,7 @@ export async function GET(req: NextRequest) {
       end: window.end,
       fillZeros: "1",
     });
+    metaParams.set("token", secret);
     const metaUrl = `${origin}/api/meta/sync?${metaParams.toString()}`;
     const meta = await runStep({ step: "meta_sync", url: metaUrl, headers: authHeader });
     steps.push(meta.summary);
@@ -150,6 +145,7 @@ export async function GET(req: NextRequest) {
       start: window.start,
       end: window.end,
     });
+    lineItemsParams.set("token", secret);
     const lineItemsUrl = `${origin}/api/shopify/daily-line-items-sync?${lineItemsParams.toString()}`;
     const lineItems = await runStep({
       step: "shopify_daily_line_items",
@@ -170,7 +166,7 @@ export async function GET(req: NextRequest) {
       end: window.end,
     });
     const recomputeUrl = `${origin}/api/shopify/recompute?${recomputeParams.toString()}`;
-    const recompute = await runStep({ step: "shopify_recompute", url: recomputeUrl });
+    const recompute = await runStep({ step: "shopify_recompute", url: recomputeUrl, headers: authHeader });
     steps.push(recompute.summary);
     if (!recompute.summary.ok) {
       return NextResponse.json(
@@ -186,7 +182,7 @@ export async function GET(req: NextRequest) {
       token: secret,
     });
     const rollingUrl = `${origin}/api/cron/rolling-30?${rollingParams.toString()}`;
-    const rolling = await runStep({ step: "rolling_30", url: rollingUrl });
+    const rolling = await runStep({ step: "rolling_30", url: rollingUrl, headers: authHeader });
     steps.push(rolling.summary);
     if (!rolling.summary.ok) {
       return NextResponse.json(

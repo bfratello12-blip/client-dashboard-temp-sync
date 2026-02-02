@@ -1,19 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { bucketShopifyOrderDay } from "@/lib/dates";
+import { requireCronAuth } from "@/lib/cronAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function requireAuth(req: NextRequest) {
-  const secret = process.env.CRON_SECRET || process.env.NEXT_PUBLIC_SYNC_TOKEN || "";
-  if (!secret) return;
-
-  const header = req.headers.get("authorization") || "";
-  const bearer = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-  const ok = bearer === secret || header === secret;
-  if (!ok) throw new Error("Unauthorized");
-}
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -187,7 +178,8 @@ query OrdersWithLineItems($cursor: String, $queryStr: String!) {
 
 export async function POST(req: NextRequest) {
   try {
-    requireAuth(req);
+    const auth = requireCronAuth(req);
+    if (auth instanceof NextResponse) return auth;
 
     const supabase = getSupabaseAdmin();
     const url = req.nextUrl;

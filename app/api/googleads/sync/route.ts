@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { isoDateUTC, dateRangeInclusiveUTC } from "@/lib/dates";
 import { ensureDailyMetricsRows, upsertDailyMetrics, type DailyMetricsRow } from "@/lib/dailyMetrics";
+import { requireCronAuth } from "@/lib/cronAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,16 +16,6 @@ type GoogleCfg = {
   clientId: string;
   clientSecret: string;
 };
-
-// --- auth helpers (unchanged) ---
-function requireCronAuth(req: NextRequest): string | null {
-  const expected = String(process.env.CRON_SECRET ?? "").trim();
-  if (!expected) return "Missing CRON_SECRET";
-  const auth = req.headers.get("authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-  if (!token || token !== expected) return "Unauthorized";
-  return null;
-}
 
 function normalizeCustomerId(v: string) {
   return String(v || "").replace(/-/g, "").trim();
@@ -188,10 +179,8 @@ async function fetchGoogleDailyMetrics(cfg: GoogleCfg, startDay: string, endDay:
 }
 
 export async function GET(req: NextRequest) {
-  const authErr = requireCronAuth(req);
-  if (authErr) {
-    return NextResponse.json({ ok: false, error: authErr }, { status: authErr === "Unauthorized" ? 401 : 500 });
-  }
+  const auth = requireCronAuth(req);
+  if (auth instanceof NextResponse) return auth;
 
   const { startDay, endDay, fillZeros } = parseWindow(req);
   const clientIdFilter = req.nextUrl.searchParams.get("client_id")?.trim() ?? null;

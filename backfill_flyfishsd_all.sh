@@ -17,7 +17,6 @@ post() {
   echo
 }
 
-# Month start/end helpers using python (portable)
 month_start() {
   python - <<'PY'
 import sys, datetime
@@ -54,13 +53,13 @@ print(min(a,b).isoformat())
 PY
 }
 
-log "Starting FULL backfill (ALL DATA) for FlyFishSD"
+log "Starting FULL backfill (ShopifyQL revenue + line items + recompute)"
+log "Client: ${CLIENT_ID}"
 log "Range: ${START_DATE} → ${END_DATE}"
 
 CUR="${START_DATE}"
 
 while true; do
-  # stop if CUR > END_DATE
   stop="$(python - <<'PY'
 import sys, datetime
 cur=datetime.date.fromisoformat(sys.argv[1])
@@ -79,21 +78,15 @@ PY
   log "Chunk: ${CHUNK_START} → ${CHUNK_END}"
   log "=============================="
 
-  # 1) Canonical revenue via ShopifyQL (POS-excluded for this client)
+  # 1) Canonical revenue via ShopifyQL (POS exclusion applied by client settings)
   resp="$(post "${BASE_URL}/api/shopify/sync?client_id=${CLIENT_ID}&start=${CHUNK_START}&end=${CHUNK_END}&mode=shopifyql")"
   log "Revenue (ShopifyQL) response: ${resp}"
 
-  # 2) OPTIONAL: orders-based sync for orders count + any non-ShopifyQL fields your sync writes.
-  # If your orders-mode sync overwrites revenue, you should SKIP this.
-  # If your code merges safely or only writes orders, keep it.
-  resp="$(post "${BASE_URL}/api/shopify/sync?client_id=${CLIENT_ID}&start=${CHUNK_START}&end=${CHUNK_END}&mode=orders")"
-  log "Orders-mode sync response: ${resp}"
-
-  # 3) Daily line items + unit costs (requires read_all_orders — you said you have it)
+  # 2) Daily line items + unit costs (requires read_all_orders — you said you have it)
   resp="$(post "${BASE_URL}/api/shopify/daily-line-items-sync?client_id=${CLIENT_ID}&start=${CHUNK_START}&end=${CHUNK_END}")"
   log "Line-items sync response: ${resp}"
 
-  # 4) Recompute profit summary + coverage
+  # 3) Recompute profit summary + coverage
   resp="$(post "${BASE_URL}/api/shopify/recompute?client_id=${CLIENT_ID}&start=${CHUNK_START}&end=${CHUNK_END}")"
   log "Recompute response: ${resp}"
 
@@ -101,7 +94,6 @@ PY
   NEXT_MONTH="$(add_months "${M_START}" 1)"
   CUR="${NEXT_MONTH}"
 
-  # If we ended early because END_DATE mid-month, we're done
   if [[ "${CHUNK_END}" == "${END_DATE}" ]]; then
     break
   fi

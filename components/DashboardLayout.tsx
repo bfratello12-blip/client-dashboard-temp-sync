@@ -3,13 +3,15 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { hasShopifyContextClient } from "@/lib/shopifyContext";
 import Sidebar from "@/components/Sidebar";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
+  skipSupabaseAuth?: boolean;
 }
 
-export default function DashboardLayout({ children }: DashboardLayoutProps) {
+export default function DashboardLayout({ children, skipSupabaseAuth }: DashboardLayoutProps) {
   const router = useRouter();
   const [clientId, setClientId] = useState<string>("");
   const [clientName, setClientName] = useState<string>("");
@@ -41,6 +43,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   useEffect(() => {
     const checkAuth = async () => {
+      const bypass = Boolean(skipSupabaseAuth) || hasShopifyContextClient();
+      if (bypass) {
+        setLoading(false);
+        return;
+      }
       const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
       if (sessionErr) {
         console.error(sessionErr);

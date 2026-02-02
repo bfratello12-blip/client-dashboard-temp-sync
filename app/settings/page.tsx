@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { hasShopifyContextClient } from "@/lib/shopifyContext";
 import DashboardLayout from "@/components/DashboardLayout";
 
 export const dynamic = "force-dynamic";
@@ -451,16 +452,19 @@ function SettingsPage() {
     const run = async () => {
       setLoading(true);
 
-      const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
-      if (sessionErr) console.error(sessionErr);
+      const bypass = hasShopifyContextClient();
+      if (!bypass) {
+        const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+        if (sessionErr) console.error(sessionErr);
 
-      const userId = sessionData.session?.user?.id;
-      if (!userId) {
-        if (!cancelled) {
-          setLoading(false);
-          router.replace("/login");
+        const userId = sessionData.session?.user?.id;
+        if (!userId) {
+          if (!cancelled) {
+            setLoading(false);
+            router.replace("/login");
+          }
+          return;
         }
-        return;
       }
 
       let shopDomain = document.cookie
@@ -640,7 +644,7 @@ function SettingsPage() {
   const costs = useMemo(() => costSettings || ({ client_id: clientId } as ClientCostSettings), [costSettings, clientId]);
 
   return (
-    <DashboardLayout>
+    <DashboardLayout skipSupabaseAuth={hasShopifyContextClient()}>
       <div className="mx-auto flex max-w-[1400px] gap-6 px-6 py-8">
         <div className="mx-auto max-w-4xl">
           <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">

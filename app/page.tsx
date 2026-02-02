@@ -94,6 +94,9 @@ export default async function Page({
   const shopGuess = normalizeShopDomain(
     shopParam || shopFromToken || headerShop || refererShop || cookieShop
   );
+  const hasShopifyContext = Boolean(
+    shopParam || hostParam || idToken || headerShop || refererShop || cookieShop
+  );
   const shopSource = shopParam
     ? "shop_param"
     : shopFromToken
@@ -119,7 +122,7 @@ export default async function Page({
 
   const isDev = process.env.NODE_ENV === "development";
   const devClientId = clientIdParam || process.env.LOCAL_CLIENT_ID || "";
-  const devBypassAllowed = isDev && !shopGuess && !hostParam && !idToken && !headerShop;
+  const devBypassAllowed = isDev && !hasShopifyContext;
 
   if (!shopGuess && devBypassAllowed && devClientId) {
     return (
@@ -129,13 +132,23 @@ export default async function Page({
             DEV MODE: Using LOCAL_CLIENT_ID={devClientId}
           </div>
         </div>
-        <HomeClient initialClientId={String(devClientId)} />
+        <HomeClient initialClientId={String(devClientId)} skipSupabaseAuth />
       </main>
     );
   }
 
   if (!shopGuess) {
-    return <ShopifyBootstrap host={hostParam} />;
+    if (hasShopifyContext) {
+      return <ShopifyBootstrap host={hostParam} />;
+    }
+    if (isDev) {
+      return <HomeClient />;
+    }
+    return (
+      <main className="min-h-screen flex items-center justify-center p-6">
+        <div className="text-sm text-slate-600">Open this app from Shopify Admin → Apps.</div>
+      </main>
+    );
   }
 
   const { data, error } = await supabaseAdmin()
@@ -172,5 +185,5 @@ export default async function Page({
     );
   }
 
-  return <HomeClient initialClientId={String(data.client_id)} />;
+  return <HomeClient initialClientId={String(data.client_id)} skipSupabaseAuth />;
 }

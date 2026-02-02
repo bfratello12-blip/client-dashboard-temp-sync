@@ -1,42 +1,36 @@
 # AI_MAP.md — ScaleAble Platform Map
 
-This document is a technical system map for the ScaleAble platform. It is written for senior engineers joining mid-build and is intended to be a self-contained reference for architecture, data flow, and operations.
+This document is the authoritative technical system map for the ScaleAble platform. It is written for engineers and AI agents who need to reason about the system without guessing.
 
 ---
 
-## 1) System Purpose
+## 1) High-Level Overview
 
 ### What ScaleAble is
-ScaleAble is a profit-first analytics platform for Shopify merchants running paid media. It is both:
+ScaleAble is a profit-first analytics platform for small Shopify merchants running paid media. It is both:
 - An embedded Shopify Admin app
 - A multi-client SaaS dashboard
 
-### Business problem solved
-Ad platforms report attributed revenue, which diverges from real business revenue and profit. ScaleAble reconciles Shopify revenue with paid spend and COGS to produce business-truth metrics that inform spend allocation and profitability.
+### Problem it solves
+Ad platforms report attributed revenue that does not equal true business revenue or profit. ScaleAble reconciles:
+- Shopify revenue (ground truth)
+- Paid spend (Google Ads + Meta)
+- COGS and variable costs
 
-### Why profit-first metrics matter
-ScaleAble prioritizes metrics that reflect actual business health:
-- COGS coverage: validates how much product-level cost data is known.
-- Contribution profit: revenue minus paid spend and variable costs.
-- MER: revenue ÷ paid spend (business-level efficiency, not just ad attribution).
-- Rolling-30: stabilizes volatility and removes daily noise for decision-making.
+The output is a consistent, business-truth view of profit and efficiency over time.
 
 ---
 
-## 2) High-Level Architecture
+## 2) Multi-Client Architecture
 
-### Next.js App Router structure
-- App Router is used for both UI and API.
-- API routes live under app/api/...
-- UI routes live under app/.../page.tsx
+- Single codebase for all tenants
+- Per-client Shopify apps via Shopify’s embedded app model
+- `client_id` is the core identifier used across all tables, routes, and UI
 
-### Client vs server separation
-- Server code: API routes (data sync, auth, recompute).
-- Client code: dashboard UI and charts.
-
-### Why page.tsx delegates to page.client.tsx
-- app/page.tsx is a server component that resolves the `client_id`.
-- It passes the resolved client context to app/page.client.tsx (client component) which handles all client-side rendering, hooks, and charts.
+Explicit behavior:
+- Every API read/write is scoped to `client_id`
+- All daily rollups use `client_id` + date as the primary key
+- Each Shopify store maps to one `client_id` via Supabase
 
 ---
 
@@ -45,238 +39,203 @@ ScaleAble prioritizes metrics that reflect actual business health:
 ### Core tables
 
 #### clients
-- Canonical tenant table.
-- Each Shopify store maps to a single `client_id`.
+- Canonical tenant table
+- One row per merchant
 
 #### client_integrations
-- Stores non-Shopify integrations (Google Ads, Meta).
-- Contains access tokens, ad account IDs, and metadata.
+- Non-Shopify integrations
+- Stores Google Ads and Meta account IDs and tokens
 
 #### shopify_app_installs
-- Source of truth for Shopify store → client mapping.
-- Stores shop domain, access token, scopes, and install metadata.
+- Source of truth for Shopify store → `client_id` mapping
+- Stores shop domain, OAuth access token, scopes
 
 #### daily_metrics
-- Unified daily rollups across sources.
-- Key fields: date, client_id, source (shopify/google/meta), spend, revenue, units, orders, clicks, impressions, conversions.
-- Shopify rows are the source of truth for revenue/units/orders.
+- Unified daily rollups across sources
+- Key fields: date, client_id, source, spend, revenue, units, orders, clicks, impressions, conversions
+- Shopify rows are the truth for revenue, orders, units
 
 #### shopify_daily_line_items
-- Per-day line-item totals by variant/product.
-- Used for COGS and coverage calculations.
-- Includes refunds where applicable.
+- Per-day line item totals by variant/product
+- Used for COGS and coverage calculations
+- Includes refunds
 
 #### shopify_variant_unit_costs
-- Unit cost per Shopify inventory item / variant.
-- Used to compute actual COGS coverage.
+- Unit cost per Shopify inventory item / variant
+- Used in COGS coverage and profit recompute
 
 #### daily_profit_summary
-- Derived daily profit metrics.
-- Stores revenue, paid_spend, estimated costs, contribution_profit, mer, profit_mer.
+- Derived daily profit metrics
+- Stores revenue, paid_spend, estimated costs, contribution_profit, mer, profit_mer
 
 #### daily_shopify_cogs_coverage
-- Coverage summary for unit cost availability on daily Shopify revenue.
-- Tracks how much revenue is backed by real unit costs.
-
-### Relationships
-- `clients` is the tenant root.
-- `shopify_app_installs.client_id` maps Shopify store → tenant.
-- `daily_metrics.client_id` aggregates all sources per tenant/day.
-- `shopify_daily_line_items` and `shopify_variant_unit_costs` feed COGS coverage and profit recompute.
-- `daily_profit_summary` is derived from `daily_metrics` + cost settings + COGS coverage.
+- Coverage summary for unit cost availability on daily Shopify revenue
 
 ---
 
-## 4) Shopify Integration
+## 4) Data Ingestion Flows
 
-### OAuth / token strategy
-- OAuth begins at /api/shopify/oauth/start.
-- OAuth callback stores access tokens in Supabase (`shopify_app_installs`).
-- Tokens are not stored in env vars to support multi-tenant installs and rotation.
+### Shopify (primary revenue source)
+- ShopifyQL is the primary method
+- Orders aggregation is the fallback if ShopifyQL fails
+- Writes to daily_metrics with source=shopify
 
-### Why tokens live in Supabase
-- Supports multiple stores across clients.
-- Allows per-client revocation and reauthorization.
-- Fits Shopify’s embedded app model where tokens are tenant-scoped.
+### Google Ads spend
+- Reads client_integrations for tokens and account IDs
+- Writes spend and performance metrics to daily_metrics with source in {google, google_ads, googleads}
 
-### Daily orders vs line items vs unit costs
-- Daily orders and revenue are sourced via ShopifyQL and stored in `daily_metrics` (source=shopify).
-- Line items are pulled via Shopify Admin API and stored in `shopify_daily_line_items`.
-- Unit costs are stored in `shopify_variant_unit_costs` and joined during recompute.
+### Meta Ads spend
+- Reads client_integrations for tokens and account IDs
+- Writes spend and performance metrics to daily_metrics with source=meta
 
 ---
 
-## 5) Cost & Profit Computation
+## 5) Shopify Specifics
 
-### COGS coverage
-- For each day, line items are joined with `shopify_variant_unit_costs`.
-- Coverage = revenue_with_costs ÷ total_revenue.
-- Missing costs are captured and reported in `daily_shopify_cogs_coverage`.
+### Day bucketing
+- Daily rollups are stored as ISO date strings (YYYY-MM-DD)
+- All comparisons and joins use that date string as the day key
 
-### Missing unit costs
-- If unit cost is missing, estimated COGS is applied using client-level defaults.
-- Defaults are stored in client cost settings.
+### Timezone handling
+- Shopify reporting is aligned to the shop’s configured timezone
+- Local day boundaries are converted to UTC before storage
 
-### Contribution profit and profit MER
-Computed during recompute and stored in `daily_profit_summary`:
-- contribution_profit = revenue - (paid_spend + est_cogs + est_processing_fees + est_fulfillment_costs + est_other_variable_costs + est_other_fixed_costs)
-- mer = revenue ÷ paid_spend
-- profit_mer = contribution_profit ÷ paid_spend
+### No POS exclusion
+- POS sales are not filtered out
+- Shopify revenue is treated as the canonical truth for all sales channels
 
-Contribution profit is **fully net of all estimated costs** and must be treated as the canonical profit metric downstream.
-
----
-
-## 6) Chart & KPI Logic
-
-### Shopify-only vs all-source aggregations
-- Shopify truth: revenue, orders, units are always derived from `daily_metrics` where source=shopify.
-- All-source spend: `daily_metrics` where source in {google, meta}.
-
-### Why charts use timestamps
-- Recharts expects numeric time values for continuous scale.
-- Each chart row includes a `ts` field derived from ISO date.
-
-### Common chart pitfalls
-- Missing `ts` results in blank charts or broken tooltips.
-- ResponsiveContainer can render before the parent has size (Shopify iframe timing).
-- Always guard chart render with non-zero size and fixed-height wrapper.
+### Tables written by Shopify flows
+- daily_metrics (source=shopify)
+- shopify_daily_line_items
+- shopify_variant_unit_costs
+- daily_shopify_cogs_coverage (via recompute)
+- daily_profit_summary (via recompute)
 
 ---
 
-## 7) Cron & Automation Design
+## 6) Profit Calculation Logic
 
-### /api/cron/daily-sync (step-by-step)
-1) Shopify sync (daily_metrics revenue/orders/units)
-2) Google Ads sync (daily_metrics spend + metrics)
-3) Meta Ads sync (daily_metrics spend + metrics)
-4) Shopify daily line items sync (line items + refunds)
-5) Shopify recompute (profit + COGS coverage)
+### Contribution profit (canonical)
+Contribution profit is computed during recompute and stored in daily_profit_summary:
+
+$$
+	ext{contribution\_profit} = \text{revenue} - (\text{paid\_spend} + \text{est\_cogs} + \text{est\_processing\_fees} + \text{est\_fulfillment\_costs} + \text{est\_other\_variable\_costs} + \text{est\_other\_fixed\_costs})
+$$
+
+### MER (True ROAS)
+$$
+	ext{MER} = \frac{\text{revenue}}{\text{paid\_spend}}
+$$
+
+### Profit Return (Profit MER)
+$$
+	ext{Profit Return} = \frac{\text{contribution\_profit}}{\text{paid\_spend}}
+$$
+
+Explicit statement:
+- Paid spend is counted once. It is not double-counted in any recompute or rolling window.
+
+---
+
+## 7) Recompute System
+
+### What it reads
+- daily_metrics (shopify revenue/orders/units + google/meta spend)
+- shopify_daily_line_items
+- shopify_variant_unit_costs
+- client cost settings (default margins and variable cost assumptions)
+
+### What it writes
+- daily_profit_summary
+- daily_shopify_cogs_coverage
+
+### Why recompute exists
+- ShopifyQL and line items arrive at different times
+- Unit costs are updated asynchronously
+- Recompute guarantees profit and coverage are consistent and idempotent
+
+---
+
+## 8) Cron System
+
+### Daily rolling-30 strategy
+Daily cron runs a deterministic sequence:
+1) Shopify sync
+2) Google Ads sync
+3) Meta Ads sync
+4) Shopify daily line items sync
+5) Shopify recompute
 6) Rolling-30 recompute
 
-### **Rolling-30 KPI Computation (Canonical)**
+### Why rolling windows are used
+- Shopify and ad APIs can be delayed or backfilled
+- Rolling windows correct late-arriving data without full historical rebuilds
 
-**Important: this supersedes any older rolling-30 logic.**
-
-- Rolling-30 KPIs are **derived dynamically from daily tables**.
-- **Profit source of truth:** `daily_profit_summary.contribution_profit`.
-- **Spend source of truth:** `daily_metrics.spend` where source in (`google`, `meta`).
-- Profit and spend are **aggregated independently** over the same 30-day window.
-- **The UI must never recompute profit** from revenue or subtract cost fields.
-- **No `est_*` cost columns are used in frontend calculations.**
-
-**Rolling-30 formulas:**
-- Rolling Profit = `sum(contribution_profit)`
-- Rolling Spend = `sum(spend)`
-- Profit Return / Profit MER = `Rolling Profit ÷ Rolling Spend`
-
-This design prevents:
-- Double-subtraction of processing fees
-- Duplication of profit across multiple ad sources
-- Drift between SQL truth and dashboard KPIs
-
-Rolling-30 values are validated against SQL ground truth and must match exactly.
-
-### Why each Vercel deployment has the same cron path
-- Each deployment is self-contained; cron endpoints are identical across deploys.
-- Orchestrators always target the current deployment origin.
+### Auth model
+Cron-protected routes accept:
+- Authorization: Bearer $CRON_SECRET
+- OR ?token=$CRON_SECRET
 
 ---
 
-## 8) Backfill Strategy
+## 9) Auth & Security
 
-### Why month-by-month
-- ShopifyQL can overwrite older historical data beyond 60 days.
-- Month windows keep data stable and avoid API timeouts.
+### CRON_SECRET
+- Shared secret for all cron-protected endpoints
+- Accepted via Authorization header or token query param
+- If missing or invalid, the endpoint returns HTTP 401 with { ok: false, error: "Unauthorized" }
 
-### What gen_backfill_cmds.js generates
-- A month-by-month bash script:
-  - Shopify sync
-  - Google sync
-  - Meta sync
-  - Line items sync
-  - Recompute
-  - Rolling-30
-
-### How to safely backfill multiple years
-- Run one month first as a sanity check.
-- Run sequential months to avoid API limits.
-- Verify coverage and profit after each batch.
+### OAuth token storage
+- Shopify OAuth tokens are stored in shopify_app_installs
+- Google and Meta tokens are stored in client_integrations
+- Tokens are not stored in environment variables
 
 ---
 
-## 9) Canonical Curl Commands
+## 10) Local Development Behavior
 
-Daily sync:
-```
-curl -i "https://YOUR_DOMAIN/api/cron/daily-sync?client_id=<CLIENT_ID>&token=<SYNC_TOKEN>"
-```
+### LOCAL_CLIENT_ID
+- When set, the server uses it as the default tenant in local/dev
+- Allows local UI boot without passing client_id in every request
 
-Shopify sync:
-```
-curl -sS -X POST "https://YOUR_DOMAIN/api/shopify/sync?client_id=<CLIENT_ID>&start=YYYY-MM-DD&end=YYYY-MM-DD&force=1" \
-  -H "Content-Type: application/json"
-```
-
-Google Ads sync:
-```
-curl -sS -X POST "https://YOUR_DOMAIN/api/googleads/sync?client_id=<CLIENT_ID>&start=YYYY-MM-DD&end=YYYY-MM-DD&fillZeros=1" \
-  -H "Authorization: Bearer <SYNC_TOKEN>" \
-  -H "Content-Type: application/json"
-```
-
-Meta Ads sync:
-```
-curl -sS -X POST "https://YOUR_DOMAIN/api/meta/sync?client_id=<CLIENT_ID>&start=YYYY-MM-DD&end=YYYY-MM-DD&fillZeros=1" \
-  -H "Authorization: Bearer <SYNC_TOKEN>" \
-  -H "Content-Type: application/json"
-```
-
-Line items + unit costs:
-```
-curl -sS -X POST "https://YOUR_DOMAIN/api/shopify/daily-line-items-sync?client_id=<CLIENT_ID>&start=YYYY-MM-DD&end=YYYY-MM-DD" \
-  -H "Authorization: Bearer <SYNC_TOKEN>" \
-  -H "Content-Type: application/json"
-```
-
-Recompute:
-```
-curl -sS -X POST "https://YOUR_DOMAIN/api/shopify/recompute?start=YYYY-MM-DD&end=YYYY-MM-DD&token=<SYNC_TOKEN>" \
-  -H "Content-Type: application/json"
-```
-
-Rolling-30:
-```
-curl -sS -X POST "https://YOUR_DOMAIN/api/cron/rolling-30?client_id=<CLIENT_ID>&start=YYYY-MM-DD&end=YYYY-MM-DD&token=<SYNC_TOKEN>" \
-  -H "Content-Type: application/json"
-```
+### DEV MODE rendering
+- Client-side rendering is used for dashboard pages
+- Server components resolve client context, then pass into client components
 
 ---
 
-## 10) Operational Runbook
+## 11) Dashboard Philosophy
 
-### Adding a new client
-- Create `clients` row.
-- Install Shopify app to generate `shopify_app_installs` entry.
-- Add `client_integrations` rows for Google/Meta if needed.
+### Target audience
+- Small Shopify merchants with paid media spend
 
-### Installing Shopify app
-- Start OAuth with /api/shopify/oauth/start?shop=... from embedded app.
-- Ensure access token is stored in `shopify_app_installs`.
+### Indexed ROAS vs MER chart rationale
+- Indexed ROAS is presented to show trend direction without over-emphasizing absolute scale
+- MER is the canonical business efficiency metric
 
-### Running initial backfill
-- Generate month-by-month script with gen_backfill_cmds.js.
-- Run one month first, then the rest.
-- Finish with /api/cron/daily-sync for the last 30 days.
+### Charts intentionally removed
+- Low-signal, high-noise charts were removed to reduce cognitive load
+- Only charts that support daily decision-making remain
 
-### Verifying data correctness
-- Compare Shopify Analytics totals vs `daily_metrics` shopify rows.
-- Confirm ad spend in `daily_metrics` matches Google/Meta.
-- Check `daily_shopify_cogs_coverage` for coverage %.
-- Review `daily_profit_summary` for contribution profit and MER.
+---
 
-### Ongoing maintenance
-- Ensure daily cron runs are healthy.
-- Monitor OAuth token freshness in `shopify_app_installs`.
-- Validate integrations in `client_integrations` (token + account IDs).
+## 12) Known Constraints & Non-Goals
 
+- Not a full attribution platform
+- No multi-touch attribution modeling
+- No cross-channel customer journey modeling
+- Shopify revenue is treated as the ground truth
+- POS sales are included, not excluded
+- Rolling windows are used instead of real-time recomputation on every write
+
+## 13) Current Clients on Dashboard
+
+- Clients Name: FlyFishSD
+- client_id: 6a3a4187-b224-4942-b658-0fa23cb79eac
+- Vercel Domain: client-dashboard-temp-customapp.vercel.app
+- Bearer: Laughing_Lab_1011
+
+- Clients Name: Wild Water Fly Fishing
+- client_id: f298424f-d14c-4946-8a3a-4ce8ccabdadf
+- Vercel Domain: scaleable-dashboard-wildwater.vercel.app
+- Bearer: Laughing_Lab_1011

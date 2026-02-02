@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
+import { hasShopifyContextClient } from "@/lib/shopifyContext";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import {
   ResponsiveContainer,
@@ -1296,7 +1297,13 @@ function SafeResponsiveContainer({
 /** -----------------------------
  *  Page
  *  ----------------------------- */
-export default function Home({ initialClientId }: { initialClientId?: string }) {
+export default function Home({
+  initialClientId,
+  skipSupabaseAuth,
+}: {
+  initialClientId?: string;
+  skipSupabaseAuth?: boolean;
+}) {
   const router = useRouter();
   // 🔑 Shopify embedded check: session token ping
   useEffect(() => {
@@ -1773,6 +1780,8 @@ export default function Home({ initialClientId }: { initialClientId?: string }) 
   }, [range, rangeDays, lastSalesDateISO]);
   /** Auth gate */
   useEffect(() => {
+    const bypass = Boolean(skipSupabaseAuth) || hasShopifyContextClient();
+    if (bypass) return;
     let unsub: (() => void) | null = null;
     (async () => {
       const { data } = await supabase.auth.getSession();
@@ -1785,7 +1794,7 @@ export default function Home({ initialClientId }: { initialClientId?: string }) 
     return () => {
       if (unsub) unsub();
     };
-  }, [router]);
+  }, [router, skipSupabaseAuth]);
   
   // --- Cost settings helpers ---
   const normPct = (v: any): number | null => {
@@ -3779,7 +3788,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     });
   }, [attribSeries]);
   return (
-    <DashboardLayout>
+    <DashboardLayout skipSupabaseAuth={Boolean(skipSupabaseAuth)}>
       <PrintStyles />
       <div className="p-6 md:p-8 min-w-0">
         <header className="no-print flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

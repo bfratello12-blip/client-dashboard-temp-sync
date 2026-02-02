@@ -24,13 +24,14 @@ async function runShopifyQL(shop: string, accessToken: string, shopifyQL: string
   const gql = `
     query RunShopifyQL($query: String!) {
       shopifyqlQuery(query: $query) {
-        __typename
         parseErrors
-        columns {
-          name
-        }
         tableData {
-          rowData
+          columns {
+            name
+            dataType
+            displayName
+          }
+          rows
         }
       }
     }
@@ -109,7 +110,7 @@ SINCE startOfDay(-30d) UNTIL today
       );
     }
 
-    return NextResponse.json({ ok: true, columns: node.columns, tableData: node.tableData });
+    return NextResponse.json({ ok: true, columns: node.tableData?.columns, rows: node.tableData?.rows });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || String(e) }, { status: 500 });
   }

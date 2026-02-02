@@ -3254,7 +3254,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         {
           label: "Total Costs",
           value: formatCurrency(totalCostsPrimaryKpi),
-          sub: "Total operating costs including COGS, fulfillment, fees, and paid advertising.",
+          sub: "Total unit costs + ad spend",
           trend: undefined,
         },
         {
@@ -3262,7 +3262,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
           value:
             profitPrimary != null ? formatCurrency(profitPrimary) : "—",
           sub:
-            profitPrimary != null ? "Contribution profit after costs & ad spend" : "—",
+            profitPrimary != null ? "Estimated profit based on cost settings" : "—",
           trend: undefined,
         },
         { label: "Orders", value: formatNumber(bizTotals.orders), sub: "Shopify orders", trend: undefined },
@@ -3273,7 +3273,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         {
           label: "Profit Return",
           value: `${profitReturnOnCosts.toFixed(2)}x`,
-          sub: "Contribution profit per $1 of ad spend",
+          sub: "Estimated profit per $1 of total costs",
           trend: undefined,
         },
         { label: "CTR", value: ctr != null ? formatPct(ctr) : "—", sub: "Click-through-rate", trend: undefined },
@@ -3297,7 +3297,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       {
         label: "Total Costs",
         value: formatCurrency(totalCostsPrimaryKpi),
-        sub: `vs prev: ${fmtDelta(totalCostsDelta, allowPct)}`,
+        sub: `Total unit costs + ad spend • vs prev: ${fmtDelta(totalCostsDelta, allowPct)}`,
         trend: allowPct ? totalCostsDelta : undefined,
       },
       {
@@ -3306,7 +3306,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
           profitPrimary != null ? formatCurrency(profitPrimary) : "—",
         sub:
           profitPrimary != null && profitCompare != null
-            ? `vs prev: ${formatSignedCurrency(profitPrimary - profitCompare)}`
+            ? `Estimated profit based on cost settings • vs prev: ${formatSignedCurrency(profitPrimary - profitCompare)}`
             : "—",
         trend:
           profitPrimary != null && profitCompare != null && allowPct
@@ -3321,7 +3321,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       {
         label: "Profit Return",
         value: `${profitReturnOnCosts.toFixed(2)}x`,
-        sub: `vs prev: ${fmtDelta(merDelta, allowPct)}`,
+        sub: `Estimated profit per $1 of total costs • vs prev: ${fmtDelta(merDelta, allowPct)}`,
         trend: allowPct ? merDelta : undefined,
       },
       {

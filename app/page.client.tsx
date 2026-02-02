@@ -1570,7 +1570,7 @@ export default function Home({ initialClientId }: { initialClientId?: string }) 
     bizUnits: 0,
   });
   /** North Star selection */
-  const [northStarKey, setNorthStarKey] = useState<string>("Profit Return");
+  const [northStarKey, setNorthStarKey] = useState<string>("Profit");
   /** Series */
   const [spendSeries, setSpendSeries] = useState<{ date: string; spend: number }[]>([]);
   const [metaSpendSeries, setMetaSpendSeries] = useState<{ date: string; spend: number }[]>([]);

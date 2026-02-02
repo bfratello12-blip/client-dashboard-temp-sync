@@ -135,7 +135,7 @@ type HoveredEvent = {
 } | null;
 type WindowISO = { startISO: string; endISO: string; days: number };
 type Windows = { primary: WindowISO; compare: WindowISO | null };
-type AttributionWindowDays = 1 | 3 | 7 | 14;
+type AttributionWindowDays = 7 | 14 | 30;
 type ClientCostSettings = {
   client_id: string;
   // Percent fields are stored as fractions (e.g. 0.36 = 36%)
@@ -901,17 +901,21 @@ function MultiSeriesEventfulLineChart({
   xDomain,
   compareLabel,
   height = 320,
+  tooltipContent,
+  yAxisLabel,
 }: {
   data: { date: string; [k: string]: any }[];
   compareData?: { date: string; [k: string]: any }[];
   showComparison: boolean;
-  series: { key: string; name: string; color: string }[];
+  series: { key: string; name: string; color: string; strokeWidth?: number }[];
   yTooltipFormatter: (v: number) => string;
   markers: EventMarker[];
   showMarkers: boolean;
   xDomain?: [number, number];
   compareLabel: string;
   height?: number;
+  tooltipContent?: (p: any) => React.ReactNode;
+  yAxisLabel?: string;
 }) {
   type ChartPoint = { date: string; ts: number; [k: string]: any };
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -1061,6 +1065,7 @@ function MultiSeriesEventfulLineChart({
           <YAxis 
             tick={{ fontSize: 12 }} 
             domain={yDomain as any} 
+            label={yAxisLabel ? { value: yAxisLabel, angle: -90, position: "insideLeft" } : undefined}
             tickFormatter={(v) => {
               const n = Number(v);
               if (!isFinite(n)) return "";
@@ -1071,14 +1076,18 @@ function MultiSeriesEventfulLineChart({
             }}
           />
           <Tooltip
-            content={(p: any) => (
-              <MultiSeriesTooltip
-                active={p.active}
-                label={p.label}
-                payload={p.payload}
-                valueFormatter={yTooltipFormatter}
-              />
-            )}
+            content={
+              tooltipContent
+                ? tooltipContent
+                : (p: any) => (
+                    <MultiSeriesTooltip
+                      active={p.active}
+                      label={p.label}
+                      payload={p.payload}
+                      valueFormatter={yTooltipFormatter}
+                    />
+                  )
+            }
           />
           <Legend />
           {/* Event markers */}
@@ -1172,7 +1181,7 @@ function MultiSeriesEventfulLineChart({
               dataKey={s.key}
               name={s.name}
               stroke={`url(#${strokeIds[s.key]})`}
-              strokeWidth={2.4}
+              strokeWidth={s.strokeWidth ?? 2.4}
               dot={false}
               connectNulls
               activeDot={{ r: 4, stroke: s.color, strokeWidth: 2, fill: "#fff" }}
@@ -2040,7 +2049,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         fetchEndISO = maxISO(primaryEnd, compareEnd);
       } else {
         // Preset ranges with attribution buffers
-        const maxAttrib = 14; // keep aligned with AttributionWindowDays union
+        const maxAttrib = 30; // support lag window beyond primary end
         const fetchBufferDays = 120;
         const minStart = compare ? minISO(primary.startISO, compare.startISO) : primary.startISO;
         fetchStartISO = toISODate(addDaysLocal(isoToLocalMidnightDate(minStart), -fetchBufferDays));
@@ -2543,20 +2552,14 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         const iso = toISO10(r.date);
         trackedRevByDateAll[iso] = (trackedRevByDateAll[iso] || 0) + Number(r.revenue || 0);
       }
-      const totalCostsByDateAll: Record<string, number> = {};
+      const paidSpendByDateAll: Record<string, number> = {};
       for (const r of profitDataAll) {
         const iso = toISO10(r.date);
-        totalCostsByDateAll[iso] =
-          Number((r as any).paid_spend || 0) +
-          Number((r as any).est_cogs || 0) +
-          Number((r as any).est_processing_fees || 0) +
-          Number((r as any).est_fulfillment_costs || 0) +
-          Number((r as any).est_other_variable_costs || 0) +
-          Number((r as any).est_other_fixed_costs || 0);
+        paidSpendByDateAll[iso] = Number((r as any).paid_spend || 0);
       }
       const forwardTracked = buildForwardSum(trackedRevByDateAll, primary.startISO, primary.days, attribWindowDays);
       const forwardTotal = buildForwardSum(revenueByDatePrimary, primary.startISO, primary.days, attribWindowDays);
-      const forwardCosts = buildForwardSum(totalCostsByDateAll, primary.startISO, primary.days, attribWindowDays);
+      const forwardSpend = buildForwardSum(paidSpendByDateAll, primary.startISO, primary.days, attribWindowDays);
       const attribSeriesBuilt: {
         date: string;
         mer_w: number;
@@ -2571,8 +2574,8 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         const revTrackedW = Number(forwardTracked[iso] || 0);
         const revTotalW = Number(forwardTotal[iso] || 0);
         const roasW = spend > 0 ? revTrackedW / spend : 0;
-        const costW = Number(forwardCosts[iso] || 0);
-        const merW = costW > 0 ? revTotalW / costW : 0;
+        const spendW = Number(forwardSpend[iso] || 0);
+        const merW = spendW > 0 ? revTotalW / spendW : 0;
         attribSeriesBuilt.push({
           date: iso,
           mer_w: Number(merW.toFixed(2)),
@@ -2767,7 +2770,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     };
   }, [clientId, monthlyMonths, marginAfterCostsPct]);
   /** Derived metrics */
-  const adRoas = adTotals.spend > 0 ? bizTotals.revenue / adTotals.spend : 0;
+  const adRoas = adTotals.spend > 0 ? adTotals.revenue / adTotals.spend : 0;
   const ctr = adTotals.impressions > 0 ? (adTotals.clicks / adTotals.impressions) * 100 : null;
   const profitPrimaryValue =
     Number.isFinite(Number(profitTotals.contributionProfit))
@@ -2792,7 +2795,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
   const prevProfitReturnOnCosts =
     effectiveShowComparison && totalCostsCompare > 0 ? profitCompareValue / totalCostsCompare : 0;
   const prevRoas =
-    effectiveShowComparison && compareTotals.adSpend > 0 ? compareTotals.bizRevenue / compareTotals.adSpend : 0;
+    effectiveShowComparison && compareTotals.adSpend > 0 ? compareTotals.adRevenue / compareTotals.adSpend : 0;
   const prevCtr =
     effectiveShowComparison && compareTotals.adImpressions > 0
       ? (compareTotals.adClicks / compareTotals.adImpressions) * 100
@@ -3414,6 +3417,8 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     const profitCompare = Number.isFinite(Number(compareProfitTotals.contributionProfit))
       ? Number(compareProfitTotals.contributionProfit)
       : null;
+    const merTruePrimary = adTotals.spend > 0 ? bizTotals.revenue / adTotals.spend : null;
+    const merTrueCompare = compareTotals.adSpend > 0 ? compareTotals.bizRevenue / compareTotals.adSpend : null;
     if (!effectiveShowComparison) {
       return [
         { label: "Total Revenue", value: formatCurrency(bizTotals.revenue), sub: `${rangeDays} day(s) • Shopify revenue`, trend: undefined },
@@ -3437,6 +3442,12 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         { label: "Ad Spend", value: formatCurrency(adTotals.spend), sub: "Total ad spend", trend: undefined },
         { label: "Ad ROAS", value: `${adRoas.toFixed(2)}x`, sub: "Return on ad spend", trend: undefined },
         {
+          label: "MER (True ROAS)",
+          value: merTruePrimary != null ? `${merTruePrimary.toFixed(2)}x` : "—",
+          sub: "Shopify Revenue ÷ Ad Spend",
+          trend: undefined,
+        },
+        {
           label: "Profit Return",
           value: `${profitReturnOnCosts.toFixed(2)}x`,
           sub: "Estimated profit per $1 of total costs",
@@ -3455,6 +3466,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     const aspDelta = pctChange(bizTotals.asp, prevAsp);
     const spendDelta = pctChange(adTotals.spend, compareTotals.adSpend);
     const roasDelta = pctChange(adRoas, prevRoas);
+    const merTrueDelta = merTruePrimary != null && merTrueCompare != null ? pctChange(merTruePrimary, merTrueCompare) : 0;
     const ctrDelta = ctr != null && prevCtr != null ? pctChange(ctr, prevCtr) : 0;
     const totalCostsDelta = pctChange(totalCostsPrimaryKpi, totalCostsCompareKpi);
     const merDelta = pctChange(profitReturnOnCosts, prevProfitReturnOnCosts);
@@ -3484,6 +3496,12 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       { label: "ASP", value: formatCurrency(bizTotals.asp), sub: `vs prev: ${fmtDelta(aspDelta, allowPct)}`, trend: allowPct ? aspDelta : undefined },
       { label: "Ad Spend", value: formatCurrency(adTotals.spend), sub: `vs prev: ${fmtDelta(spendDelta, allowPct)}`, trend: allowPct ? spendDelta : undefined },
       { label: "Ad ROAS", value: `${adRoas.toFixed(2)}x`, sub: `vs prev: ${fmtDelta(roasDelta, allowPct)}`, trend: allowPct ? roasDelta : undefined },
+      {
+        label: "MER (True ROAS)",
+        value: merTruePrimary != null ? `${merTruePrimary.toFixed(2)}x` : "—",
+        sub: `Shopify Revenue ÷ Ad Spend • vs prev: ${fmtDelta(merTrueDelta, allowPct && merTruePrimary != null && merTrueCompare != null)}`,
+        trend: allowPct && merTruePrimary != null && merTrueCompare != null ? merTrueDelta : undefined,
+      },
       {
         label: "Profit Return",
         value: `${profitReturnOnCosts.toFixed(2)}x`,
@@ -3559,6 +3577,39 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     },
     []
   );
+  const buildRollingRatioSeries = useCallback(
+    (
+      spendS: { date: string; spend: number }[],
+      numS: { date: string; [k: string]: any }[],
+      windowDays: number,
+      numKey: string = "revenue"
+    ) => {
+      const dates = (spendS ?? []).map((d) => d.date);
+      if (!dates.length) return [] as { date: string; mer: number | null }[];
+      const spendBy = new Map<string, number>();
+      for (const r of spendS ?? []) spendBy.set(r.date, Number(r.spend) || 0);
+      const numBy = new Map<string, number>();
+      for (const r of numS ?? []) numBy.set(r.date, Number((r as any)[numKey]) || 0);
+      const spendArr = dates.map((dt) => spendBy.get(dt) ?? 0);
+      const numArr = dates.map((dt) => numBy.get(dt) ?? 0);
+      const prefSpend: number[] = [0];
+      const prefNum: number[] = [0];
+      for (let i = 0; i < dates.length; i++) {
+        prefSpend.push(prefSpend[i] + spendArr[i]);
+        prefNum.push(prefNum[i] + numArr[i]);
+      }
+      const out: { date: string; mer: number | null }[] = [];
+      const w = Math.max(1, Math.floor(windowDays || 1));
+      for (let i = 0; i < dates.length; i++) {
+        const j0 = Math.max(0, i - w + 1);
+        const spendSum = prefSpend[i + 1] - prefSpend[j0];
+        const numSum = prefNum[i + 1] - prefNum[j0];
+        out.push({ date: dates[i], mer: spendSum > 0 ? numSum / spendSum : null });
+      }
+      return out;
+    },
+    []
+  );
   // Profit MER series normalized to the chart's expected yKey: "mer"
   const profitMerDailySeries = useMemo(() => {
     return (profitMerSeries ?? []).map((d) => ({ date: d.date, mer: Number((d as any).profit_mer) || 0 }));
@@ -3569,19 +3620,19 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
   const merTrendSeries = useMemo(() => {
     return merRollingEnabled ? buildRollingMerSeries(spendSeries as any, revenueSeries as any, merRollingWindowDays) : merSeries;
   }, [merRollingEnabled, merRollingWindowDays, buildRollingMerSeries, spendSeries, revenueSeries, merSeries]);
-  const profitReturnDailySeries = useMemo(() => {
-    const costByDate = new Map(totalCostSeries.map((d) => [d.date, Number(d.spend) || 0]));
+  const merTrueRoasDailySeries = useMemo(() => {
+    const spendByDate = new Map(spendSeries.map((d) => [d.date, Number(d.spend) || 0]));
     return (revenueSeries ?? []).map((d) => {
-      const costs = costByDate.get(d.date) ?? 0;
+      const spend = spendByDate.get(d.date) ?? 0;
       const rev = Number((d as any).revenue) || 0;
-      return { date: d.date, mer: costs > 0 ? rev / costs : 0 };
+      return { date: d.date, mer: spend > 0 ? rev / spend : null };
     });
-  }, [revenueSeries, totalCostSeries]);
-  const profitReturnTrendSeries = useMemo(() => {
+  }, [revenueSeries, spendSeries]);
+  const merTrueRoasTrendSeries = useMemo(() => {
     return merRollingEnabled
-      ? buildRollingMerSeries(totalCostSeries as any, revenueSeries as any, merRollingWindowDays)
-      : profitReturnDailySeries;
-  }, [merRollingEnabled, merRollingWindowDays, buildRollingMerSeries, totalCostSeries, revenueSeries, profitReturnDailySeries]);
+      ? buildRollingRatioSeries(spendSeries as any, revenueSeries as any, merRollingWindowDays)
+      : merTrueRoasDailySeries;
+  }, [merRollingEnabled, merRollingWindowDays, buildRollingRatioSeries, spendSeries, revenueSeries, merTrueRoasDailySeries]);
   const profitMerTrendSeries = useMemo(() => {
     // Rolling contribution profit ÷ rolling ad spend (business-truth MER)
     return merRollingEnabled
@@ -3602,28 +3653,28 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     revenueSeriesCompare,
     merSeriesCompare,
   ]);
-  const profitReturnDailySeriesCompare = useMemo(() => {
+  const merTrueRoasDailySeriesCompare = useMemo(() => {
     if (!effectiveShowComparison) return [];
-    const costByDate = new Map(totalCostSeriesCompare.map((d) => [d.date, Number(d.spend) || 0]));
+    const spendByDate = new Map(spendSeriesCompare.map((d) => [d.date, Number(d.spend) || 0]));
     return (revenueSeriesCompare ?? []).map((d) => {
-      const costs = costByDate.get(d.date) ?? 0;
+      const spend = spendByDate.get(d.date) ?? 0;
       const rev = Number((d as any).revenue) || 0;
-      return { date: d.date, mer: costs > 0 ? rev / costs : 0 };
+      return { date: d.date, mer: spend > 0 ? rev / spend : null };
     });
-  }, [effectiveShowComparison, revenueSeriesCompare, totalCostSeriesCompare]);
-  const profitReturnTrendSeriesCompare = useMemo(() => {
+  }, [effectiveShowComparison, revenueSeriesCompare, spendSeriesCompare]);
+  const merTrueRoasTrendSeriesCompare = useMemo(() => {
     if (!effectiveShowComparison) return [];
     return merRollingEnabled
-      ? buildRollingMerSeries(totalCostSeriesCompare as any, revenueSeriesCompare as any, merRollingWindowDays)
-      : profitReturnDailySeriesCompare;
+      ? buildRollingRatioSeries(spendSeriesCompare as any, revenueSeriesCompare as any, merRollingWindowDays)
+      : merTrueRoasDailySeriesCompare;
   }, [
     effectiveShowComparison,
     merRollingEnabled,
     merRollingWindowDays,
-    buildRollingMerSeries,
-    totalCostSeriesCompare,
+    buildRollingRatioSeries,
+    spendSeriesCompare,
     revenueSeriesCompare,
-    profitReturnDailySeriesCompare,
+    merTrueRoasDailySeriesCompare,
   ]);
   const profitMerTrendSeriesCompare = useMemo(() => {
     if (!effectiveShowComparison) return [];
@@ -3689,43 +3740,6 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       good,
     };
   }, [kpis, northStarKey, effectiveShowComparison, compareLabel]);
-  /** Attribution summary (range-level) */
-  const attributionSummary = useMemo(() => {
-    const primary = windows.primary;
-    const endPlus = addDaysISO(primary.endISO, attribWindowDays - 1);
-    // spend over [start..end]
-    const spend = spendSeries.reduce((s, r) => s + Number(r.spend || 0), 0);
-    // total revenue over [start..end+window-1]
-    // We can approximate using revenueSeries (which is only [start..end]) + forward days not shown.
-    // BUT: attribSeries already has forward sums per day; easiest is to sum the *first day* forward sums? No.
-    // We'll compute from attribSeries by summing “rev_total_w” BUT that double counts overlaps.
-    // So: use a simple client-safe heuristic:
-    //   windowed revenue = sum daily revenue from start..end (shown) + assume forward days from last (attribSeries last day forward includes them)
-    // Better:
-    //   total windowed revenue = sum revenueSeries + (rev in (end+1..end+window-1)) which we don't store.
-    // To keep it consistent with what we actually show, we'll report:
-    //   “Average daily windowed MER/ROAS” and “Median daily windowed MER/ROAS”
-    // These are truthful and align with the chart.
-    const merVals = attribSeries.map((d) => d.mer_w).filter((v) => isFinite(v));
-    const roasVals = attribSeries.map((d) => d.roas_w).filter((v) => isFinite(v));
-    const avg = (a: number[]) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0);
-    const median = (a: number[]) => {
-      if (!a.length) return 0;
-      const b = [...a].sort((x, y) => x - y);
-      const mid = Math.floor(b.length / 2);
-      return b.length % 2 ? b[mid] : (b[mid - 1] + b[mid]) / 2;
-    };
-    return {
-      windowDays: attribWindowDays,
-      spend,
-      dateRange: `${primary.startISO} → ${primary.endISO}`,
-      windowRange: `${primary.startISO} → ${endPlus}`,
-      avgMerW: Number(avg(merVals).toFixed(2)),
-      medMerW: Number(median(merVals).toFixed(2)),
-      avgRoasW: Number(avg(roasVals).toFixed(2)),
-      medRoasW: Number(median(roasVals).toFixed(2)),
-    };
-  }, [windows, attribWindowDays, spendSeries, attribSeries]);
   /** Print stylesheet for "Save as PDF" fallback */
   const PrintStyles = () => (
     <style jsx global>{`
@@ -3745,6 +3759,25 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       }
     `}</style>
   );
+  const attribIndexedSeries = useMemo(() => {
+    if (!attribSeries?.length) return [] as any[];
+    const first = attribSeries.find((d) => Number.isFinite(Number(d.mer_w)) && Number.isFinite(Number(d.roas_w)));
+    const baseMer = first ? Number(first.mer_w) : 0;
+    const baseRoas = first ? Number(first.roas_w) : 0;
+    return attribSeries.map((d) => {
+      const merRaw = Number(d.mer_w);
+      const roasRaw = Number(d.roas_w);
+      const merIdx = baseMer > 0 && Number.isFinite(merRaw) ? (merRaw / baseMer) * 100 : null;
+      const roasIdx = baseRoas > 0 && Number.isFinite(roasRaw) ? (roasRaw / baseRoas) * 100 : null;
+      return {
+        ...d,
+        mer_raw: merRaw,
+        roas_raw: roasRaw,
+        mer_idx: merIdx,
+        roas_idx: roasIdx,
+      };
+    });
+  }, [attribSeries]);
   return (
     <DashboardLayout>
       <PrintStyles />
@@ -4887,9 +4920,9 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 </ChartReadyWrapper>
               </ChartCard>
               <ChartCard
-                title="Profit Return Trend"
-                subtitle={`Revenue ÷ total costs (${merRollingEnabled ? `rolling ${merRollingWindowDays}d` : "daily"} • ${rangeDays} days)`}
-                badge="Profit Return"
+                title="MER (True ROAS) Trend"
+                subtitle={`Shopify Revenue ÷ Ad Spend (${merRollingEnabled ? `rolling ${merRollingWindowDays}d` : "daily"} • ${rangeDays} days)`}
+                badge="MER (True ROAS)"
               >
                 <div className="mb-2 flex flex-wrap items-center gap-3 text-xs text-slate-600">
                   <label className="flex items-center gap-2">
@@ -4918,8 +4951,8 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 </div>
                 <ChartReadyWrapper minHeight={320} className="w-full">
                   <EventfulLineChart
-                    data={profitReturnTrendSeries}
-                    compareData={profitReturnTrendSeriesCompare}
+                    data={merTrueRoasTrendSeries}
+                    compareData={merTrueRoasTrendSeriesCompare}
                     showComparison={effectiveShowComparison}
                     yKey="mer"
                     yTooltipFormatter={(v) => `${Number(v).toFixed(2)}x`}
@@ -4932,16 +4965,13 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
               </ChartCard>
             </div>
           </section>
-          {/* Profit Return vs ROAS Attribution Window */}
+          {/* Ad Attribution Over Time: ROAS vs True ROAS */}
           <section className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Attribution: Profit Return vs ROAS</h2>
+                <h2 className="text-lg font-semibold text-slate-900">Ad Attribution Over Time: ROAS vs True ROAS</h2>
                 <p className="text-sm text-slate-600">
-                  Compare business truth (Profit Return) vs tracked ad return (ROAS) under a {attribWindowDays}-day forward window.
-                </p>
-                <p className="mt-1 text-[11px] text-slate-400">
-                  Chart uses forward revenue window per day divided by that day’s spend (useful for explaining lag).
+                  ROAS shows tracked conversions. True ROAS (MER) shows total business impact.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -4952,98 +4982,70 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                     onChange={(e) => setAttribWindowDays(Number(e.target.value) as AttributionWindowDays)}
                     className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700"
                   >
-                    <option value={1}>1 day</option>
-                    <option value={3}>3 days</option>
                     <option value={7}>7 days</option>
                     <option value={14}>14 days</option>
+                    <option value={30}>30 days</option>
                   </select>
                 </div>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                  Avg Profit Return (w): {attributionSummary.avgMerW}x • Avg ROAS(w): {attributionSummary.avgRoasW}x
-                </span>
               </div>
             </div>
-            <div className="mt-5 grid grid-cols-1 gap-6 lg:grid-cols-2">
-              <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
-                <div className="text-sm font-semibold text-slate-900">Daily windowed lines</div>
-                <div className="mt-1 text-sm text-slate-600">Profit Return (w) and ROAS(w) over time</div>
-                <div className="mt-3 w-full h-[320px] min-h-[320px]">
-                  <MultiSeriesEventfulLineChart
-                    data={attribSeries}
-                    compareData={[]}
-                    showComparison={false}
-                    series={[
-                      { key: "mer_w", name: "Profit Return (windowed)", color: "#10b981" },
-                      { key: "roas_w", name: "ROAS (windowed)", color: "#3b82f6" },
-                    ]}
-                    yTooltipFormatter={(v) => `${Number(v).toFixed(2)}x`}
-                    markers={eventMarkers}
-                    showMarkers={showEventMarkers}
-                    xDomain={xDomain}
-                    compareLabel={compareLabel}
-                    height={320}
-                  />
-                </div>
-                <div className="mt-3 text-xs text-slate-600">
-                  Interpretation: if Profit Return (w) is consistently above ROAS(w), revenue is being driven by more than
-                  tracked last-click/attributed conversions.
-                </div>
-              </div>
-              <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
-                <div className="text-sm font-semibold text-slate-900">Scatter: Profit Return (w) vs ROAS(w)</div>
-                <div className="mt-1 text-sm text-slate-600">Each dot is a day in the selected date range</div>
-                <div className="mt-3 w-full h-[320px] min-h-[320px]">
-                  <SafeResponsiveContainer height={320} className="h-full w-full">
-                    <LineChart
-                      data={attribSeries.map((d) => ({
-                        x: d.roas_w,
-                        y: d.mer_w,
-                      }))}
-                    >
-                      <XAxis
-                        dataKey="x"
-                        tick={{ fontSize: 12 }}
-                        label={{ value: "ROAS (windowed)", position: "insideBottom", offset: -5 }}
-                      />
-                      <YAxis
-                        dataKey="y"
-                        tick={{ fontSize: 12 }}
-                        label={{ value: "Profit Return (windowed)", angle: -90, position: "insideLeft" }}
-                      />
-                      <Tooltip
-                        content={({ active, payload }: any) => {
-                          if (!active || !payload?.length) return null;
-                          const p = payload[0]?.payload;
-                          const x = Number(p?.x ?? 0);
-                          const y = Number(p?.y ?? 0);
-                          return (
-                            <div className="rounded-xl bg-slate-900 text-white shadow-xl ring-1 ring-white/10 px-3 py-2">
-                              <div className="text-xs text-slate-300">Windowed ratios</div>
-                              <div className="mt-2 space-y-1">
-                                <div className="flex items-center justify-between gap-4">
-                                  <div className="text-xs text-slate-300">ROAS (w)</div>
-                                  <div className="text-sm font-semibold">{x.toFixed(2)}x</div>
-                                </div>
-                                <div className="flex items-center justify-between gap-4">
-                                  <div className="text-xs text-slate-300">Profit Return (w)</div>
-                                  <div className="text-sm font-semibold">{y.toFixed(2)}x</div>
-                                </div>
+            <div className="mt-5 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+              <div className="text-sm font-semibold text-slate-900">Daily windowed lines</div>
+              <div className="mt-1 text-sm text-slate-600">MER (True ROAS) (w) and ROAS(w) over time</div>
+              <div className="mt-3 w-full h-[320px] min-h-[320px]">
+                <MultiSeriesEventfulLineChart
+                  data={attribIndexedSeries}
+                  compareData={[]}
+                  showComparison={false}
+                  series={[
+                    { key: "mer_idx", name: "MER (True ROAS) (Indexed)", color: "#10b981", strokeWidth: 3.2 },
+                    { key: "roas_idx", name: "ROAS (Indexed)", color: "#3b82f6", strokeWidth: 2 },
+                  ]}
+                  yTooltipFormatter={(v) => `${Number(v).toFixed(1)}`}
+                  markers={eventMarkers}
+                  showMarkers={showEventMarkers}
+                  xDomain={xDomain}
+                  compareLabel={compareLabel}
+                  height={320}
+                  yAxisLabel="Index (Start = 100)"
+                  tooltipContent={(p: any) => {
+                    if (!p?.active || !p.payload?.length) return null;
+                    const row = p.payload[0]?.payload || {};
+                    const iso = String(row?.date || "").slice(0, 10);
+                    const dateLabel = iso?.length === 10 ? `${mmdd(iso)} (${iso})` : String(p.label);
+                    return (
+                      <div className="rounded-xl bg-slate-900 text-white shadow-xl ring-1 ring-white/10">
+                        <div className="px-3 py-2">
+                          <div className="text-xs text-slate-300">{dateLabel}</div>
+                          <div className="mt-2 space-y-1">
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="text-xs text-slate-300">MER (True ROAS)</div>
+                              <div className="text-sm font-semibold">{Number(row.mer_raw || 0).toFixed(2)}x</div>
+                            </div>
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="text-xs text-slate-300">ROAS</div>
+                              <div className="text-sm font-semibold">{Number(row.roas_raw || 0).toFixed(2)}x</div>
+                            </div>
+                            <div className="mt-2 rounded-lg bg-white/10 px-2 py-1">
+                              <div className="flex items-center justify-between gap-4">
+                                <div className="text-[11px] text-slate-300">Indexed MER</div>
+                                <div className="text-xs font-semibold">{row.mer_idx != null ? row.mer_idx.toFixed(1) : "—"}</div>
+                              </div>
+                              <div className="mt-1 flex items-center justify-between gap-4">
+                                <div className="text-[11px] text-slate-300">Indexed ROAS</div>
+                                <div className="text-xs font-semibold">{row.roas_idx != null ? row.roas_idx.toFixed(1) : "—"}</div>
                               </div>
                             </div>
-                          );
-                        }}
-                      />
-                        <Scatter
-                          data={attribSeries.map((d) => ({ x: d.roas_w, y: d.mer_w }))}
-                          dataKey="y"
-                          isAnimationActive={false}
-                        />
-                    </LineChart>
-                  </SafeResponsiveContainer>
-                </div>
-                <div className="mt-3 text-xs text-slate-600">
-                  This helps explain when “ROAS looks fine” but “Profit Return deteriorates” (or vice versa).
-                </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }}
+                />
+              </div>
+              <div className="mt-3 text-xs text-slate-600">
+                This shows how tracked ROAS and true business return change over time.
+                If True ROAS holds while ROAS falls, ads are influencing sales that convert later.
               </div>
             </div>
           </section>

@@ -51,13 +51,14 @@ function shopFromIdToken(idToken: string) {
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Record<string, string | string[] | undefined>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const sp = await searchParams;
   const hdrs = await headers();
   const referer = hdrs.get("referer") || "";
   const url = hdrs.get("x-url") || "";
   const headerShop = normalizeShopDomain(hdrs.get("x-shopify-shop-domain") || "");
-  const shopParamRaw = searchParams?.shop;
+  const shopParamRaw = sp?.shop;
   const shopParam =
     typeof shopParamRaw === "string"
       ? shopParamRaw
@@ -67,19 +68,26 @@ export default async function Page({
   const cookieStore = await cookies();
   const cookieShopRaw = !shopParam ? cookieStore.get("sa_shop")?.value || "" : "";
   const cookieShop = normalizeShopDomain(cookieShopRaw);
-  const hostParamRaw = searchParams?.host;
+  const hostParamRaw = sp?.host;
   const hostParam =
     typeof hostParamRaw === "string"
       ? hostParamRaw
       : Array.isArray(hostParamRaw)
       ? hostParamRaw[0]
       : "";
-  const idTokenRaw = searchParams?.id_token;
+  const idTokenRaw = sp?.id_token;
   const idToken =
     typeof idTokenRaw === "string"
       ? idTokenRaw
       : Array.isArray(idTokenRaw)
       ? idTokenRaw[0]
+      : "";
+  const clientIdParamRaw = sp?.client_id;
+  const clientIdParam =
+    typeof clientIdParamRaw === "string"
+      ? clientIdParamRaw
+      : Array.isArray(clientIdParamRaw)
+      ? clientIdParamRaw[0]
       : "";
   const shopFromToken = idToken ? shopFromIdToken(idToken) : "";
   const refererShop = shopFromReferer(referer);
@@ -108,6 +116,23 @@ export default async function Page({
     headerShop: headerShop || "",
     referer,
   });
+
+  const isDev = process.env.NODE_ENV === "development";
+  const devClientId = clientIdParam || process.env.LOCAL_CLIENT_ID || "";
+  const devBypassAllowed = isDev && !shopGuess && !hostParam && !idToken && !headerShop;
+
+  if (!shopGuess && devBypassAllowed && devClientId) {
+    return (
+      <main className="min-h-screen">
+        <div className="mx-auto max-w-6xl px-6 pt-6">
+          <div className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+            DEV MODE: Using LOCAL_CLIENT_ID={devClientId}
+          </div>
+        </div>
+        <HomeClient initialClientId={String(devClientId)} />
+      </main>
+    );
+  }
 
   if (!shopGuess) {
     return <ShopifyBootstrap host={hostParam} />;

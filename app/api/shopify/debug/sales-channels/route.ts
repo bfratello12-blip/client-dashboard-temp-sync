@@ -89,7 +89,7 @@ export async function GET(req: Request) {
     const shopifyQL = `
 FROM sales
 SHOW total_sales
-GROUP BY sales_channel, sales_channel_id
+  GROUP BY sales_channel
 TIMESERIES day
 SINCE startOfDay(-30d) UNTIL today
 `.trim();

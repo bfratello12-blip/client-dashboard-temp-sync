@@ -19,6 +19,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { addDays, format, parseISO, differenceInCalendarDays, startOfDay, isBefore } from "date-fns";
 import { bucketShopifyOrderDay, bucketShopifyOrderDayInTZ } from "@/lib/dates";
 import { requireCronAuth } from "@/lib/cronAuth";
+import { loadShopifyChannelExclusions } from "@/lib/shopifyExclusions";
 
 type AnyObj = Record<string, any>;
 
@@ -134,11 +135,24 @@ async function getShopTimeZone(shop: string, token: string): Promise<string> {
   return safeStr(data?.shop?.ianaTimezone) || "UTC";
 }
 
+function buildSalesChannelWhere(excludedNames: string[]) {
+  if (!excludedNames.length) return "";
+  const escaped = excludedNames.map((n) => `'${String(n).replace(/'/g, "\\'")}'`);
+  return `WHERE sales_channel NOT IN (${escaped.join(", ")})`;
+}
+
 // ShopifyQL: sales TIMESERIES day
-async function querySalesShopifyQL(shop: string, token: string, startISO: string, endISO: string) {
+async function querySalesShopifyQL(
+  shop: string,
+  token: string,
+  startISO: string,
+  endISO: string,
+  excludedSalesChannels: string[]
+) {
   // Match Shopify Analytics: FROM sales SHOW orders, total_sales TIMESERIES day
+  const whereClause = buildSalesChannelWhere(excludedSalesChannels);
   const q = `FROM sales
-SHOW orders, total_sales, net_items_sold
+${whereClause ? `${whereClause}\n` : ""}SHOW orders, total_sales, net_items_sold
 TIMESERIES day
 SINCE ${startISO}
 UNTIL ${endISO}
@@ -296,7 +310,14 @@ const idxNetItems = (() => {
 
 
 // Fallback: aggregate orders by createdAt, using shop timezone day-bucketing
-async function queryOrdersFallback(shop: string, token: string, startISO: string, endISO: string, timeZone: string) {
+async function queryOrdersFallback(
+  shop: string,
+  token: string,
+  startISO: string,
+  endISO: string,
+  timeZone: string,
+  excludePos: boolean
+) {
   // Orders-based approximation of Shopify "Total sales over time":
   // - Bucket orders by order.createdAt day in shop timezone
   // - Bucket refunds/returns by refund.createdAt day in shop timezone
@@ -342,7 +363,9 @@ async function queryOrdersFallback(shop: string, token: string, startISO: string
         {
           first: pageSize,
           after,
-          query: `processed_at:>=${startUtc} processed_at:<=${endUtc} status:any`,
+          query: `processed_at:>=${startUtc} processed_at:<=${endUtc} status:any${
+            excludePos ? " -source_name:pos" : ""
+          }`,
         }
       );
 
@@ -415,7 +438,9 @@ async function queryOrdersFallback(shop: string, token: string, startISO: string
         {
           first: pageSize,
           after,
-          query: `updated_at:>=${startUtc} updated_at:<=${endUtc} status:any`,
+          query: `updated_at:>=${startUtc} updated_at:<=${endUtc} status:any${
+            excludePos ? " -source_name:pos" : ""
+          }`,
         }
       );
 
@@ -826,7 +851,7 @@ export async function POST(req: NextRequest) {
     const daysAgoEnd = differenceInCalendarDays(startOfDay(new Date()), parseISO(endDay));
     const isOlderThan60Days = daysAgoEnd > maxDaysBack;
 
-    if (isOlderThan60Days && !force) {
+    if (isOlderThan60Days && !force && modeParam !== "shopifyql") {
       let clientIdForCount = onlyClientId;
       if (!clientIdForCount && shopParam) {
         const { data: install, error: installErr } = await supabase
@@ -882,7 +907,7 @@ export async function POST(req: NextRequest) {
 
     // If the requested start is older than our cutoff, clamp the query window.
     // This prevents fillZeros from overwriting manually-backfilled historical days with zeros.
-    if (!force && isBefore(parseISO(startDay), parseISO(cutoffDay))) {
+    if (!force && modeParam !== "shopifyql" && isBefore(parseISO(startDay), parseISO(cutoffDay))) {
       console.log(`[shopify/sync] Clamping startDay ${startDay} -> ${cutoffDay} (maxDaysBack=${maxDaysBack})`);
       startDay = cutoffDay;
     }
@@ -1042,6 +1067,8 @@ const days = dateRange(startDay, endDay);
       let revenueSource: "shopifyql" | "fallback" = "shopifyql";
       let shopifyqlError: string | null = null;
       let tz = "UTC";
+      let excludePos = false;
+      let excludedSalesChannelNames: string[] = [];
 
       try {
         // Token from shopify_app_installs (authoritative OAuth install)
@@ -1082,20 +1109,44 @@ const days = dateRange(startDay, endDay);
           // ignore
         }
 
+        const exclusions = await loadShopifyChannelExclusions(clientId);
+        if (exclusions.excludePos && exclusions.excludedNames.length > 0) {
+          excludedSalesChannelNames = Array.from(
+            new Set(["Point of Sale", ...exclusions.excludedNames])
+          );
+          excludePos = true;
+          console.info("[shopify/sync] POS exclusion enabled", {
+            client_id: clientId,
+            excluded_sales_channel_names: excludedSalesChannelNames,
+          });
+        }
+
         let bucketsRevenue: Record<string, number> = {};
         let bucketsOrders: Record<string, number> = {};
         let bucketsUnits: Record<string, number> = {};
         const normalizedShop = normalizeShop(shop);
 
         if (modeParam === "orders") {
-          const fallback = await queryOrdersFallback(normalizedShop, token, startDay, endDay, tz);
+          const fallback = await queryOrdersFallback(normalizedShop, token, startDay, endDay, tz, excludePos);
           bucketsRevenue = fallback.bucketsRevenue;
           bucketsOrders = fallback.bucketsOrders;
           bucketsUnits = fallback.bucketsUnits || {};
           revenueSource = "fallback";
         } else if (modeParam === "shopifyql") {
           try {
-            const ql = await querySalesShopifyQL(normalizedShop, token, startDay, endDay);
+            if (excludePos) {
+              console.info("[shopify/sync] ShopifyQL WHERE", {
+                client_id: clientId,
+                clause: `sales_channel NOT IN (${excludedSalesChannelNames.map((n) => `"${n}"`).join(", ")})`,
+              });
+            }
+            const ql = await querySalesShopifyQL(
+              normalizedShop,
+              token,
+              startDay,
+              endDay,
+              excludePos ? excludedSalesChannelNames : []
+            );
             bucketsRevenue = ql.bucketsRevenue;
             bucketsOrders = ql.bucketsOrders;
             bucketsUnits = ql.bucketsUnits || {};
@@ -1116,14 +1167,26 @@ const days = dateRange(startDay, endDay);
         } else {
           // auto
           try {
-            const ql = await querySalesShopifyQL(normalizedShop, token, startDay, endDay);
+            if (excludePos) {
+              console.info("[shopify/sync] ShopifyQL WHERE", {
+                client_id: clientId,
+                clause: `sales_channel NOT IN (${excludedSalesChannelNames.map((n) => `"${n}"`).join(", ")})`,
+              });
+            }
+            const ql = await querySalesShopifyQL(
+              normalizedShop,
+              token,
+              startDay,
+              endDay,
+              excludePos ? excludedSalesChannelNames : []
+            );
             bucketsRevenue = ql.bucketsRevenue;
             bucketsOrders = ql.bucketsOrders;
             bucketsUnits = ql.bucketsUnits || {};
             revenueSource = "shopifyql";
           } catch (e: any) {
             shopifyqlError = e?.message || String(e);
-            const fallback = await queryOrdersFallback(normalizedShop, token, startDay, endDay, tz);
+            const fallback = await queryOrdersFallback(normalizedShop, token, startDay, endDay, tz, excludePos);
             bucketsRevenue = fallback.bucketsRevenue;
             bucketsOrders = fallback.bucketsOrders;
             bucketsUnits = fallback.bucketsUnits || {};
@@ -1330,6 +1393,8 @@ const rows = days.map((day) => {
       start: startDay,
       end: endDay,
       fillZeros,
+      skipped: false,
+      revenueSource: modeParam === "shopifyql" ? "shopifyql" : undefined,
       clients: resolvedIntegrations?.length ?? 0,
       daysWritten,
       zerosInserted,

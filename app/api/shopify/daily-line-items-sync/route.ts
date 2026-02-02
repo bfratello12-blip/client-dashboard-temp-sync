@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { bucketShopifyOrderDay } from "@/lib/dates";
 import { requireCronAuth } from "@/lib/cronAuth";
+import { loadShopifyChannelExclusions } from "@/lib/shopifyExclusions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -228,10 +229,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const exclusions = await loadShopifyChannelExclusions(clientId);
+    const excludePos = exclusions.excludePos && exclusions.excludedNames.length > 0;
+    if (excludePos) {
+      console.info("[daily-line-items-sync] POS exclusion enabled", {
+        client_id: clientId,
+        excluded_sales_channel_names: ["Point of Sale", ...exclusions.excludedNames],
+      });
+    }
+
     // Shopify Admin "orders" search query
     // Use UTC midnight bounds. This keeps it deterministic.
     // Note: Shopify search expects timestamps; this form is commonly accepted.
-    const queryStr = `processed_at:>=${start}T00:00:00Z processed_at:<=${end}T23:59:59Z status:any`;
+    const queryStr = `processed_at:>=${start}T00:00:00Z processed_at:<=${end}T23:59:59Z status:any${
+      excludePos ? " -source_name:pos" : ""
+    }`;
 
     // Aggregate in memory: key = `${day}|${inventoryItemId}`
     const agg = new Map<

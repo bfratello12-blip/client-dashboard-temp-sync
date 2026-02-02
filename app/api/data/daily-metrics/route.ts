@@ -1,24 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireCronAuth } from "@/lib/cronAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function requireCronAuth(req: NextRequest) {
-  const secret = process.env.CRON_SECRET || process.env.NEXT_PUBLIC_SYNC_TOKEN || "";
-  if (!secret) return;
-
-  const header = req.headers.get("authorization") || "";
-  const bearer = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-  const qp = req.nextUrl.searchParams.get("token")?.trim() || "";
-
-  const ok = bearer === secret || qp === secret || header === secret;
-  if (!ok) throw new Error("Unauthorized");
-}
-
 export async function GET(req: NextRequest) {
   try {
-    requireCronAuth(req);
+    const auth = requireCronAuth(req);
+    if (auth) return auth;
 
     const url = req.nextUrl;
     const clientId = url.searchParams.get("client_id")?.trim() || "";

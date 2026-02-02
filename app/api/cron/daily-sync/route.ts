@@ -66,7 +66,7 @@ async function runStep(args: {
 export async function GET(req: NextRequest) {
   try {
     const auth = requireCronAuth(req);
-    if (auth instanceof NextResponse) return auth;
+    if (auth) return auth;
 
     const url = req.nextUrl;
     const origin = url.origin;

@@ -180,7 +180,7 @@ async function fetchGoogleDailyMetrics(cfg: GoogleCfg, startDay: string, endDay:
 
 export async function GET(req: NextRequest) {
   const auth = requireCronAuth(req);
-  if (auth instanceof NextResponse) return auth;
+  if (auth) return auth;
 
   const { startDay, endDay, fillZeros } = parseWindow(req);
   const clientIdFilter = req.nextUrl.searchParams.get("client_id")?.trim() ?? null;

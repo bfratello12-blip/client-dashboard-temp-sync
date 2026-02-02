@@ -249,7 +249,7 @@ async function gapFillZerosIfMissing(args: {
 
 async function handler(req: NextRequest) {
   const auth = requireCronAuth(req);
-  if (auth instanceof NextResponse) return auth;
+  if (auth) return auth;
 
   const body = req.method === "POST" ? await req.json().catch(() => null) : null;
   const { startISO, endISO, fillZeros, client_id } = parseWindow(req, body);

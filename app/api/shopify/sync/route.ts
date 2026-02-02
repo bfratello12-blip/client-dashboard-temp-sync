@@ -764,7 +764,7 @@ async function pickWorkingShopifyToken(
 export async function POST(req: NextRequest) {
   try {
     const auth = requireCronAuth(req);
-    if (auth instanceof NextResponse) return auth;
+    if (auth) return auth;
 
     const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(req.url);

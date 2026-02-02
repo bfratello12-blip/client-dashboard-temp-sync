@@ -75,14 +75,16 @@ export async function GET(req: Request) {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE);
 
-    // Adjust these column names if needed (common: shop, access_token)
     const { data: install, error: installErr } = await supabase
       .from("shopify_app_installs")
-      .select("shop, access_token")
+      .select("shop_domain, access_token")
       .eq("client_id", client_id)
       .maybeSingle();
 
-    if (installErr || !install?.shop || !install?.access_token) {
+    const shop = install?.shop_domain;
+    const accessToken = install?.access_token;
+
+    if (installErr || !shop || !accessToken) {
       return NextResponse.json(
         { ok: false, error: "missing shopify install/token", details: installErr?.message },
         { status: 400 }
@@ -97,7 +99,7 @@ TIMESERIES day
 SINCE startOfDay(-30d) UNTIL today
 `.trim();
 
-    const raw = await runShopifyQL(install.shop, install.access_token, shopifyQL);
+    const raw = await runShopifyQL(shop, accessToken, shopifyQL);
 
     const node = raw?.data?.shopifyqlQuery;
     if (!node) throw new Error("No shopifyqlQuery in response");

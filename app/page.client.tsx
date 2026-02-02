@@ -2957,6 +2957,12 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     const spendByDate: Record<string, number> = {};
     for (const r of spendSeries) spendByDate[r.date] = Number(r.spend ?? 0);
     for (const r of spendSeriesCompare) spendByDate[r.date] = Number(r.spend ?? 0);
+    const profitByDate: Record<string, number> = {};
+    for (const r of contribProfitSeries) profitByDate[r.date] = Number(r.contribution_profit ?? 0);
+    for (const r of contribProfitSeriesCompare) profitByDate[r.date] = Number(r.contribution_profit ?? 0);
+    const totalCostsByDate: Record<string, number> = {};
+    for (const r of totalCostSeries) totalCostsByDate[r.date] = Number(r.spend ?? 0);
+    for (const r of totalCostSeriesCompare) totalCostsByDate[r.date] = Number(r.spend ?? 0);
     const sumSales = (s: string, e: string) => {
       let revenue = 0;
       let orders = 0;
@@ -2988,12 +2994,38 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       }
       return { spend, missing };
     };
+    const sumProfit = (s: string, e: string) => {
+      let profit = 0;
+      let totalCosts = 0;
+      let missing = 0;
+      for (let d = s; d <= e; d = addDaysISO(d, 1)) {
+        const hasProfit = d in profitByDate;
+        const hasCosts = d in totalCostsByDate;
+        if (!hasProfit && !hasCosts) {
+          missing += 1;
+          continue;
+        }
+        profit += Number(profitByDate[d] ?? 0);
+        totalCosts += Number(totalCostsByDate[d] ?? 0);
+      }
+      return { profit, totalCosts, missing };
+    };
     const primarySales = sumSales(scopePrimary.startISO, scopePrimary.endISO);
     const compareSales =
       scopeCompare ? sumSales(scopeCompare.startISO, scopeCompare.endISO) : { revenue: 0, orders: 0, units: 0, aov: 0, asp: 0, missing: 0 };
     const primarySpend = sumSpend(scopePrimary.startISO, scopePrimary.endISO);
     const compareSpend =
       scopeCompare ? sumSpend(scopeCompare.startISO, scopeCompare.endISO) : { spend: 0, missing: 0 };
+    const primaryProfit = sumProfit(scopePrimary.startISO, scopePrimary.endISO);
+    const compareProfit = scopeCompare
+      ? sumProfit(scopeCompare.startISO, scopeCompare.endISO)
+      : { profit: 0, totalCosts: 0, missing: 0 };
+    const primaryProfitValue = primaryProfit.missing >= scopePrimary.days ? null : primaryProfit.profit;
+    const primaryTotalCosts = primaryProfit.missing >= scopePrimary.days ? null : primaryProfit.totalCosts;
+    const compareProfitValue =
+      scopeCompare && compareProfit.missing >= scopeCompare.days ? null : compareProfit.profit;
+    const compareTotalCosts =
+      scopeCompare && compareProfit.missing >= scopeCompare.days ? null : compareProfit.totalCosts;
     // When focusing on a change/event, we want to show *something* even if the global comparison toggle is off.
     // But we still require that we actually have baseline days to compare against.
     const wantsCompare = !!scopeCompare;
@@ -3021,12 +3053,10 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         spend: primarySpend.spend,
         roas: primarySpend.spend > 0 ? primarySales.revenue / primarySpend.spend : 0,
         profit:
-          marginAfterCostsPct != null
-            ? primarySales.revenue * marginAfterCostsPct - primarySpend.spend
-            : null,
+          primaryProfitValue,
         profitReturnOnCosts:
-          marginAfterCostsPct != null && primarySpend.spend > 0
-            ? (primarySales.revenue * marginAfterCostsPct - primarySpend.spend) / primarySpend.spend
+          primaryTotalCosts != null && primaryTotalCosts > 0 && primaryProfitValue != null
+            ? primaryProfitValue / primaryTotalCosts
             : null,
       },
         compare: null,
@@ -3053,14 +3083,12 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     const ordLift = primarySales.orders - compareSales.orders;
     const aspLift = primarySales.asp - compareSales.asp;
     const aovLift = primarySales.aov - compareSales.aov;
-    const profitP =
-      marginAfterCostsPct != null ? primarySales.revenue * marginAfterCostsPct - primarySpend.spend : null;
-    const profitC =
-      marginAfterCostsPct != null ? compareSales.revenue * marginAfterCostsPct - compareSpend.spend : null;
+    const profitP = primaryProfitValue;
+    const profitC = compareProfitValue;
     const profitLift = profitP != null && profitC != null ? profitP - profitC : null;
     const profitLiftPct = profitC != null && profitC !== 0 ? (profitLift! / profitC) * 100 : null;
-    const procP = profitP != null && primarySpend.spend > 0 ? profitP / primarySpend.spend : null;
-    const procC = profitC != null && compareSpend.spend > 0 ? profitC / compareSpend.spend : null;
+    const procP = profitP != null && primaryTotalCosts != null && primaryTotalCosts > 0 ? profitP / primaryTotalCosts : null;
+    const procC = profitC != null && compareTotalCosts != null && compareTotalCosts > 0 ? profitC / compareTotalCosts : null;
     const procLift = procP != null && procC != null ? procP - procC : null;
     const procLiftPct = procC != null && procC !== 0 ? (procLift! / procC) * 100 : null;
     const revLiftPct = compareSales.revenue !== 0 ? (revLift / compareSales.revenue) * 100 : 0;
@@ -3094,12 +3122,10 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         spend: primarySpend.spend,
         roas: primarySpend.spend > 0 ? primarySales.revenue / primarySpend.spend : 0,
         profit:
-          marginAfterCostsPct != null
-            ? primarySales.revenue * marginAfterCostsPct - primarySpend.spend
-            : null,
+          primaryProfitValue,
         profitReturnOnCosts:
-          marginAfterCostsPct != null && primarySpend.spend > 0
-            ? (primarySales.revenue * marginAfterCostsPct - primarySpend.spend) / primarySpend.spend
+          primaryTotalCosts != null && primaryTotalCosts > 0 && primaryProfitValue != null
+            ? primaryProfitValue / primaryTotalCosts
             : null,
       },
       compare: {
@@ -3111,12 +3137,10 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         spend: compareSpend.spend,
         roas: compareSpend.spend > 0 ? compareSales.revenue / compareSpend.spend : 0,
         profit:
-          marginAfterCostsPct != null
-            ? compareSales.revenue * marginAfterCostsPct - compareSpend.spend
-            : null,
+          compareProfitValue,
         profitReturnOnCosts:
-          marginAfterCostsPct != null && compareSpend.spend > 0
-            ? (compareSales.revenue * marginAfterCostsPct - compareSpend.spend) / compareSpend.spend
+          compareTotalCosts != null && compareTotalCosts > 0 && compareProfitValue != null
+            ? compareProfitValue / compareTotalCosts
             : null,
       },
       revenueLift: revLift,

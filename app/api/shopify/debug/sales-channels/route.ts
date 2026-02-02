@@ -101,6 +101,10 @@ SINCE startOfDay(-30d) UNTIL today
 
     const raw = await runShopifyQL(shop, accessToken, shopifyQL);
 
+    if (!raw?.data?.shopifyqlQuery) {
+      return NextResponse.json({ ok: false, error: "missing shopifyqlQuery", raw }, { status: 400 });
+    }
+
     const node = raw?.data?.shopifyqlQuery;
     if (!node) throw new Error("No shopifyqlQuery in response");
 

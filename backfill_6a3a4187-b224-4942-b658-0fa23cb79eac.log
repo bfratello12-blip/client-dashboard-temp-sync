@@ -1,0 +1,116 @@
+[2026-02-03T17:52:52.279Z] 🚀 Starting recompute backfill
+[2026-02-03T17:52:52.283Z] 📦 Chunk 1: 2022-12-11 → 2023-01-10 (cursor advances to 2023-01-11)
+[2026-02-03T17:53:47.427Z] ✅ Line items backfilled
+[2026-02-03T17:53:57.269Z] ✅ Profit recomputed
+[2026-02-03T17:53:57.270Z] 📦 Chunk 2: 2023-01-11 → 2023-02-10 (cursor advances to 2023-02-11)
+[2026-02-03T17:54:54.689Z] ✅ Line items backfilled
+[2026-02-03T17:55:05.900Z] ✅ Profit recomputed
+[2026-02-03T17:55:05.902Z] 📦 Chunk 3: 2023-02-11 → 2023-03-10 (cursor advances to 2023-03-11)
+[2026-02-03T17:55:58.962Z] ✅ Line items backfilled
+[2026-02-03T17:56:08.345Z] ✅ Profit recomputed
+[2026-02-03T17:56:08.346Z] 📦 Chunk 4: 2023-03-11 → 2023-04-09 (cursor advances to 2023-04-10)
+[2026-02-03T17:56:57.856Z] ✅ Line items backfilled
+[2026-02-03T17:57:08.936Z] ✅ Profit recomputed
+[2026-02-03T17:57:08.937Z] 📦 Chunk 5: 2023-04-10 → 2023-05-09 (cursor advances to 2023-05-10)
+[2026-02-03T17:57:54.579Z] ✅ Line items backfilled
+[2026-02-03T17:58:03.881Z] ✅ Profit recomputed
+[2026-02-03T17:58:03.882Z] 📦 Chunk 6: 2023-05-10 → 2023-06-09 (cursor advances to 2023-06-10)
+[2026-02-03T17:58:47.535Z] ✅ Line items backfilled
+[2026-02-03T17:58:56.054Z] ✅ Profit recomputed
+[2026-02-03T17:58:56.055Z] 📦 Chunk 7: 2023-06-10 → 2023-07-09 (cursor advances to 2023-07-10)
+[2026-02-03T17:59:46.915Z] ✅ Line items backfilled
+[2026-02-03T17:59:57.762Z] ✅ Profit recomputed
+[2026-02-03T17:59:57.764Z] 📦 Chunk 8: 2023-07-10 → 2023-08-09 (cursor advances to 2023-08-10)
+[2026-02-03T18:00:42.900Z] ✅ Line items backfilled
+[2026-02-03T18:00:52.864Z] ✅ Profit recomputed
+[2026-02-03T18:00:52.865Z] 📦 Chunk 9: 2023-08-10 → 2023-09-09 (cursor advances to 2023-09-10)
+[2026-02-03T18:01:47.072Z] ✅ Line items backfilled
+[2026-02-03T18:01:57.074Z] ✅ Profit recomputed
+[2026-02-03T18:01:57.076Z] 📦 Chunk 10: 2023-09-10 → 2023-10-09 (cursor advances to 2023-10-10)
+[2026-02-03T18:02:37.134Z] ✅ Line items backfilled
+[2026-02-03T18:02:44.682Z] ✅ Profit recomputed
+[2026-02-03T18:02:44.683Z] 📦 Chunk 11: 2023-10-10 → 2023-11-10 (cursor advances to 2023-11-11)
+[2026-02-03T18:03:32.627Z] ✅ Line items backfilled
+[2026-02-03T18:03:41.177Z] ✅ Profit recomputed
+[2026-02-03T18:03:41.178Z] 📦 Chunk 12: 2023-11-11 → 2023-12-10 (cursor advances to 2023-12-11)
+[2026-02-03T18:04:48.024Z] ✅ Line items backfilled
+[2026-02-03T18:05:00.486Z] ✅ Profit recomputed
+[2026-02-03T18:05:00.487Z] 📦 Chunk 13: 2023-12-11 → 2024-01-10 (cursor advances to 2024-01-11)
+[2026-02-03T18:05:59.756Z] ✅ Line items backfilled
+[2026-02-03T18:06:09.142Z] ✅ Profit recomputed
+[2026-02-03T18:06:09.143Z] 📦 Chunk 14: 2024-01-11 → 2024-02-10 (cursor advances to 2024-02-11)
+[2026-02-03T18:07:19.649Z] ✅ Line items backfilled
+[2026-02-03T18:07:30.681Z] ✅ Profit recomputed
+[2026-02-03T18:07:30.682Z] 📦 Chunk 15: 2024-02-11 → 2024-03-10 (cursor advances to 2024-03-10)
+[2026-02-03T18:08:38.157Z] ✅ Line items backfilled
+[2026-02-03T18:08:48.667Z] ✅ Profit recomputed
+[2026-02-03T18:08:48.668Z] 📦 Chunk 16: 2024-03-10 → 2024-04-09 (cursor advances to 2024-04-10)
+[2026-02-03T18:09:53.924Z] ✅ Line items backfilled
+[2026-02-03T18:10:04.630Z] ✅ Profit recomputed
+[2026-02-03T18:10:04.631Z] 📦 Chunk 17: 2024-04-10 → 2024-05-09 (cursor advances to 2024-05-10)
+[2026-02-03T18:11:07.260Z] ✅ Line items backfilled
+[2026-02-03T18:11:17.794Z] ✅ Profit recomputed
+[2026-02-03T18:11:17.794Z] 📦 Chunk 18: 2024-05-10 → 2024-06-09 (cursor advances to 2024-06-10)
+[2026-02-03T18:12:13.910Z] ✅ Line items backfilled
+[2026-02-03T18:12:27.060Z] ✅ Profit recomputed
+[2026-02-03T18:12:27.061Z] 📦 Chunk 19: 2024-06-10 → 2024-07-09 (cursor advances to 2024-07-10)
+[2026-02-03T18:13:20.035Z] ✅ Line items backfilled
+[2026-02-03T18:13:30.510Z] ✅ Profit recomputed
+[2026-02-03T18:13:30.511Z] 📦 Chunk 20: 2024-07-10 → 2024-08-09 (cursor advances to 2024-08-10)
+[2026-02-03T18:14:20.640Z] ✅ Line items backfilled
+[2026-02-03T18:14:28.971Z] ✅ Profit recomputed
+[2026-02-03T18:14:28.972Z] 📦 Chunk 21: 2024-08-10 → 2024-09-09 (cursor advances to 2024-09-10)
+[2026-02-03T18:15:23.179Z] ✅ Line items backfilled
+[2026-02-03T18:15:33.030Z] ✅ Profit recomputed
+[2026-02-03T18:15:33.031Z] 📦 Chunk 22: 2024-09-10 → 2024-10-09 (cursor advances to 2024-10-10)
+[2026-02-03T18:16:24.750Z] ✅ Line items backfilled
+[2026-02-03T18:16:34.241Z] ✅ Profit recomputed
+[2026-02-03T18:16:34.241Z] 📦 Chunk 23: 2024-10-10 → 2024-11-10 (cursor advances to 2024-11-11)
+[2026-02-03T18:17:38.506Z] ✅ Line items backfilled
+[2026-02-03T18:17:49.621Z] ✅ Profit recomputed
+[2026-02-03T18:17:49.622Z] 📦 Chunk 24: 2024-11-11 → 2024-12-10 (cursor advances to 2024-12-11)
+[2026-02-03T18:18:58.593Z] ✅ Line items backfilled
+[2026-02-03T18:19:08.378Z] ✅ Profit recomputed
+[2026-02-03T18:19:08.379Z] 📦 Chunk 25: 2024-12-11 → 2025-01-10 (cursor advances to 2025-01-11)
+[2026-02-03T18:20:24.112Z] ✅ Line items backfilled
+[2026-02-03T18:20:38.365Z] ✅ Profit recomputed
+[2026-02-03T18:20:38.366Z] 📦 Chunk 26: 2025-01-11 → 2025-02-10 (cursor advances to 2025-02-11)
+[2026-02-03T18:22:00.839Z] ✅ Line items backfilled
+[2026-02-03T18:22:13.507Z] ✅ Profit recomputed
+[2026-02-03T18:22:13.508Z] 📦 Chunk 27: 2025-02-11 → 2025-03-09 (cursor advances to 2025-03-10)
+[2026-02-03T18:23:32.705Z] ✅ Line items backfilled
+[2026-02-03T18:23:45.676Z] ✅ Profit recomputed
+[2026-02-03T18:23:45.677Z] 📦 Chunk 28: 2025-03-10 → 2025-04-09 (cursor advances to 2025-04-10)
+[2026-02-03T18:25:20.922Z] ✅ Line items backfilled
+[2026-02-03T18:25:35.181Z] ✅ Profit recomputed
+[2026-02-03T18:25:35.181Z] 📦 Chunk 29: 2025-04-10 → 2025-05-09 (cursor advances to 2025-05-10)
+[2026-02-03T18:26:55.099Z] ✅ Line items backfilled
+[2026-02-03T18:27:06.744Z] ✅ Profit recomputed
+[2026-02-03T18:27:06.746Z] 📦 Chunk 30: 2025-05-10 → 2025-06-09 (cursor advances to 2025-06-10)
+[2026-02-03T18:28:20.358Z] ✅ Line items backfilled
+[2026-02-03T18:28:31.153Z] ✅ Profit recomputed
+[2026-02-03T18:28:31.154Z] 📦 Chunk 31: 2025-06-10 → 2025-07-09 (cursor advances to 2025-07-10)
+[2026-02-03T18:29:37.950Z] ✅ Line items backfilled
+[2026-02-03T18:29:48.372Z] ✅ Profit recomputed
+[2026-02-03T18:29:48.374Z] 📦 Chunk 32: 2025-07-10 → 2025-08-09 (cursor advances to 2025-08-10)
+[2026-02-03T18:30:55.235Z] ✅ Line items backfilled
+[2026-02-03T18:31:06.379Z] ✅ Profit recomputed
+[2026-02-03T18:31:06.381Z] 📦 Chunk 33: 2025-08-10 → 2025-09-09 (cursor advances to 2025-09-10)
+[2026-02-03T18:32:20.933Z] ✅ Line items backfilled
+[2026-02-03T18:32:33.140Z] ✅ Profit recomputed
+[2026-02-03T18:32:33.143Z] 📦 Chunk 34: 2025-09-10 → 2025-10-09 (cursor advances to 2025-10-10)
+[2026-02-03T18:33:39.112Z] ✅ Line items backfilled
+[2026-02-03T18:33:49.981Z] ✅ Profit recomputed
+[2026-02-03T18:33:49.983Z] 📦 Chunk 35: 2025-10-10 → 2025-11-10 (cursor advances to 2025-11-11)
+[2026-02-03T18:35:00.493Z] ✅ Line items backfilled
+[2026-02-03T18:35:12.100Z] ✅ Profit recomputed
+[2026-02-03T18:35:12.102Z] 📦 Chunk 36: 2025-11-11 → 2025-12-10 (cursor advances to 2025-12-11)
+[2026-02-03T18:36:33.991Z] ✅ Line items backfilled
+[2026-02-03T18:36:46.722Z] ✅ Profit recomputed
+[2026-02-03T18:36:46.724Z] 📦 Chunk 37: 2025-12-11 → 2026-01-10 (cursor advances to 2026-01-11)
+[2026-02-03T18:38:21.376Z] ✅ Line items backfilled
+[2026-02-03T18:38:35.799Z] ✅ Profit recomputed
+[2026-02-03T18:38:35.800Z] 📦 Chunk 38: 2026-01-11 → 2026-02-03 (cursor advances to 2026-02-11)
+[2026-02-03T18:39:41.104Z] ✅ Line items backfilled
+[2026-02-03T18:39:52.651Z] ✅ Profit recomputed
+[2026-02-03T18:39:52.656Z] 🎉 Recompute backfill complete

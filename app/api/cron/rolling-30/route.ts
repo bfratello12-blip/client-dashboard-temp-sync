@@ -659,3 +659,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: msg }, { status });
   }
 }
+
+export async function GET(req: Request) {
+  return POST(req as unknown as NextRequest);
+}

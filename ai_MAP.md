@@ -1,232 +1,217 @@
-# AI_MAP.md — ScaleAble Platform Map
+# AI_MAP.md — ScaleAble Dashboard System Map
 
-This document is the authoritative technical system map for the ScaleAble platform. It is written for engineers and AI agents who need to reason about the system without guessing.
-
----
-
-## 1) High-Level Overview
-
-### What ScaleAble is
-ScaleAble is a profit-first analytics platform for small Shopify merchants running paid media. It is both:
-- An embedded Shopify Admin app
-- A multi-client SaaS dashboard
-
-### Problem it solves
-Ad platforms report attributed revenue that does not equal true business revenue or profit. ScaleAble reconciles:
-- Shopify revenue (ground truth)
-- Paid spend (Google Ads + Meta)
-- COGS and variable costs
-
-The output is a consistent, business-truth view of profit and efficiency over time.
+This document is the authoritative, implementation-accurate system map for the ScaleAble Dashboard.
+It is written for AI agents and engineers who need precise, non-speculative guidance.
 
 ---
 
-## 2) Multi-Client Architecture
+## 1) High-level purpose
 
-- Single codebase for all tenants
-- Per-client Shopify apps via Shopify’s embedded app model
-- `client_id` is the core identifier used across all tables, routes, and UI
+### What ScaleAble Dashboard is
+- A profit-first analytics dashboard for Shopify merchants running paid media.
+- An embedded Shopify Admin app with a shared data layer (Supabase).
 
-Explicit behavior:
-- Every API read/write is scoped to `client_id`
-- All daily rollups use `client_id` + date as the primary key
-- Each Shopify store maps to one `client_id` via Supabase
+### Problems it solves
+- Ad platforms report attributed revenue, not business-truth revenue.
+- Merchants need profit and efficiency metrics derived from Shopify sales plus paid spend and costs.
 
----
-
-## 3) Data Model (Supabase)
-
-### Core tables
-
-#### clients
-- Canonical tenant table
-- One row per merchant
-
-#### client_integrations
-- Non-Shopify integrations
-- Stores Google Ads and Meta account IDs and tokens
-
-#### shopify_app_installs
-- Source of truth for Shopify store → `client_id` mapping
-- Stores shop domain, OAuth access token, scopes
-
-#### daily_metrics
-- Unified daily rollups across sources
-- Key fields: date, client_id, source, spend, revenue, units, orders, clicks, impressions, conversions
-- Shopify rows are the truth for revenue, orders, units
-
-#### shopify_daily_line_items
-- Per-day line item totals by variant/product
-- Used for COGS and coverage calculations
-- Includes refunds
-
-#### shopify_variant_unit_costs
-- Unit cost per Shopify inventory item / variant
-- Used in COGS coverage and profit recompute
-
-#### daily_profit_summary
-- Derived daily profit metrics
-- Stores revenue, paid_spend, estimated costs, contribution_profit, mer, profit_mer
-
-#### daily_shopify_cogs_coverage
-- Coverage summary for unit cost availability on daily Shopify revenue
+### Profit-first analytics positioning
+- Shopify revenue (total_sales) is the ground truth.
+- Paid spend is included once.
+- Profit is computed after costs, not after attribution.
 
 ---
 
-## 4) Data Ingestion Flows
+## 2) Architecture overview
 
-### Shopify (primary revenue source)
-- ShopifyQL is the primary method
-- Orders aggregation is the fallback if ShopifyQL fails
-- Writes to daily_metrics with source=shopify
-
-### Google Ads spend
-- Reads client_integrations for tokens and account IDs
-- Writes spend and performance metrics to daily_metrics with source in {google, google_ads, googleads}
-
-### Meta Ads spend
-- Reads client_integrations for tokens and account IDs
-- Writes spend and performance metrics to daily_metrics with source=meta
+- Single VS Code repo for all logic (UI + API).
+- Multiple client apps exist as separate Shopify apps and separate Vercel deployments.
+- Supabase is the shared data layer.
+- Client isolation is enforced by client_id across all tables and API routes.
 
 ---
 
-## 5) Shopify Specifics
+## 3) Core data model (tables + responsibility)
 
-### Day bucketing
-- Daily rollups are stored as ISO date strings (YYYY-MM-DD)
-- All comparisons and joins use that date string as the day key
+### clients
+- Purpose: tenant root + per-client configuration.
+- Writes: internal admin processes, migrations.
+- Reads: Shopify sync, POS exclusions, UI.
 
-### Timezone handling
-- Shopify reporting is aligned to the shop’s configured timezone
-- Local day boundaries are converted to UTC before storage
+### client_integrations
+- Purpose: OAuth configuration for Google Ads / Meta.
+- Writes: OAuth connect flows.
+- Reads: sync endpoints to fetch spend.
 
-### No POS exclusion
-- POS sales are not filtered out
-- Shopify revenue is treated as the canonical truth for all sales channels
+### client_cost_settings
+- Purpose: cost assumptions for recompute.
+- Writes: Settings UI.
+- Reads: /api/shopify/recompute.
 
-### Tables written by Shopify flows
-- daily_metrics (source=shopify)
+### daily_metrics
+- Purpose: daily rollups by source (shopify, google, meta).
+- Writes: /api/shopify/sync, /api/googleads/sync, /api/meta/sync.
+- Reads: /api/shopify/recompute, UI charts, rolling summaries.
+
+### shopify_daily_line_items
+- Purpose: per-day line item aggregation by inventory_item_id.
+- Writes: /api/shopify/daily-line-items-sync.
+- Reads: /api/shopify/recompute (for COGS coverage).
+
+### shopify_variant_unit_costs
+- Purpose: unit costs by inventory item / variant.
+- Writes: /api/shopify/daily-line-items-sync (inventory cost fetch).
+- Reads: /api/shopify/recompute.
+
+### daily_shopify_cogs_coverage
+- Purpose: coverage of known COGS for Shopify revenue.
+- Writes: /api/shopify/recompute (after line item aggregation).
+- Reads: /api/shopify/recompute for profit summary.
+
+### daily_profit_summary
+- Purpose: profit truth table used by dashboard and rolling summaries.
+- Writes: /api/shopify/recompute.
+- Reads: UI, rolling summaries.
+
+---
+
+## 4) Shopify ingestion flow (IMPORTANT)
+
+### ShopifyQL revenue sync
+- Revenue is pulled via ShopifyQL: FROM sales SHOW total_sales TIMESERIES day.
+- POS exclusion is applied when enabled:
+	WHERE sales_channel NOT IN ('Point of Sale', ...)
+- The resulting total_sales is stored as daily_metrics.revenue (source=shopify).
+
+### Revenue vs line item revenue
+- Revenue (ShopifyQL total_sales) includes taxes and shipping, minus discounts as per ShopifyQL definition.
+- Line item revenue is derived from lineItems.discountedTotalSet (line-level net of discounts).
+- These differ by taxes, shipping, and discounts.
+
+---
+
+## 5) Line-item + unit cost flow
+
+### /api/shopify/daily-line-items-sync
+- Pulls orders + lineItems via Shopify Admin GraphQL.
+- Day bucketing is based on processedAt converted to shop timezone (YYYY-MM-DD).
+- Aggregates by day + inventory_item_id.
+- line_revenue uses discountedTotalSet (line-level net of discounts).
+
+### Unit costs
+- Inventory item unit costs are fetched via Shopify GraphQL.
+- Stored in shopify_variant_unit_costs.
+
+---
+
+## 6) COGS coverage logic (CRITICAL)
+
+### Definitions
+- productCogsKnown: sum(units * unit_cost) for line items with unit cost.
+- units_with_cogs: units that have known unit cost.
+- revenue_with_cogs_raw: sum(line_revenue) for items with known unit cost.
+
+### Why raw coverage can exceed 1.0
+- line_revenue excludes taxes/shipping and can exceed ShopifyQL total_sales in some edge cases.
+- This inflates revenue_with_cogs_raw relative to daily revenue.
+
+### Clamp and scaling
+- revenue_with_cogs is clamped to daily Shopify revenue:
+	revenue_with_cogs = min(revenue_with_cogs_raw, revenue)
+- productCogsKnown is scaled proportionally when clamping occurs:
+	scale = revenue_with_cogs_clamped / revenue_with_cogs_raw
+	productCogsKnown = productCogsKnownRaw * scale
+
+### Raw vs effective coverage
+- Raw coverage: revenue_with_cogs_raw / revenue
+- Effective coverage: revenue_with_cogs_clamped / revenue (must be <= 1)
+- Effective coverage can be 100% even if unit coverage < 100% because revenue_with_cogs_raw can exceed revenue.
+
+---
+
+## 7) Fallback COGS behavior
+
+### When fallback is used
+- Any uncovered revenue uses default_gross_margin_pct.
+
+### How fallback is applied
+- fallbackCogsPct = 1 - default_gross_margin_pct
+- fallbackCogs = uncoveredRevenue * fallbackCogsPct
+
+### Priority
+- Unit costs always take precedence.
+- Fallback applies only to uncovered revenue.
+
+---
+
+## 8) Profit recompute logic
+
+### Inputs
+- daily_metrics (shopify revenue/orders/units + paid spend)
 - shopify_daily_line_items
 - shopify_variant_unit_costs
-- daily_shopify_cogs_coverage (via recompute)
-- daily_profit_summary (via recompute)
+- client_cost_settings
+
+### Order of operations
+1) Build daily coverage from line items + unit costs.
+2) Clamp revenue_with_cogs and scale productCogsKnown when needed.
+3) Compute est_cogs and costs.
+4) Write daily_profit_summary and daily_shopify_cogs_coverage.
+
+### Cost formulas
+- est_processing_fees = revenue * processing_fee_pct + orders * processing_fee_fixed
+- est_fulfillment_costs = orders * pick_pack_per_order
+- est_other_variable_costs = orders * shipping_subsidy_per_order + orders * materials_per_order + revenue * other_variable_pct_revenue
+- est_other_fixed_costs = other_fixed_per_day
+
+### Contribution profit formula
+contribution_profit =
+	revenue - (
+		est_cogs +
+		est_processing_fees +
+		est_fulfillment_costs +
+		est_other_variable_costs +
+		est_other_fixed_costs +
+		paid_spend
+	)
 
 ---
 
-## 6) Profit Calculation Logic
+## 9) Backfill strategy
 
-### Contribution profit (canonical)
-Contribution profit is computed during recompute and stored in daily_profit_summary:
-
-$$
-	ext{contribution\_profit} = \text{revenue} - (\text{paid\_spend} + \text{est\_cogs} + \text{est\_processing\_fees} + \text{est\_fulfillment\_costs} + \text{est\_other\_variable\_costs} + \text{est\_other\_fixed\_costs})
-$$
-
-### MER (True ROAS)
-$$
-	ext{MER} = \frac{\text{revenue}}{\text{paid\_spend}}
-$$
-
-### Profit Return (Profit MER)
-$$
-	ext{Profit Return} = \frac{\text{contribution\_profit}}{\text{paid\_spend}}
-$$
-
-Explicit statement:
-- Paid spend is counted once. It is not double-counted in any recompute or rolling window.
+- Month-by-month historical backfill to avoid API limits.
+- Idempotent upserts for daily tables.
+- Full historical backfill uses ShopifyQL + line items + recompute.
+- Rolling-30 maintenance updates recent 30 days daily.
 
 ---
 
-## 7) Recompute System
+## 10) Cron strategy (INTENT)
 
-### What it reads
-- daily_metrics (shopify revenue/orders/units + google/meta spend)
-- shopify_daily_line_items
-- shopify_variant_unit_costs
-- client cost settings (default margins and variable cost assumptions)
-
-### What it writes
-- daily_profit_summary
-- daily_shopify_cogs_coverage
-
-### Why recompute exists
-- ShopifyQL and line items arrive at different times
-- Unit costs are updated asynchronously
-- Recompute guarantees profit and coverage are consistent and idempotent
-
----
-
-## 8) Cron System
-
-### Daily rolling-30 strategy
-Daily cron runs a deterministic sequence:
-1) Shopify sync
+### Daily cron should do
+1) ShopifyQL revenue sync
 2) Google Ads sync
 3) Meta Ads sync
-4) Shopify daily line items sync
-5) Shopify recompute
-6) Rolling-30 recompute
+4) Line-items sync
+5) Recompute
+6) Rolling-30 refresh
 
-### Why rolling windows are used
-- Shopify and ad APIs can be delayed or backfilled
-- Rolling windows correct late-arriving data without full historical rebuilds
+### Why recompute is required
+- Line items and unit costs arrive asynchronously.
+- Recompute aligns profit with current COGS coverage.
 
-### Auth model
-Cron-protected routes accept:
-- Authorization: Bearer $CRON_SECRET
-- OR ?token=$CRON_SECRET
-
----
-
-## 9) Auth & Security
-
-### CRON_SECRET
-- Shared secret for all cron-protected endpoints
-- Accepted via Authorization header or token query param
-- If missing or invalid, the endpoint returns HTTP 401 with { ok: false, error: "Unauthorized" }
-
-### OAuth token storage
-- Shopify OAuth tokens are stored in shopify_app_installs
-- Google and Meta tokens are stored in client_integrations
-- Tokens are not stored in environment variables
+### Per-client isolation
+- All writes and reads are scoped by client_id.
+- Errors for one client must not block others.
 
 ---
 
-## 10) Local Development Behavior
+## 11) Known gotchas & invariants
 
-### LOCAL_CLIENT_ID
-- When set, the server uses it as the default tenant in local/dev
-- Allows local UI boot without passing client_id in every request
-
-### DEV MODE rendering
-- Client-side rendering is used for dashboard pages
-- Server components resolve client context, then pass into client components
-
----
-
-## 11) Dashboard Philosophy
-
-### Target audience
-- Small Shopify merchants with paid media spend
-
-### Indexed ROAS vs MER chart rationale
-- Indexed ROAS is presented to show trend direction without over-emphasizing absolute scale
-- MER is the canonical business efficiency metric
-
-### Charts intentionally removed
-- Low-signal, high-noise charts were removed to reduce cognitive load
-- Only charts that support daily decision-making remain
-
----
-
-## 12) Known Constraints & Non-Goals
-
-- Not a full attribution platform
-- No multi-touch attribution modeling
-- No cross-channel customer journey modeling
-- Shopify revenue is treated as the ground truth
-- POS sales are included, not excluded
-- Rolling windows are used instead of real-time recomputation on every write
+- ShopifyQL revenue (POS excluded when configured) is the authoritative revenue.
+- revenue_with_cogs must never exceed revenue in stored data.
+- Recompute must run after line-item sync to ensure accurate COGS coverage.
+- Failures for one client must not stop others in multi-client sync.
 
 ## 13) Current Clients on Dashboard
 

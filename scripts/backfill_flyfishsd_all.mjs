@@ -22,6 +22,7 @@ function addMonths(date, n) {
 
 async function call(path) {
   const res = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
     headers: {
       Authorization: `Bearer ${TOKEN}`,
     },

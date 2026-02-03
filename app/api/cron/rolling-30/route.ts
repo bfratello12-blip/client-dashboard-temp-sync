@@ -212,8 +212,8 @@ function computeDailyProfitSummary(args: {
 }) {
   const { date, revenue, orders, units, paidSpend, cs } = args;
 
-  const productCogsKnown = n((args as any).productCogsKnown);
-  const revenueWithCogs = n((args as any).revenueWithCogs);
+  const productCogsKnownRaw = n((args as any).productCogsKnown);
+  const revenueWithCogsRaw = n((args as any).revenueWithCogs);
   const unitsWithCogs = n((args as any).unitsWithCogs);
   const estimatedCogsMissing = (args as any).estimatedCogsMissing;
 
@@ -227,18 +227,22 @@ function computeDailyProfitSummary(args: {
   const avgCogsPerUnit = n(cs?.avg_cogs_per_unit);
   const fallbackMargin = gm != null ? gm : 0.5;
 
-  const coveredRevenue = Math.max(0, Math.min(revenue, revenueWithCogs));
+  const revenueWithCogsClamped = Math.min(revenueWithCogsRaw || 0, revenue);
+  const coveredRevenue = Math.max(0, revenueWithCogsClamped);
   const coveredUnits = Math.max(0, Math.min(units, unitsWithCogs));
 
   const unknownRevenue = Math.max(0, revenue - coveredRevenue);
-  const unknownUnits = Math.max(0, units - coveredUnits);
+
+  const scale = revenueWithCogsRaw > 0 ? revenueWithCogsClamped / revenueWithCogsRaw : 0;
+  const productCogsKnown = productCogsKnownRaw * scale;
 
   // Estimate COGS for the unknown portion using fallback margin only
   const est_cogs_unknown = unknownRevenue * (1 - clamp01(Number(fallbackMargin)));
 
   // Total COGS used in profit calc for the day
   // Always use known product COGS plus fallback only on uncovered revenue
-  const est_cogs = productCogsKnown + est_cogs_unknown;
+  let est_cogs = productCogsKnown + est_cogs_unknown;
+  est_cogs = Math.min(Math.max(est_cogs, 0), revenue);
 
   // Coverage metrics
   const cogs_coverage_pct = revenue > 0 ? coveredRevenue / revenue : 0;
@@ -289,25 +293,37 @@ function computeDailyProfitSummary(args: {
   const profit_mer = paidSpend > 0 ? contribution_profit / paidSpend : 0;
 
   return {
-    client_id: cs?.client_id, // caller will override
-    date,
-    revenue,
-    orders,
-    units,
-    paid_spend: paidSpend,
-    mer,
-    est_cogs,
-    est_processing_fees,
-    est_fulfillment_costs,
-    est_other_variable_costs,
-    est_other_fixed_costs,
-    contribution_profit,
-    profit_mer,
+    row: {
+      client_id: cs?.client_id, // caller will override
+      date,
+      revenue,
+      orders,
+      units,
+      paid_spend: paidSpend,
+      mer,
+      est_cogs,
+      est_processing_fees,
+      est_fulfillment_costs,
+      est_other_variable_costs,
+      est_other_fixed_costs,
+      contribution_profit,
+      profit_mer,
 
-    // Coverage fields already exist in your daily_profit_summary table
-    product_cogs_known: productCogsKnown,
-    revenue_with_cogs: coveredRevenue,
-    cogs_coverage_pct,
+      // Coverage fields already exist in your daily_profit_summary table
+      product_cogs_known: productCogsKnown,
+      revenue_with_cogs: coveredRevenue,
+      cogs_coverage_pct,
+    },
+    debug: {
+      date,
+      revenue,
+      revenue_with_cogs_raw: revenueWithCogsRaw,
+      revenue_with_cogs_clamped: coveredRevenue,
+      scale,
+      product_cogs_known_raw: productCogsKnownRaw,
+      product_cogs_known: productCogsKnown,
+      est_cogs,
+    },
   };
 }
 
@@ -697,7 +713,7 @@ export async function POST(req: NextRequest) {
 
         const upserts = Object.entries(byDate).map(([d, v]) => {
           const coverage = coverageByDate[d];
-          const base = computeDailyProfitSummary({
+          const computed = computeDailyProfitSummary({
             date: d,
             revenue: v.revenue,
             orders: v.orders,
@@ -712,8 +728,11 @@ export async function POST(req: NextRequest) {
           });
 
           return {
-            ...base,
+            ...computed.row,
             client_id: cid,
+            est_cogs: computed.debug?.est_cogs,
+            product_cogs_known: computed.debug?.product_cogs_known,
+            revenue_with_cogs: computed.debug?.revenue_with_cogs_clamped,
           };
         });
 

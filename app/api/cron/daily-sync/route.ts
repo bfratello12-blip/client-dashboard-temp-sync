@@ -161,6 +161,7 @@ export async function GET(req: NextRequest) {
     }
 
     const recomputeParams = new URLSearchParams({
+      client_id: clientId,
       token: secret,
       start: window.start,
       end: window.end,

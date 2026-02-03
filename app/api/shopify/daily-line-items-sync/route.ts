@@ -30,6 +30,19 @@ function gidToVariantId(gid: string | null | undefined): number | null {
   return m ? Number(m[1]) : null;
 }
 
+function dayFromTimestampInTZ(ts: string, timeZone: string): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return "";
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return fmt.format(d);
+}
+
 function inventoryItemIdToGid(id: number): string {
   return `gid://shopify/InventoryItem/${id}`;
 }
@@ -266,6 +279,7 @@ export async function POST(req: NextRequest) {
     let minCreatedAt = "";
     let maxCreatedAt = "";
     let sampleLogged = false;
+    let skippedOutOfRange = 0;
 
     const shopTimeZone = await getShopTimeZone(shopDomain, accessToken);
 
@@ -285,22 +299,26 @@ export async function POST(req: NextRequest) {
 
       for (const e of edges) {
         const o = e?.node;
-        const createdAt = String(o?.createdAt || "");
         const processedAt = String(o?.processedAt || "");
-        const day = bucketShopifyOrderDay({ processedAt, createdAt });
+        const day = dayFromTimestampInTZ(processedAt, shopTimeZone);
         ordersSeen += 1;
+
+        if (!day || day < start || day > end) {
+          skippedOutOfRange += 1;
+          continue;
+        }
 
         if (!sampleLogged && day) {
           console.info("[daily-line-items-sync] sample order", {
             id: o?.id,
-            createdAt: createdAt || null,
+            createdAt: o?.createdAt || null,
             processedAt: processedAt || null,
             day,
           });
           sampleLogged = true;
         }
 
-        const stamp = processedAt || createdAt;
+        const stamp = processedAt;
 
         if (stamp) {
           if (!minCreatedAt || stamp < minCreatedAt) minCreatedAt = stamp;
@@ -360,6 +378,11 @@ export async function POST(req: NextRequest) {
       if (!hasNext) break;
       if (pages > 200) throw new Error("Too many pages while syncing line items (safety stop).");
     }
+
+    console.info("[daily-line-items-sync] dayBasis=processedAt", {
+      tz: shopTimeZone,
+      skippedOutOfRange,
+    });
 
     // Upsert results to Supabase
     const rows = Array.from(agg.values()).map((r) => ({
@@ -445,6 +468,9 @@ export async function POST(req: NextRequest) {
       source: "shopify-daily-line-items-sync",
       client_id: clientId,
       shop_domain: shopDomain,
+      dayBasis: "processedAt",
+      tz: shopTimeZone,
+      skippedOutOfRange,
       window: { start, end },
       pages,
       ordersSeen,

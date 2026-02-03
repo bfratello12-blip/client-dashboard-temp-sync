@@ -73,8 +73,8 @@ function computeDailyProfitSummary(args: {
 }) {
   const { date, revenue, orders, units, paidSpend, cs } = args;
 
-  const productCogsKnown = n((args as any).productCogsKnown);
-  const revenueWithCogs = n((args as any).revenueWithCogs);
+  const productCogsKnownRaw = n((args as any).productCogsKnown);
+  const revenueWithCogsRaw = n((args as any).revenueWithCogs);
   const unitsWithCogs = n((args as any).unitsWithCogs);
   const estimatedCogsMissing = (args as any).estimatedCogsMissing;
 
@@ -82,15 +82,32 @@ function computeDailyProfitSummary(args: {
   const avgCogsPerUnit = n(cs?.avg_cogs_per_unit);
   const fallbackMargin = gm != null ? gm : 0.5;
 
-  const coveredRevenue = Math.max(0, Math.min(revenue, revenueWithCogs));
+  const revenueWithCogsClamped = Math.min(revenueWithCogsRaw || 0, revenue);
+  const coveredRevenue = Math.max(0, revenueWithCogsClamped);
   const coveredUnits = Math.max(0, Math.min(units, unitsWithCogs));
 
-  const unknownRevenue = Math.max(0, revenue - coveredRevenue);
-  const unknownUnits = Math.max(0, units - coveredUnits);
+  const uncoveredRevenue = Math.max(0, revenue - revenueWithCogsClamped);
 
-  const est_cogs_unknown = unknownRevenue * (1 - clamp01(Number(fallbackMargin)));
-  const est_cogs = productCogsKnown + est_cogs_unknown;
-  const cogs_coverage_pct = revenue > 0 ? coveredRevenue / revenue : 0;
+  const scale = revenueWithCogsRaw > 0 ? revenueWithCogsClamped / revenueWithCogsRaw : 0;
+  const productCogsKnown = productCogsKnownRaw * scale;
+
+  const fallbackCogsPct = 1 - clamp01(Number(fallbackMargin));
+  const fallbackCogs = uncoveredRevenue * fallbackCogsPct;
+
+  let est_cogs = productCogsKnown + fallbackCogs;
+  est_cogs = Math.min(Math.max(est_cogs, 0), revenue);
+
+  const coveragePctRaw = revenue > 0 ? revenueWithCogsRaw / revenue : 0;
+  const coveragePct = Math.min(Math.max(coveragePctRaw, 0), 1);
+  const cogs_coverage_pct = coveragePct;
+
+  if (coveragePctRaw > 1.001) {
+    console.warn("[shopify/recompute] coverage_raw > 1", {
+      date,
+      revenue,
+      revenue_with_cogs_raw: revenueWithCogsRaw,
+    });
+  }
 
   const feePct = n(cs?.processing_fee_pct) || 0;
   const feeFixed = n(cs?.processing_fee_fixed) || 0;
@@ -121,23 +138,39 @@ function computeDailyProfitSummary(args: {
   const profit_mer = paidSpend > 0 ? contribution_profit / paidSpend : 0;
 
   return {
-    client_id: cs?.client_id,
-    date,
-    revenue,
-    orders,
-    units,
-    paid_spend: paidSpend,
-    mer,
-    est_cogs,
-    est_processing_fees,
-    est_fulfillment_costs,
-    est_other_variable_costs,
-    est_other_fixed_costs,
-    contribution_profit,
-    profit_mer,
-    product_cogs_known: productCogsKnown,
-    revenue_with_cogs: coveredRevenue,
-    cogs_coverage_pct,
+    row: {
+      client_id: cs?.client_id,
+      date,
+      revenue,
+      orders,
+      units,
+      paid_spend: paidSpend,
+      mer,
+      est_cogs,
+      est_processing_fees,
+      est_fulfillment_costs,
+      est_other_variable_costs,
+      est_other_fixed_costs,
+      contribution_profit,
+      profit_mer,
+      product_cogs_known: productCogsKnown,
+      revenue_with_cogs: coveredRevenue,
+      cogs_coverage_pct,
+    },
+    debug: {
+      date,
+      revenue,
+      revenue_with_cogs_raw: revenueWithCogsRaw,
+      revenue_with_cogs_clamped: coveredRevenue,
+      scale,
+      coverage_raw: coveragePctRaw,
+      coverage_clamped: coveragePct,
+      uncovered_revenue: uncoveredRevenue,
+      product_cogs_known_raw: productCogsKnownRaw,
+      product_cogs_known: productCogsKnown,
+      fallback_cogs: fallbackCogs,
+      est_cogs,
+    },
   };
 }
 
@@ -148,6 +181,7 @@ export async function POST(req: NextRequest) {
 
     const start = req.nextUrl.searchParams.get("start")?.trim() || "";
     const end = req.nextUrl.searchParams.get("end")?.trim() || "";
+    const clientIdParam = req.nextUrl.searchParams.get("client_id")?.trim() || "";
     if (!start || !end) {
       return NextResponse.json(
         { ok: false, error: "Missing start/end (YYYY-MM-DD)" },
@@ -182,17 +216,22 @@ export async function POST(req: NextRequest) {
         .lte("day", end)
     );
 
-    const clientIds = Array.from(
-      new Set(
-        [...metricsClients, ...lineItemClients]
-          .map((r) => String(r?.client_id || ""))
-          .filter(Boolean)
-      )
-    );
+    const clientIds = clientIdParam
+      ? [clientIdParam]
+      : Array.from(
+          new Set(
+            [...metricsClients, ...lineItemClients]
+              .map((r) => String(r?.client_id || ""))
+              .filter(Boolean)
+          )
+        );
+
+    console.info("[shopify/recompute] clients", { client_ids: clientIds });
 
     let profitRowsUpserted = 0;
     let coverageRowsUpserted = 0;
     let clientsProcessed = 0;
+    const debugRows: any[] = [];
 
     for (const cid of clientIds) {
       // Cost settings
@@ -366,7 +405,7 @@ export async function POST(req: NextRequest) {
       const upserts = days.map((d) => {
         if (!byDate[d]) byDate[d] = { revenue: 0, orders: 0, units: 0, paidSpend: 0 };
         const coverage = coverageByDate[d];
-        const base = computeDailyProfitSummary({
+        const computed = computeDailyProfitSummary({
           date: d,
           revenue: byDate[d].revenue,
           orders: byDate[d].orders,
@@ -378,7 +417,8 @@ export async function POST(req: NextRequest) {
           unitsWithCogs: n(coverage?.units_with_cogs),
           estimatedCogsMissing: n(coverage?.estimated_cogs_missing),
         });
-        return { ...base, client_id: cid };
+        debugRows.push({ client_id: cid, ...computed.debug });
+        return { ...computed.row, client_id: cid };
       });
 
       if (upserts.length) {
@@ -406,7 +446,7 @@ export async function POST(req: NextRequest) {
 
     console.info("[shopify/recompute] done", updatedCounts);
 
-    return NextResponse.json({ ok: true, range: { start, end }, updatedCounts });
+    return NextResponse.json({ ok: true, range: { start, end }, updatedCounts, debug: debugRows });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || String(e) }, { status: 500 });
   }

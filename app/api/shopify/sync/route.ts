@@ -481,7 +481,8 @@ async function queryDailyCogsCoverage(
   token: string,
   startISO: string,
   endISO: string,
-  timeZone: string
+  timeZone: string,
+  excludePos: boolean
 ) {
   let scannedLineItems = 0;
   let withVariant = 0;
@@ -532,7 +533,9 @@ async function queryDailyCogsCoverage(
       {
         first: pageSize,
         after,
-        query: `processed_at:>=${startUtc} processed_at:<=${endUtc} status:any`,
+        query: `processed_at:>=${startUtc} processed_at:<=${endUtc} status:any${
+          excludePos ? " -source_name:pos" : ""
+        }`,
       }
     );
 
@@ -1283,7 +1286,8 @@ const rows = days.map((day) => {
             token,
             startDay,
             endDay,
-            tz
+            tz,
+            excludePos
           );
 
           const coverageRows = days

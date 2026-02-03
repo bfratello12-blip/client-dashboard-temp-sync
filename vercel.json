@@ -1,9 +1,10 @@
 {
   "crons": [
     {
-      "path": "/api/cron/daily-sync?token=Laughing_Lab_1011",
+      "path": "/api/cron/rolling-30",
       "schedule": "10 6 * * *"
     }
   ]
 }
+
 

@@ -77,6 +77,54 @@ async function safeJson(res: Response) {
   }
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableStatus(status: number) {
+  return status === 429 || status >= 500;
+}
+
+async function fetchJsonWithRetry(
+  url: string,
+  init: RequestInit,
+  label: string,
+  maxAttempts = 5
+) {
+  let attempt = 0;
+  let lastError: any = null;
+  while (attempt < maxAttempts) {
+    attempt += 1;
+    try {
+      const res = await fetch(url, init);
+      const body = await safeJson(res);
+      if (isRetryableStatus(res.status) && attempt < maxAttempts) {
+        const base = 500 * Math.pow(2, attempt - 1);
+        const jitter = Math.floor(Math.random() * 250);
+        const waitMs = base + jitter;
+        console.warn(`[rolling-30] retry ${label} attempt ${attempt}/${maxAttempts} status=${res.status} wait=${waitMs}ms`);
+        await sleep(waitMs);
+        continue;
+      }
+      return { res, body, attempts: attempt };
+    } catch (e: any) {
+      lastError = e;
+      if (attempt < maxAttempts) {
+        const base = 500 * Math.pow(2, attempt - 1);
+        const jitter = Math.floor(Math.random() * 250);
+        const waitMs = base + jitter;
+        console.warn(
+          `[rolling-30] retry ${label} attempt ${attempt}/${maxAttempts} error=${e?.message || String(e)} wait=${waitMs}ms`
+        );
+        await sleep(waitMs);
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastError || new Error(`Retry failed for ${label}`);
+}
+
 function pickCounts(body: any) {
   const daysWritten = Number(body?.daysWritten);
   if (Number.isFinite(daysWritten)) return { daysWritten };
@@ -91,12 +139,21 @@ async function runStep(args: {
   headers?: Record<string, string>;
 }) {
   try {
-    const res = await fetch(args.url, {
+    const { res, body } = await fetchJsonWithRetry(
+      args.url,
+      {
       method: "POST",
       headers: args.headers,
-    });
-    const body = await safeJson(res);
-    const ok = res.ok && (body?.ok !== false);
+      },
+      args.step
+    );
+    const errorString =
+      typeof body?.error === "string" && body.error
+        ? body.error
+        : typeof body?.message === "string" && body.message
+        ? body.message
+        : "";
+    const ok = res.ok && (body?.ok !== false) && !errorString;
     const summary: StepSummary = {
       step: args.step,
       ok,
@@ -104,7 +161,7 @@ async function runStep(args: {
       ...pickCounts(body),
     };
     if (!ok) {
-      summary.error = body?.error || body?.message || `HTTP ${res.status}`;
+      summary.error = errorString || `HTTP ${res.status}`;
     }
     return { res, body, summary };
   } catch (e: any) {

@@ -19,6 +19,12 @@ function addMonths(date, n) {
   return d;
 }
 
+function addDays(date, n) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
 function logLine(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`;
   console.log(line);
@@ -37,10 +43,16 @@ async function call(path) {
     },
   });
   const text = await res.text();
-  if (!res.ok) {
-    throw new Error(`${path} failed: ${text}`);
+  let body = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = text;
   }
-  return text;
+  if (!res.ok) {
+    throw new Error(`${path} failed: ${res.status} ${JSON.stringify(body)}`);
+  }
+  return body;
 }
 
 async function callWithRetry(path, maxRetries = 3) {
@@ -70,14 +82,16 @@ async function callWithRetry(path, maxRetries = 3) {
 
   while (cursor < END_DATE) {
     const chunkStart = new Date(cursor);
-    const chunkEnd = addMonths(chunkStart, 1);
+    const chunkEndExclusive = addMonths(chunkStart, 1);
+    const endInclusive = addDays(chunkEndExclusive, -1);
 
-    if (chunkEnd > END_DATE) chunkEnd.setTime(END_DATE.getTime());
+    if (endInclusive > END_DATE) endInclusive.setTime(END_DATE.getTime());
 
     const start = fmt(chunkStart);
-    const end = fmt(chunkEnd);
+    const end = fmt(endInclusive);
+    const nextCursor = chunkEndExclusive;
 
-    logLine(`📦 Chunk ${i}: ${start} → ${end}`);
+    logLine(`📦 Chunk ${i}: ${start} → ${end} (cursor advances to ${fmt(nextCursor)})`);
 
     if (INCLUDE_REVENUE_SYNC) {
       await callWithRetry(
@@ -96,7 +110,7 @@ async function callWithRetry(path, maxRetries = 3) {
     );
     logLine("✅ Profit recomputed");
 
-    cursor = chunkEnd;
+    cursor = nextCursor;
     i++;
   }
 

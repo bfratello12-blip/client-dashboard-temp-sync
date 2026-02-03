@@ -180,6 +180,7 @@ export async function GET(req: NextRequest) {
       start: window.start,
       end: window.end,
       token: secret,
+      skipSyncs: "1",
     });
     const rollingUrl = `${origin}/api/cron/rolling-30?${rollingParams.toString()}`;
     const rolling = await runStep({ step: "rolling_30", url: rollingUrl, headers: authHeader });

@@ -31,6 +31,15 @@ type CostSettingsRow = {
   other_fixed_per_day: number | null;
 };
 
+type StepSummary = {
+  step: string;
+  ok: boolean;
+  status: number;
+  daysWritten?: number;
+  rowsWritten?: number;
+  error?: string;
+};
+
 function n(v: any): number {
   const x = Number(v);
   return Number.isFinite(x) ? x : 0;
@@ -58,6 +67,55 @@ function daysInMonth(iso: string): number {
 function toDayKey(v: any): string {
   const s = String(v || "");
   return s ? s.slice(0, 10) : "";
+}
+
+async function safeJson(res: Response) {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+function pickCounts(body: any) {
+  const daysWritten = Number(body?.daysWritten);
+  if (Number.isFinite(daysWritten)) return { daysWritten };
+  const rowsWritten = Number(body?.rowsWritten);
+  if (Number.isFinite(rowsWritten)) return { rowsWritten };
+  return {};
+}
+
+async function runStep(args: {
+  step: string;
+  url: string;
+  headers?: Record<string, string>;
+}) {
+  try {
+    const res = await fetch(args.url, {
+      method: "POST",
+      headers: args.headers,
+    });
+    const body = await safeJson(res);
+    const ok = res.ok && (body?.ok !== false);
+    const summary: StepSummary = {
+      step: args.step,
+      ok,
+      status: res.status,
+      ...pickCounts(body),
+    };
+    if (!ok) {
+      summary.error = body?.error || body?.message || `HTTP ${res.status}`;
+    }
+    return { res, body, summary };
+  } catch (e: any) {
+    const summary: StepSummary = {
+      step: args.step,
+      ok: false,
+      status: 0,
+      error: e?.message || String(e),
+    };
+    return { res: null as any, body: null, summary };
+  }
 }
 
 async function fetchAllSupabase<T>(
@@ -208,6 +266,7 @@ export async function POST(req: NextRequest) {
     const start = url.searchParams.get("start")?.trim() || "";
     const end = url.searchParams.get("end")?.trim() || "";
     const fillZeros = url.searchParams.get("fillZeros")?.trim() === "1";
+    const skipSyncs = url.searchParams.get("skipSyncs")?.trim() === "1";
 
     const isISODate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
     // Window (UTC)
@@ -238,6 +297,10 @@ export async function POST(req: NextRequest) {
 
     const days = dateRangeInclusiveUTC(startISO, endISO);
 
+    const origin = url.origin;
+    const secret = String(process.env.CRON_SECRET || "").trim();
+    const authHeader = secret ? { Authorization: `Bearer ${secret}` } : undefined;
+
     // Determine clients to process
     let clientIds: string[] = [];
     if (clientId) {
@@ -255,8 +318,95 @@ export async function POST(req: NextRequest) {
     let rowsUpserted = 0;
     let coverageRowsFetched = 0;
     const errors: any[] = [];
+    const syncResults: any[] = [];
 
     for (const cid of clientIds) {
+      const steps: StepSummary[] = [];
+      if (!skipSyncs) {
+        const shopifyParams = new URLSearchParams({
+          client_id: cid,
+          start: startISO,
+          end: endISO,
+          force: "1",
+          mode: "shopifyql",
+        });
+        if (secret) shopifyParams.set("token", secret);
+        const shopifyUrl = `${origin}/api/shopify/sync?${shopifyParams.toString()}`;
+        const shopify = await runStep({ step: "shopify_sync", url: shopifyUrl, headers: authHeader });
+        steps.push(shopify.summary);
+        if (!shopify.summary.ok) {
+          syncResults.push({ client_id: cid, steps });
+          errors.push({ client_id: cid, error: "shopify_sync_failed", steps });
+          continue;
+        }
+
+        const googleParams = new URLSearchParams({
+          client_id: cid,
+          start: startISO,
+          end: endISO,
+          fillZeros: "1",
+        });
+        if (secret) googleParams.set("token", secret);
+        const googleUrl = `${origin}/api/googleads/sync?${googleParams.toString()}`;
+        const google = await runStep({ step: "googleads_sync", url: googleUrl, headers: authHeader });
+        steps.push(google.summary);
+        if (!google.summary.ok) {
+          syncResults.push({ client_id: cid, steps });
+          errors.push({ client_id: cid, error: "googleads_sync_failed", steps });
+          continue;
+        }
+
+        const metaParams = new URLSearchParams({
+          client_id: cid,
+          start: startISO,
+          end: endISO,
+          fillZeros: "1",
+        });
+        if (secret) metaParams.set("token", secret);
+        const metaUrl = `${origin}/api/meta/sync?${metaParams.toString()}`;
+        const meta = await runStep({ step: "meta_sync", url: metaUrl, headers: authHeader });
+        steps.push(meta.summary);
+        if (!meta.summary.ok) {
+          syncResults.push({ client_id: cid, steps });
+          errors.push({ client_id: cid, error: "meta_sync_failed", steps });
+          continue;
+        }
+
+        const lineItemsParams = new URLSearchParams({
+          client_id: cid,
+          start: startISO,
+          end: endISO,
+        });
+        if (secret) lineItemsParams.set("token", secret);
+        const lineItemsUrl = `${origin}/api/shopify/daily-line-items-sync?${lineItemsParams.toString()}`;
+        const lineItems = await runStep({
+          step: "shopify_daily_line_items",
+          url: lineItemsUrl,
+          headers: authHeader,
+        });
+        steps.push(lineItems.summary);
+        if (!lineItems.summary.ok) {
+          syncResults.push({ client_id: cid, steps });
+          errors.push({ client_id: cid, error: "shopify_daily_line_items_failed", steps });
+          continue;
+        }
+
+        const recomputeParams = new URLSearchParams({
+          client_id: cid,
+          start: startISO,
+          end: endISO,
+        });
+        if (secret) recomputeParams.set("token", secret);
+        const recomputeUrl = `${origin}/api/shopify/recompute?${recomputeParams.toString()}`;
+        const recompute = await runStep({ step: "shopify_recompute", url: recomputeUrl, headers: authHeader });
+        steps.push(recompute.summary);
+        if (!recompute.summary.ok) {
+          syncResults.push({ client_id: cid, steps });
+          errors.push({ client_id: cid, error: "shopify_recompute_failed", steps });
+          continue;
+        }
+      }
+
       try {
         // Load cost settings for client (optional)
         const { data: csRow, error: csErr } = await supabase
@@ -637,8 +787,10 @@ export async function POST(req: NextRequest) {
         }
 
         clientsProcessed += 1;
+        syncResults.push({ client_id: cid, steps });
       } catch (e: any) {
         errors.push({ client_id: cid, error: e?.message || String(e) });
+        syncResults.push({ client_id: cid, steps });
       }
     }
 
@@ -649,8 +801,10 @@ export async function POST(req: NextRequest) {
       source: "rolling-30-profit",
       window: { start: startISO, end: endISO },
       fillZeros,
+      skipSyncs,
       clients: clientsProcessed,
       rowsUpserted,
+      syncResults,
       errors,
     });
   } catch (e: any) {

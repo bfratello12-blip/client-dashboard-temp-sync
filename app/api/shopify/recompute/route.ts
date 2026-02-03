@@ -446,7 +446,13 @@ export async function POST(req: NextRequest) {
           estimatedCogsMissing: n(coverage?.estimated_cogs_missing),
         });
         debugRows.push({ client_id: cid, ...computed.debug });
-        return { ...computed.row, client_id: cid };
+        return {
+          ...computed.row,
+          client_id: cid,
+          est_cogs: computed.debug.est_cogs,
+          product_cogs_known: computed.debug.product_cogs_known,
+          revenue_with_cogs: computed.debug.revenue_with_cogs_clamped,
+        };
       });
 
       if (upserts.length) {

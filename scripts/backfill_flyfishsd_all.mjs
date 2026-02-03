@@ -1,6 +1,6 @@
 import fetch from "node-fetch";
 
-const BASE_URL = "http://localhost:3000"; 
+const BASE_URL = "https://client-dashboard-temp-customapp.vercel.app"; 
 // change to Vercel domain if you prefer
 // https://client-dashboard-temp-customapp.vercel.app
 

@@ -1,3 +1,1 @@
-[2026-02-02 16:11:32] Starting FULL backfill (ShopifyQL revenue + line items + recompute)
-[2026-02-02 16:11:32] Client: 6a3a4187-b224-4942-b658-0fa23cb79eac
-[2026-02-02 16:11:32] Range: 2022-12-11 → 2026-02-02
+stdout is not a tty

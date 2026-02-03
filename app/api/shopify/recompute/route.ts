@@ -364,24 +364,6 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      const coverageRows = Object.entries(coverageByDate)
-        .map(([day, v]) => ({
-          client_id: cid,
-          date: day,
-          product_cogs_known: n(v.product_cogs_known),
-          revenue_with_cogs: n(v.revenue_with_cogs),
-          units_with_cogs: n(v.units_with_cogs),
-        }))
-        .filter((r) => r.product_cogs_known > 0 || r.revenue_with_cogs > 0 || r.units_with_cogs > 0);
-
-      if (coverageRows.length) {
-        const { error: cErr } = await supabase
-          .from("daily_shopify_cogs_coverage")
-          .upsert(coverageRows, { onConflict: "client_id,date" });
-        if (cErr) throw cErr;
-        coverageRowsUpserted += coverageRows.length;
-      }
-
       const byDate: Record<
         string,
         { revenue: number; orders: number; units: number; paidSpend: number }
@@ -400,6 +382,52 @@ export async function POST(req: NextRequest) {
         } else if (source === "google" || source === "meta") {
           byDate[d].paidSpend += n((r as any).spend);
         }
+      }
+
+      // Cap revenue_with_cogs and units_with_cogs using the day's Shopify revenue/units.
+      // SQL verification:
+      // select max(dsc.revenue_with_cogs / nullif(dps.revenue,0)) as max_coverage
+      // from public.daily_profit_summary dps
+      // join public.daily_shopify_cogs_coverage dsc
+      //   on dsc.client_id = dps.client_id and dsc.date = dps.date
+      // where dps.client_id = '<client_id>'
+      //   and dps.date between '<start>' and '<end>';
+      const coverageRows = Object.entries(coverageByDate)
+        .map(([day, v]) => {
+          const dayRevenue = Number(byDate[day]?.revenue ?? 0) || 0;
+          const dayUnits = Number(byDate[day]?.units ?? 0) || 0;
+          const rawRevenueWithCogs = n(v.revenue_with_cogs);
+          const rawUnitsWithCogs = n(v.units_with_cogs);
+
+          const cappedRevenueWithCogs = Math.min(rawRevenueWithCogs, dayRevenue);
+          const cappedUnitsWithCogs = dayUnits > 0 ? Math.min(rawUnitsWithCogs, dayUnits) : rawUnitsWithCogs;
+
+          if (rawRevenueWithCogs > dayRevenue) {
+            console.warn("[shopify/recompute] cogs coverage capped", {
+              client_id: cid,
+              date: day,
+              raw_revenue_with_cogs: rawRevenueWithCogs,
+              day_revenue: dayRevenue,
+              capped_revenue_with_cogs: cappedRevenueWithCogs,
+            });
+          }
+
+          return {
+            client_id: cid,
+            date: day,
+            product_cogs_known: n(v.product_cogs_known),
+            revenue_with_cogs: cappedRevenueWithCogs,
+            units_with_cogs: cappedUnitsWithCogs,
+          };
+        })
+        .filter((r) => r.product_cogs_known > 0 || r.revenue_with_cogs > 0 || r.units_with_cogs > 0);
+
+      if (coverageRows.length) {
+        const { error: cErr } = await supabase
+          .from("daily_shopify_cogs_coverage")
+          .upsert(coverageRows, { onConflict: "client_id,date" });
+        if (cErr) throw cErr;
+        coverageRowsUpserted += coverageRows.length;
       }
 
       const upserts = days.map((d) => {

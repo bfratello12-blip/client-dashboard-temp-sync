@@ -515,6 +515,7 @@ export async function POST(req: NextRequest) {
             estimated_cogs_missing: number;
           }
         > = {};
+        const unitsWithUnitCostByDay: Record<string, number> = {};
 
         try {
           const lineItems = await fetchAllSupabase<any>((from, to) =>
@@ -620,6 +621,9 @@ export async function POST(req: NextRequest) {
             if (!dayStats[d]) {
               dayStats[d] = { lines: 0, linesWithCost: 0, revenue: 0, revenueWithCost: 0 };
             }
+            if (!unitsWithUnitCostByDay[d]) {
+              unitsWithUnitCostByDay[d] = 0;
+            }
             dayStats[d].lines += 1;
             dayStats[d].revenue += lineRevenue;
 
@@ -633,7 +637,9 @@ export async function POST(req: NextRequest) {
             if (chosenCost != null && Number.isFinite(Number(chosenCost)) && Number(chosenCost) > 0) {
               coverageByDate[d].product_cogs_known += units * n(chosenCost);
               coverageByDate[d].revenue_with_cogs += lineRevenue;
-              coverageByDate[d].units_with_cogs += units;
+              if (unitCostAmount != null && Number(unitCostAmount) > 0) {
+                unitsWithUnitCostByDay[d] += units;
+              }
               matchedLineItems += 1;
               dayStats[d].linesWithCost += 1;
               dayStats[d].revenueWithCost += lineRevenue;
@@ -727,12 +733,15 @@ export async function POST(req: NextRequest) {
             estimatedCogsMissing: n(coverage?.estimated_cogs_missing),
           });
 
+          const unitsWithCogsRaw = n(unitsWithUnitCostByDay[d]);
+          const unitsWithCogs = Math.min(unitsWithCogsRaw, n(v.units));
           return {
             ...computed.row,
             client_id: cid,
             est_cogs: computed.debug?.est_cogs,
             product_cogs_known: computed.debug?.product_cogs_known,
             revenue_with_cogs: computed.debug?.revenue_with_cogs_clamped,
+            units_with_cogs: unitsWithCogs,
           };
         });
 

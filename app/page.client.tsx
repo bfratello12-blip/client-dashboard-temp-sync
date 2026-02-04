@@ -443,26 +443,26 @@ function DualLineTooltip({
   const delta = pVal - cVal;
   const deltaPct = cVal === 0 ? (pVal === 0 ? 0 : 999) : ((pVal - cVal) / cVal) * 100;
   return (
-    <div className="rounded-xl bg-slate-900 text-white shadow-xl ring-1 ring-white/10">
+    <div className="rounded-lg bg-slate-900/95 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur">
       <div className="px-3 py-2">
-        <div className="text-xs text-slate-300">{dateLabel}</div>
+        <div className="text-[11px] text-slate-300">{dateLabel}</div>
         <div className="mt-2 space-y-1">
           <div className="flex items-center justify-between gap-4">
-            <div className="text-xs text-slate-300">Primary</div>
-            <div className="text-sm font-semibold">{valueFormatter(pVal)}</div>
+            <div className="text-[11px] text-slate-300">Primary</div>
+            <div className="text-sm font-semibold text-slate-50">{valueFormatter(pVal)}</div>
           </div>
           {showCompare ? (
             <>
               <div className="flex items-center justify-between gap-4">
-                <div className="text-xs text-slate-300">{compareLabel}</div>
+                <div className="text-[11px] text-slate-300">{compareLabel}</div>
                 <div className="text-sm font-semibold text-slate-100">{valueFormatter(cVal)}</div>
               </div>
-              <div className="mt-2 rounded-lg bg-white/10 px-2 py-1">
+              <div className="mt-2 rounded-md border border-white/10 bg-white/5 px-2 py-1">
                 <div className="flex items-center justify-between gap-4">
-                  <div className="text-[11px] text-slate-300">Δ</div>
-                  <div className="text-xs font-semibold">
+                  <div className="text-[10px] text-slate-400">Δ</div>
+                  <div className="text-xs font-semibold text-slate-100">
                     {valueFormatter(delta)}{" "}
-                    <span className="text-slate-300 font-medium">
+                    <span className="font-medium text-slate-300">
                       ({deltaPct === 999 ? "↑" : `${deltaPct >= 0 ? "+" : ""}${deltaPct.toFixed(1)}%`})
                     </span>
                   </div>
@@ -492,16 +492,16 @@ function MultiSeriesTooltip({
   const iso = Number.isFinite(ts) ? new Date(ts).toISOString().slice(0, 10) : "";
   const dateLabel = iso?.length === 10 ? `${mmdd(iso)} (${iso})` : String(label);
   return (
-    <div className="rounded-xl bg-slate-900 text-white shadow-xl ring-1 ring-white/10">
+    <div className="rounded-lg bg-slate-900/95 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur">
       <div className="px-3 py-2">
-        <div className="text-xs text-slate-300">{dateLabel}</div>
+        <div className="text-[11px] text-slate-300">{dateLabel}</div>
         <div className="mt-2 space-y-1">
           {payload
             .filter((p) => p && Number.isFinite(Number(p.value)))
             .map((p, i) => (
               <div key={`${p.name}-${i}`} className="flex items-center justify-between gap-4">
-                <div className="text-xs text-slate-300">{String(p.name ?? "")}</div>
-                <div className="text-sm font-semibold">{valueFormatter(Number(p.value))}</div>
+                <div className="text-[11px] text-slate-300">{String(p.name ?? "")}</div>
+                <div className="text-sm font-semibold text-slate-50">{valueFormatter(Number(p.value))}</div>
               </div>
             ))}
         </div>
@@ -678,15 +678,15 @@ function EventfulLineChart({
   return (
     <div
       ref={wrapRef}
-      className="relative w-full min-w-0 min-h-0 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white shadow-sm"
+      className="relative w-full min-w-0 min-h-0 rounded-2xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white p-2 shadow-sm"
       style={{ height: `${height}px`, minHeight: `${height}px` }}
       onMouseLeave={clearHover}
       onPointerLeave={clearHover}
     >
-      <div className="pointer-events-none absolute inset-0 rounded-xl bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] [background-size:22px_22px] opacity-40" />
+      <div className="pointer-events-none absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] [background-size:22px_22px] opacity-20" />
       <SafeResponsiveContainer height={height} className="h-full w-full">
-        <ComposedChart data={chartData} margin={{ top: 16, right: 24, left: 12, bottom: 12 }}>
-          <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
+        <ComposedChart data={chartData} margin={{ top: 12, right: 20, left: 8, bottom: 8 }}>
+          <CartesianGrid stroke="#94a3b8" strokeDasharray="4 6" strokeOpacity={0.2} vertical={false} />
           <defs>
             <radialGradient id="eventMarkerGradient" cx="30%" cy="30%" r="70%">
               <stop offset="0%" stopColor="#22c55e" />
@@ -719,14 +719,18 @@ function EventfulLineChart({
             type="number"
             scale="time"
             domain={xDomain ?? ["dataMin", "dataMax"]}
-            tick={{ fontSize: 12 }}
+            tick={{ fontSize: 11, fill: "#94a3b8" }}
             tickFormatter={(v) => mmdd(new Date(Number(v)).toISOString().slice(0, 10))}
             interval="preserveStartEnd"
             minTickGap={28}
+            tickLine={false}
+            axisLine={{ stroke: "#e2e8f0", strokeOpacity: 0.35 }}
           />
           <YAxis 
-            tick={{ fontSize: 12 }} 
+            tick={{ fontSize: 11, fill: "#94a3b8" }} 
             domain={yDomain as any} 
+            tickLine={false}
+            axisLine={{ stroke: "#e2e8f0", strokeOpacity: 0.35 }}
             tickFormatter={(v) => {
               const n = Number(v);
               if (!isFinite(n)) return "";
@@ -749,6 +753,7 @@ function EventfulLineChart({
                 compareLabel={compareLabel}
               />
             )}
+            cursor={{ stroke: "#94a3b8", strokeDasharray: "4 6", strokeOpacity: 0.35 }}
           />
           {/* shading */}
           {showMarkers &&
@@ -845,7 +850,7 @@ function EventfulLineChart({
               dataKey={yKey}
               data={compareChartData as any}
               stroke={`url(#${singleCompareGradId})`}
-              strokeWidth={2}
+              strokeWidth={1.8}
               dot={false}
               connectNulls
               strokeDasharray="6 4"
@@ -879,10 +884,10 @@ function EventfulLineChart({
             type="linear"
             dataKey={yKey}
             stroke={`url(#${singleGradId})`}
-            strokeWidth={2.4}
+            strokeWidth={2.6}
             dot={false}
             connectNulls
-            activeDot={{ r: 4, stroke: "#1d4ed8", strokeWidth: 2, fill: "#fff" }}
+            activeDot={{ r: 5, stroke: "#1d4ed8", strokeWidth: 2, fill: "#f8fafc" }}
           />
         </ComposedChart>
       </SafeResponsiveContainer>
@@ -904,6 +909,7 @@ function MultiSeriesEventfulLineChart({
   height = 320,
   tooltipContent,
   yAxisLabel,
+  hideAreaLegend = false,
 }: {
   data: { date: string; [k: string]: any }[];
   compareData?: { date: string; [k: string]: any }[];
@@ -917,6 +923,7 @@ function MultiSeriesEventfulLineChart({
   height?: number;
   tooltipContent?: (p: any) => React.ReactNode;
   yAxisLabel?: string;
+  hideAreaLegend?: boolean;
 }) {
   type ChartPoint = { date: string; ts: number; [k: string]: any };
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -1020,18 +1027,18 @@ function MultiSeriesEventfulLineChart({
   return (
     <div
       ref={wrapRef}
-      className="relative w-full min-w-0 min-h-0 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white shadow-sm"
+      className="relative w-full min-w-0 min-h-0 rounded-2xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white p-2 shadow-sm"
       style={{ height: `${height}px`, minHeight: `${height}px` }}
       onMouseLeave={clearHover}
       onPointerLeave={clearHover}
     >
-      <div className="pointer-events-none absolute inset-0 rounded-xl bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] [background-size:22px_22px] opacity-40" />
+      <div className="pointer-events-none absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] [background-size:22px_22px] opacity-20" />
       <SafeResponsiveContainer height={height} className="h-full w-full">
         <ComposedChart
           data={chartData}
-          margin={{ top: 16, right: 24, left: 12, bottom: 12 }}
+          margin={{ top: 12, right: 20, left: 8, bottom: 8 }}
         >
-          <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
+          <CartesianGrid stroke="#94a3b8" strokeDasharray="4 6" strokeOpacity={0.2} vertical={false} />
           <defs>
             <radialGradient id="eventMarkerGradient" cx="30%" cy="30%" r="70%">
               <stop offset="0%" stopColor="#22c55e" />
@@ -1058,15 +1065,23 @@ function MultiSeriesEventfulLineChart({
             type="number"
             scale="time"
             domain={xDomain}
-            tick={{ fontSize: 12 }}
+            tick={{ fontSize: 11, fill: "#94a3b8" }}
             tickFormatter={(v) => mmdd(new Date(Number(v)).toISOString().slice(0, 10))}
             interval="preserveStartEnd"
             minTickGap={28}
+            tickLine={false}
+            axisLine={{ stroke: "#e2e8f0", strokeOpacity: 0.35 }}
           />
           <YAxis 
-            tick={{ fontSize: 12 }} 
+            tick={{ fontSize: 11, fill: "#94a3b8" }} 
             domain={yDomain as any} 
-            label={yAxisLabel ? { value: yAxisLabel, angle: -90, position: "insideLeft" } : undefined}
+            label={
+              yAxisLabel
+                ? { value: yAxisLabel, angle: -90, position: "insideLeft", fill: "#94a3b8", fontSize: 11 }
+                : undefined
+            }
+            tickLine={false}
+            axisLine={{ stroke: "#e2e8f0", strokeOpacity: 0.35 }}
             tickFormatter={(v) => {
               const n = Number(v);
               if (!isFinite(n)) return "";
@@ -1089,8 +1104,16 @@ function MultiSeriesEventfulLineChart({
                     />
                   )
             }
+            cursor={{ stroke: "#94a3b8", strokeDasharray: "4 6", strokeOpacity: 0.35 }}
           />
-          <Legend />
+          <Legend
+            verticalAlign="top"
+            align="right"
+            iconType="circle"
+            iconSize={8}
+            wrapperStyle={{ paddingBottom: 6 }}
+            formatter={(value) => <span className="text-xs text-slate-500">{value}</span>}
+          />
           {/* Event markers */}
           {eventDotData.map((dot, i) => {
             const cx = dot.ts;
@@ -1143,6 +1166,7 @@ function MultiSeriesEventfulLineChart({
               connectNulls
               isAnimationActive={false}
               fillOpacity={1}
+              legendType={hideAreaLegend ? "none" : "line"}
             />
           ))}
           {/* Compare lines (dashed) */}
@@ -1154,7 +1178,7 @@ function MultiSeriesEventfulLineChart({
               data={compareChartData as any}
               name={`${s.name} (${compareLabel})`}
               stroke={`url(#${strokeIds[s.key]})`}
-              strokeWidth={2}
+              strokeWidth={1.8}
               dot={false}
               connectNulls
               strokeDasharray="6 4"
@@ -1172,6 +1196,7 @@ function MultiSeriesEventfulLineChart({
               stroke="none"
               connectNulls
               fillOpacity={1}
+              legendType={hideAreaLegend ? "none" : "line"}
             />
           ))}
           {/* Primary lines */}
@@ -1182,10 +1207,10 @@ function MultiSeriesEventfulLineChart({
               dataKey={s.key}
               name={s.name}
               stroke={`url(#${strokeIds[s.key]})`}
-              strokeWidth={s.strokeWidth ?? 2.4}
+              strokeWidth={s.strokeWidth ?? 2.6}
               dot={false}
               connectNulls
-              activeDot={{ r: 4, stroke: s.color, strokeWidth: 2, fill: "#fff" }}
+              activeDot={{ r: 5, stroke: s.color, strokeWidth: 2, fill: "#f8fafc" }}
             />
           ))}
         </ComposedChart>
@@ -1467,8 +1492,8 @@ export default function Home({
   const [aspRollingWindowDays, setAspRollingWindowDays] = useState<number>(7);
   /** Spend chart checkboxes */
   const [showTotalSpend, setShowTotalSpend] = useState(true);
-  const [showMetaSpend, setShowMetaSpend] = useState(false);
-  const [showGoogleSpend, setShowGoogleSpend] = useState(false);
+  const [showMetaSpend, setShowMetaSpend] = useState(true);
+  const [showGoogleSpend, setShowGoogleSpend] = useState(true);
   /** Revenue chart checkboxes */
   const [showShopifyRevenue, setShowShopifyRevenue] = useState(true);
   const [showGoogleRevenue, setShowGoogleRevenue] = useState(false);
@@ -3956,22 +3981,22 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
             </div>
           </section>
           {/* Monthly Rollup Table */}
-          <section className="mt-6 rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-5 shadow-md">
+          <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/80 p-5 shadow-md">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
-                <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800 shadow-sm">
+                <span className="inline-flex items-center rounded-full bg-slate-800/80 px-3 py-1 text-xs font-semibold text-slate-100 shadow-sm ring-1 ring-slate-700/60">
                   Monthly Performance
                 </span>
-                <div className="text-sm text-slate-600">
+                <div className="text-sm text-slate-400">
                   Shopify revenue & orders, Meta/Google spend, and KPIs
                 </div>
               </div>
-              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm">
-                <span className="text-slate-600">Show</span>
+              <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2 text-sm text-slate-200 shadow-sm">
+                <span className="text-slate-400">Show</span>
                 <select
                   value={monthlyMonths}
                   onChange={(e) => setMonthlyMonths(Number(e.target.value) || 6)}
-                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-700/50"
                 >
                   <option value={6}>6 months</option>
                   <option value={12}>12 months</option>
@@ -3981,16 +4006,16 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
               </div>
             </div>
             {monthlyError ? (
-              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+              <div className="mt-4 rounded-xl border border-rose-900/60 bg-rose-950/50 p-3 text-sm text-rose-200">
                 {monthlyError}
               </div>
             ) : null}
             <div className="mt-4 overflow-x-auto">
-              <div className="min-w-[900px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="min-w-[900px] overflow-hidden rounded-xl border border-slate-800 bg-slate-950 shadow-sm">
                 <table className="w-full table-fixed text-sm">
                   <thead>
-                    <tr className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.02em] text-slate-500">
-                      <th className="sticky left-0 z-10 bg-slate-50 px-3 py-3 text-slate-700">Month</th>
+                    <tr className="sticky top-0 z-10 bg-slate-900/90 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-400">
+                      <th className="sticky left-0 z-20 bg-slate-900/90 px-3 py-3 text-slate-200">Month</th>
                       <th className="px-3 py-3">Shopify Revenue</th>
                       <th className="px-3 py-3">Orders</th>
                       <th className="px-3 py-3">Meta Spend</th>
@@ -4002,16 +4027,16 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                       <th className="px-3 py-3">Profit</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-800">
                     {monthlyLoading ? (
                       <tr>
-                        <td colSpan={10} className="px-4 py-6 text-center text-sm text-slate-500">
+                        <td colSpan={10} className="px-4 py-6 text-center text-sm text-slate-400">
                           Loading monthly rollup…
                         </td>
                       </tr>
                     ) : monthlyRows.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="px-4 py-6 text-center text-sm text-slate-500">
+                        <td colSpan={10} className="px-4 py-6 text-center text-sm text-slate-400">
                           No monthly rollup rows found yet.
                         </td>
                       </tr>
@@ -4019,20 +4044,20 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                       monthlyRows.map((r) => (
                         <tr
                           key={r.month}
-                          className="transition-colors hover:bg-slate-50"
+                          className="transition-colors odd:bg-slate-950 even:bg-slate-900/30 hover:bg-slate-900/60"
                         >
-                          <td className="sticky left-0 bg-white px-3 py-3 font-semibold text-slate-900 shadow-[4px_0_8px_-6px_rgba(0,0,0,0.08)]">
+                          <td className="sticky left-0 bg-slate-950 px-3 py-3 font-semibold text-slate-100 shadow-[4px_0_8px_-6px_rgba(0,0,0,0.3)]">
                             {r.month}
                           </td>
-                          <td className="px-3 py-3 text-right" style={{...monthlyHeat.styleFor("shopifyRevenue", r.shopifyRevenue), color: '#0f172a'}}>{formatCurrency(r.shopifyRevenue)}</td>
-                          <td className="px-3 py-3 text-right" style={{...monthlyHeat.styleFor("shopifyOrders", r.shopifyOrders), color: '#0f172a'}}>{formatNumber(r.shopifyOrders)}</td>
-                          <td className="px-3 py-3 text-right" style={{...monthlyHeat.styleFor("metaSpend", r.metaSpend), color: '#0f172a'}}>{formatCurrency(r.metaSpend)}</td>
-                          <td className="px-3 py-3 text-right" style={{...monthlyHeat.styleFor("googleSpend", r.googleSpend), color: '#0f172a'}}>{formatCurrency(r.googleSpend)}</td>
-                          <td className="px-3 py-3 text-right" style={{...monthlyHeat.styleFor("totalAdSpend", r.totalAdSpend), color: '#0f172a'}}>{formatCurrency(r.totalAdSpend)}</td>
-                          <td className="px-3 py-3 text-right" style={{...monthlyHeat.styleFor("trueRoas", r.trueRoas), color: '#0f172a'}}>{r.trueRoas != null ? `${r.trueRoas.toFixed(2)}x` : "—"}</td>
-                          <td className="px-3 py-3 text-right" style={{...monthlyHeat.styleFor("aov", r.aov), color: '#0f172a'}}>{r.aov != null ? formatCurrency(r.aov) : "—"}</td>
-                          <td className="px-3 py-3 text-right" style={{...monthlyHeat.styleFor("cpo", r.cpo), color: '#0f172a'}}>{r.cpo != null ? formatCurrency(r.cpo) : "—"}</td>
-                          <td className="px-3 py-3 text-right" style={{...monthlyHeat.styleFor("profit", r.profit), color: '#0f172a'}}>{r.profit != null ? formatCurrency(r.profit) : "—"}</td>
+                          <td className="px-3 py-3 text-right font-semibold text-slate-100" style={monthlyHeat.styleFor("shopifyRevenue", r.shopifyRevenue)}>{formatCurrency(r.shopifyRevenue)}</td>
+                          <td className="px-3 py-3 text-right text-slate-200" style={monthlyHeat.styleFor("shopifyOrders", r.shopifyOrders)}>{formatNumber(r.shopifyOrders)}</td>
+                          <td className="px-3 py-3 text-right text-slate-300" style={monthlyHeat.styleFor("metaSpend", r.metaSpend)}>{formatCurrency(r.metaSpend)}</td>
+                          <td className="px-3 py-3 text-right text-slate-300" style={monthlyHeat.styleFor("googleSpend", r.googleSpend)}>{formatCurrency(r.googleSpend)}</td>
+                          <td className="px-3 py-3 text-right text-slate-200" style={monthlyHeat.styleFor("totalAdSpend", r.totalAdSpend)}>{formatCurrency(r.totalAdSpend)}</td>
+                          <td className="px-3 py-3 text-right font-semibold text-slate-100" style={monthlyHeat.styleFor("trueRoas", r.trueRoas)}>{r.trueRoas != null ? `${r.trueRoas.toFixed(2)}x` : "—"}</td>
+                          <td className="px-3 py-3 text-right text-slate-200" style={monthlyHeat.styleFor("aov", r.aov)}>{r.aov != null ? formatCurrency(r.aov) : "—"}</td>
+                          <td className="px-3 py-3 text-right text-slate-200" style={monthlyHeat.styleFor("cpo", r.cpo)}>{r.cpo != null ? formatCurrency(r.cpo) : "—"}</td>
+                          <td className="px-3 py-3 text-right font-semibold text-slate-100" style={monthlyHeat.styleFor("profit", r.profit)}>{r.profit != null ? formatCurrency(r.profit) : "—"}</td>
                         </tr>
                       ))
                     )}
@@ -4040,8 +4065,8 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 </table>
               </div>
             </div>
-            <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
-              <span className="h-2 w-2 rounded-full bg-blue-400" aria-hidden />
+            <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
+              <span className="h-2 w-2 rounded-full bg-slate-500" aria-hidden />
               <span>Profit uses your margin setting when available.</span>
             </div>
           </section>
@@ -4668,6 +4693,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                     showMarkers={showEventMarkers}
                     xDomain={xDomain}
                     compareLabel={compareLabel}
+                    hideAreaLegend
                   />
                 ) : null}
               </ChartReadyWrapper>

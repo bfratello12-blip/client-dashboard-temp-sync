@@ -275,6 +275,7 @@ export async function POST(req: NextRequest) {
           estimated_cogs_missing: number;
         }
       > = {};
+      const unitsWithUnitCostByDay: Record<string, number> = {};
 
       const inventoryItemIds = Array.from(
         new Set(
@@ -349,6 +350,10 @@ export async function POST(req: NextRequest) {
           };
         }
 
+        if (!unitsWithUnitCostByDay[d]) {
+          unitsWithUnitCostByDay[d] = 0;
+        }
+
         const unitCostAmount = Number.isFinite(inventoryItemId)
           ? unitCostByInventoryItem.get(inventoryItemId)
           : undefined;
@@ -358,7 +363,9 @@ export async function POST(req: NextRequest) {
         if (chosenCost != null && Number.isFinite(Number(chosenCost)) && Number(chosenCost) > 0) {
           coverageByDate[d].product_cogs_known += units * n(chosenCost);
           coverageByDate[d].revenue_with_cogs += lineRevenue;
-          coverageByDate[d].units_with_cogs += units;
+          if (unitCostAmount != null && Number(unitCostAmount) > 0) {
+            unitsWithUnitCostByDay[d] += units;
+          }
         } else {
           coverageByDate[d].estimated_cogs_missing += lineRevenue * (1 - gmFallbackRate);
         }
@@ -446,12 +453,15 @@ export async function POST(req: NextRequest) {
           estimatedCogsMissing: n(coverage?.estimated_cogs_missing),
         });
         debugRows.push({ client_id: cid, ...computed.debug });
+        const unitsWithCogsRaw = n(unitsWithUnitCostByDay[d]);
+        const unitsWithCogs = Math.min(unitsWithCogsRaw, n(byDate[d]?.units));
         return {
           ...computed.row,
           client_id: cid,
           est_cogs: computed.debug.est_cogs,
           product_cogs_known: computed.debug.product_cogs_known,
           revenue_with_cogs: computed.debug.revenue_with_cogs_clamped,
+          units_with_cogs: unitsWithCogs,
         };
       });
 

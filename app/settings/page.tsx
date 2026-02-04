@@ -119,6 +119,9 @@ function SettingsPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string>("");
   const [cogsCoveragePct, setCogsCoveragePct] = useState<number | null>(null);
+  const [effectiveCogsCoveragePct, setEffectiveCogsCoveragePct] = useState<number | null>(null);
+  const [cogsCoverageHasRows, setCogsCoverageHasRows] = useState(false);
+  const [effectiveCogsCoverageHasRows, setEffectiveCogsCoverageHasRows] = useState(false);
 
   const [integrationStatus, setIntegrationStatus] = useState<IntegrationStatus | null>(null);
   const [integrationLoading, setIntegrationLoading] = useState(false);
@@ -553,31 +556,32 @@ function SettingsPage() {
         setLoading(false);
       }
 
-      const end = new Date();
-      const start = new Date(end.getTime() - 6 * 24 * 3600 * 1000);
-      const endISO = end.toISOString().slice(0, 10);
-      const startISO = start.toISOString().slice(0, 10);
-
-      const { data: coverageRows } = await supabase
-        .from("daily_profit_summary")
-        .select("date,revenue,revenue_with_cogs")
-        .eq("client_id", cid)
-        .gte("date", startISO)
-        .lte("date", endISO)
-        .order("date", { ascending: false })
-        .limit(1000);
-
-      const totals = (coverageRows ?? []).reduce(
-        (acc, row: any) => {
-          acc.revenue += Number(row?.revenue ?? 0);
-          acc.revenueWithCogs += Number(row?.revenue_with_cogs ?? 0);
-          return acc;
-        },
-        { revenue: 0, revenueWithCogs: 0 }
+      const coverageRes = await fetch(
+        `/api/settings/coverage?client_id=${encodeURIComponent(cid)}`,
+        { cache: "no-store" }
       );
-      const weighted = totals.revenue > 0 ? totals.revenueWithCogs / totals.revenue : null;
+      const coverageJson = await coverageRes.json().catch(() => ({}));
+      if (!coverageRes.ok || coverageJson?.ok === false) {
+        throw new Error(coverageJson?.error || `Coverage fetch failed (${coverageRes.status})`);
+      }
+
+      const unitCostCoveragePct =
+        coverageJson?.unitCostCoveragePct != null
+          ? Number(coverageJson.unitCostCoveragePct)
+          : null;
+      const effectiveCogsCoveragePct =
+        coverageJson?.effectiveCogsCoveragePct != null
+          ? Number(coverageJson.effectiveCogsCoveragePct)
+          : null;
+
       if (!cancelled) {
-        setCogsCoveragePct(Number.isFinite(Number(weighted)) ? Number(weighted) : null);
+        console.log("[settings] Coverage API", coverageJson);
+        setCogsCoverageHasRows(unitCostCoveragePct != null);
+        setCogsCoveragePct(Number.isFinite(Number(unitCostCoveragePct)) ? Number(unitCostCoveragePct) : null);
+        setEffectiveCogsCoverageHasRows(effectiveCogsCoveragePct != null);
+        setEffectiveCogsCoveragePct(
+          Number.isFinite(Number(effectiveCogsCoveragePct)) ? Number(effectiveCogsCoveragePct) : null
+        );
       }
     };
 
@@ -911,7 +915,7 @@ function SettingsPage() {
                       </div>
                       {productCostMode === "shopify" ? (
                         <div className="mt-2 text-xs text-slate-600">
-                          <div className="font-semibold text-slate-700">COGS coverage (last 7 days)</div>
+                          <div className="font-semibold text-slate-700">Unit Cost Coverage (7d)</div>
                           <div
                             className={[
                               "mt-0.5",
@@ -924,10 +928,31 @@ function SettingsPage() {
                                 : "text-rose-600",
                             ].join(" ")}
                           >
-                            {cogsCoveragePct == null ? "—" : `${Math.round(cogsCoveragePct * 100)}%`}
+                            {cogsCoverageHasRows
+                              ? `${Math.round((cogsCoveragePct ?? 0) * 100)}%`
+                              : "—"}
                           </div>
                           <div className="mt-0.5 text-[11px] text-slate-500">
-                            % of revenue from products with a Shopify unit cost.
+                            % of units with a Shopify unit cost.
+                          </div>
+                          <div className="mt-2 font-semibold text-slate-700">
+                            Effective COGS Coverage (includes fallback)
+                          </div>
+                          <div
+                            className={[
+                              "mt-0.5",
+                              effectiveCogsCoveragePct == null
+                                ? "text-slate-600"
+                                : effectiveCogsCoveragePct >= 0.75
+                                ? "text-emerald-600"
+                                : effectiveCogsCoveragePct >= 0.5
+                                ? "text-amber-600"
+                                : "text-rose-600",
+                            ].join(" ")}
+                          >
+                            {effectiveCogsCoverageHasRows
+                              ? `${Math.round((effectiveCogsCoveragePct ?? 0) * 100)}%`
+                              : "—"}
                           </div>
                         </div>
                       ) : null}

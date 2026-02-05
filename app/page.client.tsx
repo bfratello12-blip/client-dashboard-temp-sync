@@ -1488,6 +1488,8 @@ export default function Home({
   const [showProfitTrendline, setShowProfitTrendline] = useState<boolean>(true);
   const [revenueRollingEnabled, setRevenueRollingEnabled] = useState(false);
   const [revenueRollingWindowDays, setRevenueRollingWindowDays] = useState<number>(7);
+  const [spendRollingEnabled, setSpendRollingEnabled] = useState(false);
+  const [spendRollingWindowDays, setSpendRollingWindowDays] = useState<number>(7);
   const [aspRollingEnabled, setAspRollingEnabled] = useState(false);
   const [aspRollingWindowDays, setAspRollingWindowDays] = useState<number>(7);
   /** Spend chart checkboxes */
@@ -2919,27 +2921,82 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
   const revenueTrendSeries = useMemo(() => {
     return revenueRollingEnabled ? buildRollingAvgSeries(revenueSeries, "revenue", revenueRollingWindowDays) : revenueSeries;
   }, [revenueRollingEnabled, revenueRollingWindowDays, revenueSeries]);
+  const googleRevenueTrendSeries = useMemo(() => {
+    return revenueRollingEnabled
+      ? buildRollingAvgSeries(googleRevenueSeries, "revenue", revenueRollingWindowDays)
+      : googleRevenueSeries;
+  }, [revenueRollingEnabled, revenueRollingWindowDays, googleRevenueSeries]);
+  const metaRevenueTrendSeries = useMemo(() => {
+    return revenueRollingEnabled
+      ? buildRollingAvgSeries(metaRevenueSeries, "revenue", revenueRollingWindowDays)
+      : metaRevenueSeries;
+  }, [revenueRollingEnabled, revenueRollingWindowDays, metaRevenueSeries]);
   const revenueTrendSeriesCompare = useMemo(() => {
     return revenueRollingEnabled
       ? buildRollingAvgSeries(revenueSeriesCompare, "revenue", revenueRollingWindowDays)
       : revenueSeriesCompare;
   }, [revenueRollingEnabled, revenueRollingWindowDays, revenueSeriesCompare]);
+  const googleRevenueTrendSeriesCompare = useMemo(() => {
+    return revenueRollingEnabled
+      ? buildRollingAvgSeries(googleRevenueSeriesCompare, "revenue", revenueRollingWindowDays)
+      : googleRevenueSeriesCompare;
+  }, [revenueRollingEnabled, revenueRollingWindowDays, googleRevenueSeriesCompare]);
+  const metaRevenueTrendSeriesCompare = useMemo(() => {
+    return revenueRollingEnabled
+      ? buildRollingAvgSeries(metaRevenueSeriesCompare, "revenue", revenueRollingWindowDays)
+      : metaRevenueSeriesCompare;
+  }, [revenueRollingEnabled, revenueRollingWindowDays, metaRevenueSeriesCompare]);
   const aspTrendSeries = useMemo(() => {
     return aspRollingEnabled ? buildRollingAvgSeries(aspSeries, "asp", aspRollingWindowDays) : aspSeries;
   }, [aspRollingEnabled, aspRollingWindowDays, aspSeries]);
   const aspTrendSeriesCompare = useMemo(() => {
     return aspRollingEnabled ? buildRollingAvgSeries(aspSeriesCompare, "asp", aspRollingWindowDays) : aspSeriesCompare;
   }, [aspRollingEnabled, aspRollingWindowDays, aspSeriesCompare]);
+  const spendTrendSeries = useMemo(() => {
+    return spendRollingEnabled ? buildRollingAvgSeries(spendSeries, "spend", spendRollingWindowDays) : spendSeries;
+  }, [spendRollingEnabled, spendRollingWindowDays, spendSeries]);
+  const metaSpendTrendSeries = useMemo(() => {
+    return spendRollingEnabled
+      ? buildRollingAvgSeries(metaSpendSeries, "spend", spendRollingWindowDays)
+      : metaSpendSeries;
+  }, [spendRollingEnabled, spendRollingWindowDays, metaSpendSeries]);
+  const googleSpendTrendSeries = useMemo(() => {
+    return spendRollingEnabled
+      ? buildRollingAvgSeries(googleSpendSeries, "spend", spendRollingWindowDays)
+      : googleSpendSeries;
+  }, [spendRollingEnabled, spendRollingWindowDays, googleSpendSeries]);
+  const spendTrendSeriesCompare = useMemo(() => {
+    return spendRollingEnabled
+      ? buildRollingAvgSeries(spendSeriesCompare, "spend", spendRollingWindowDays)
+      : spendSeriesCompare;
+  }, [spendRollingEnabled, spendRollingWindowDays, spendSeriesCompare]);
+  const metaSpendTrendSeriesCompare = useMemo(() => {
+    return spendRollingEnabled
+      ? buildRollingAvgSeries(metaSpendSeriesCompare, "spend", spendRollingWindowDays)
+      : metaSpendSeriesCompare;
+  }, [spendRollingEnabled, spendRollingWindowDays, metaSpendSeriesCompare]);
+  const googleSpendTrendSeriesCompare = useMemo(() => {
+    return spendRollingEnabled
+      ? buildRollingAvgSeries(googleSpendSeriesCompare, "spend", spendRollingWindowDays)
+      : googleSpendSeriesCompare;
+  }, [spendRollingEnabled, spendRollingWindowDays, googleSpendSeriesCompare]);
   /** Selected spend series based on chart type */
   const spendChartData = useMemo(() => {
-    return spendSeries.map((item, index) => ({
+    return spendTrendSeries.map((item, index) => ({
       date: item.date,
       ts: new Date(`${item.date}T00:00:00Z`).getTime(),
       total_spend: item.spend,
-      meta_spend: metaSpendSeries[index]?.spend || 0,
-      google_spend: googleSpendSeries[index]?.spend || 0,
+      meta_spend: metaSpendTrendSeries[index]?.spend || 0,
+      google_spend: googleSpendTrendSeries[index]?.spend || 0,
     }));
-  }, [spendSeries, metaSpendSeries, googleSpendSeries, windowStartISO, windowEndISO, rangeDays]);
+  }, [
+    spendTrendSeries,
+    metaSpendTrendSeries,
+    googleSpendTrendSeries,
+    windowStartISO,
+    windowEndISO,
+    rangeDays,
+  ]);
   const spendChartRows = useMemo(() => {
     if (spendSeries.length === 0) return [] as typeof spendChartData;
     console.log("[debug] spend chart series", {
@@ -2982,37 +3039,58 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     return series;
   }, [showTotalSpend, showMetaSpend, showGoogleSpend]);
   const spendChartDataCompare = useMemo(() => {
-    return spendSeriesCompare.map((item, index) => ({
+    return spendTrendSeriesCompare.map((item, index) => ({
       date: item.date,
       ts: new Date(`${item.date}T00:00:00Z`).getTime(),
       total_spend: item.spend,
-      meta_spend: metaSpendSeriesCompare[index]?.spend || 0,
-      google_spend: googleSpendSeriesCompare[index]?.spend || 0,
+      meta_spend: metaSpendTrendSeriesCompare[index]?.spend || 0,
+      google_spend: googleSpendTrendSeriesCompare[index]?.spend || 0,
     }));
-  }, [spendSeriesCompare, metaSpendSeriesCompare, googleSpendSeriesCompare, windowStartISO, windowEndISO, rangeDays]);
+  }, [
+    spendTrendSeriesCompare,
+    metaSpendTrendSeriesCompare,
+    googleSpendTrendSeriesCompare,
+    windowStartISO,
+    windowEndISO,
+    rangeDays,
+  ]);
   /** Revenue chart data and series configuration */
   const revenueChartData = useMemo(() => {
-    return revenueSeries.map((item, index) => ({
+    return revenueTrendSeries.map((item, index) => ({
       date: item.date,
       ts: new Date(`${item.date}T00:00:00Z`).getTime(),
       shopify_total: item.revenue,
-      google_revenue: googleRevenueSeries[index]?.revenue || 0,
-      meta_revenue: metaRevenueSeries[index]?.revenue || 0,
+      google_revenue: googleRevenueTrendSeries[index]?.revenue || 0,
+      meta_revenue: metaRevenueTrendSeries[index]?.revenue || 0,
     }));
-  }, [revenueSeries, googleRevenueSeries, metaRevenueSeries, windowStartISO, windowEndISO, rangeDays]);
+  }, [
+    revenueTrendSeries,
+    googleRevenueTrendSeries,
+    metaRevenueTrendSeries,
+    windowStartISO,
+    windowEndISO,
+    rangeDays,
+  ]);
   const revenueChartRows = useMemo(() => {
     if (revenueSeries.length === 0) return [] as typeof revenueChartData;
     return revenueChartData;
   }, [revenueSeries.length, revenueChartData, windowStartISO, windowEndISO, rangeDays]);
   const revenueChartDataCompare = useMemo(() => {
-    return revenueSeriesCompare.map((item, index) => ({
+    return revenueTrendSeriesCompare.map((item, index) => ({
       date: item.date,
       ts: new Date(`${item.date}T00:00:00Z`).getTime(),
       shopify_total: item.revenue,
-      google_revenue: googleRevenueSeriesCompare[index]?.revenue || 0,
-      meta_revenue: metaRevenueSeriesCompare[index]?.revenue || 0,
+      google_revenue: googleRevenueTrendSeriesCompare[index]?.revenue || 0,
+      meta_revenue: metaRevenueTrendSeriesCompare[index]?.revenue || 0,
     }));
-  }, [revenueSeriesCompare, googleRevenueSeriesCompare, metaRevenueSeriesCompare, windowStartISO, windowEndISO, rangeDays]);
+  }, [
+    revenueTrendSeriesCompare,
+    googleRevenueTrendSeriesCompare,
+    metaRevenueTrendSeriesCompare,
+    windowStartISO,
+    windowEndISO,
+    rangeDays,
+  ]);
   const revenueChartSeries = useMemo(() => {
     const series = [];
     if (showShopifyRevenue) series.push({ key: 'shopify_total', name: 'Shopify Total', color: '#10b981' });
@@ -4648,9 +4726,34 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">Ad Spend Trend</h2>
-                  <p className="text-sm text-slate-600">Daily ad spend ({rangeDays} days)</p>
+                  <p className="text-sm text-slate-600">
+                    Daily ad spend ({spendRollingEnabled ? `rolling ${spendRollingWindowDays}d` : "daily"} • {rangeDays} days)
+                  </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <label className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer transition-colors text-xs font-medium">
+                    <input
+                      type="checkbox"
+                      checked={spendRollingEnabled}
+                      onChange={(e) => setSpendRollingEnabled(e.target.checked)}
+                      className="w-3 h-3 text-slate-600 bg-slate-100 border-slate-300 rounded focus:ring-slate-500 focus:ring-2"
+                    />
+                    <span className="text-slate-700">Rolling</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="text-slate-500 text-xs">Window</span>
+                    <select
+                      className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
+                      value={spendRollingWindowDays}
+                      onChange={(e) => setSpendRollingWindowDays(Number(e.target.value))}
+                      disabled={!spendRollingEnabled}
+                    >
+                      <option value={3}>3d</option>
+                      <option value={7}>7d</option>
+                      <option value={14}>14d</option>
+                      <option value={30}>30d</option>
+                    </select>
+                  </label>
                   <label className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer transition-colors text-xs font-medium">
                     <input
                       type="checkbox"

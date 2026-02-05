@@ -115,13 +115,12 @@ function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState("");
+  const [shopifyAuthWarning, setShopifyAuthWarning] = useState("");
 
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string>("");
   const [cogsCoveragePct, setCogsCoveragePct] = useState<number | null>(null);
-  const [effectiveCogsCoveragePct, setEffectiveCogsCoveragePct] = useState<number | null>(null);
   const [cogsCoverageHasRows, setCogsCoverageHasRows] = useState(false);
-  const [effectiveCogsCoverageHasRows, setEffectiveCogsCoverageHasRows] = useState(false);
 
   const [integrationStatus, setIntegrationStatus] = useState<IntegrationStatus | null>(null);
   const [integrationLoading, setIntegrationLoading] = useState(false);
@@ -470,6 +469,16 @@ function SettingsPage() {
         }
       }
 
+      const params = new URLSearchParams(window.location.search);
+      const overrideClientId = params.get("client_id") || "";
+
+      if (overrideClientId) {
+        if (!cancelled) {
+          setShopifyAuthWarning("");
+          setClientId(overrideClientId);
+        }
+      }
+
       let shopDomain = document.cookie
         .split(";")
         .map((c) => c.trim())
@@ -478,25 +487,40 @@ function SettingsPage() {
         ?.slice(1)
         .join("=");
 
-      if (!shopDomain) {
+      if (!shopDomain && !overrideClientId) {
         try {
           const whoRes = await fetch("/api/shopify/whoami", { cache: "no-store" });
+          if (!whoRes.ok) {
+            if (!cancelled) {
+              setShopifyAuthWarning("Not authenticated in Shopify context");
+              setLoading(false);
+            }
+            return;
+          }
           const whoJson = await whoRes.json().catch(() => ({}));
-          if (whoRes.ok && whoJson?.shop) {
+          if (whoJson?.shop) {
             shopDomain = String(whoJson.shop).trim();
           }
         } catch (e) {
-          console.error(e);
+          if (!cancelled) {
+            setShopifyAuthWarning("Not authenticated in Shopify context");
+            setLoading(false);
+          }
+          return;
         }
       }
 
-      if (!shopDomain) {
+      if (!shopDomain && !overrideClientId) {
         if (!cancelled) {
           setClientName("Unknown Store");
           setCostSettings(null);
           setLoading(false);
         }
         return;
+      }
+
+      if (overrideClientId) {
+        shopDomain = shopDomain || "";
       }
 
       const { data: installRows, error: installErr } = await supabase
@@ -511,7 +535,7 @@ function SettingsPage() {
         return;
       }
 
-      const cid = (installRows?.[0]?.client_id as string | undefined) || "";
+      const cid = overrideClientId || (installRows?.[0]?.client_id as string | undefined) || "";
       if (!cancelled) setClientId(cid);
 
       if (!cid) {
@@ -556,33 +580,6 @@ function SettingsPage() {
         setLoading(false);
       }
 
-      const coverageRes = await fetch(
-        `/api/settings/coverage?client_id=${encodeURIComponent(cid)}`,
-        { cache: "no-store" }
-      );
-      const coverageJson = await coverageRes.json().catch(() => ({}));
-      if (!coverageRes.ok || coverageJson?.ok === false) {
-        throw new Error(coverageJson?.error || `Coverage fetch failed (${coverageRes.status})`);
-      }
-
-      const unitCostCoveragePct =
-        coverageJson?.unitCostCoveragePct != null
-          ? Number(coverageJson.unitCostCoveragePct)
-          : null;
-      const effectiveCogsCoveragePct =
-        coverageJson?.effectiveCogsCoveragePct != null
-          ? Number(coverageJson.effectiveCogsCoveragePct)
-          : null;
-
-      if (!cancelled) {
-        console.log("[settings] Coverage API", coverageJson);
-        setCogsCoverageHasRows(unitCostCoveragePct != null);
-        setCogsCoveragePct(Number.isFinite(Number(unitCostCoveragePct)) ? Number(unitCostCoveragePct) : null);
-        setEffectiveCogsCoverageHasRows(effectiveCogsCoveragePct != null);
-        setEffectiveCogsCoveragePct(
-          Number.isFinite(Number(effectiveCogsCoveragePct)) ? Number(effectiveCogsCoveragePct) : null
-        );
-      }
     };
 
     run();
@@ -596,6 +593,54 @@ function SettingsPage() {
       sub?.subscription?.unsubscribe();
     };
   }, [router]);
+
+  useEffect(() => {
+    if (!clientId) return;
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        const { data: coverageRows, error: coverageErr } = await supabase
+          .from("unit_cost_coverage_daily")
+          .select("date, units_with_unit_cost, units_total")
+          .eq("client_id", clientId)
+          .order("date", { ascending: false })
+          .limit(7);
+
+        if (coverageErr) {
+          throw new Error(coverageErr.message || "Coverage fetch failed");
+        }
+
+        const totals = (coverageRows ?? []).reduce(
+          (acc: { withCost: number; total: number }, r: any) => {
+            acc.withCost += Number(r?.units_with_unit_cost ?? 0) || 0;
+            acc.total += Number(r?.units_total ?? 0) || 0;
+            return acc;
+          },
+          { withCost: 0, total: 0 }
+        );
+
+        const hasRows = (coverageRows?.length ?? 0) > 0;
+        const ratio = totals.total > 0 ? totals.withCost / totals.total : hasRows ? 0 : null;
+
+        if (!cancelled) {
+          setCogsCoverageHasRows(hasRows);
+          setCogsCoveragePct(Number.isFinite(Number(ratio)) ? Number(ratio) : null);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setCogsCoverageHasRows(false);
+          setCogsCoveragePct(null);
+        }
+      }
+    };
+
+    run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
 
   useEffect(() => {
     if (!clientId) {
@@ -691,6 +736,11 @@ function SettingsPage() {
           {syncError ? (
             <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{syncError}</div>
           ) : null}
+          {shopifyAuthWarning ? (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              {shopifyAuthWarning}
+            </div>
+          ) : null}
 
           <section className="mt-6">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -712,40 +762,6 @@ function SettingsPage() {
             ) : null}
 
             <div className="mt-4 space-y-3">
-              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="text-sm font-semibold text-slate-900">Shopify</div>
-                  <div className="mt-1 text-xs text-slate-500">Orders and revenue from your store.</div>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                    <span
-                      className={`h-2 w-2 rounded-full ${
-                        integrationStatus?.shopify?.connected ? "bg-emerald-500" : "bg-slate-300"
-                      }`}
-                    />
-                    {integrationStatus?.shopify?.connected ? "Connected" : "Disconnected"}
-                  </div>
-                  <button
-                    onClick={() =>
-                      openIntegration(`/api/shopify/oauth/start?client_id=${encodeURIComponent(clientId)}`)
-                    }
-                    disabled={!clientId || integrationStatus?.shopify?.connected}
-                    className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
-                      integrationStatus?.shopify?.connected || !clientId
-                        ? "cursor-not-allowed bg-slate-300"
-                        : "bg-blue-600 hover:bg-blue-700"
-                    }`}
-                  >
-                    {integrationStatus?.shopify?.connected
-                      ? "Connected"
-                      : integrationStatus?.shopify?.needsReconnect
-                        ? "Reconnect"
-                        : "Connect"}
-                  </button>
-                </div>
-              </div>
-
               <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">Google Ads</div>
@@ -934,25 +950,6 @@ function SettingsPage() {
                           </div>
                           <div className="mt-0.5 text-[11px] text-slate-500">
                             % of units with a Shopify unit cost.
-                          </div>
-                          <div className="mt-2 font-semibold text-slate-700">
-                            Effective COGS Coverage (includes fallback)
-                          </div>
-                          <div
-                            className={[
-                              "mt-0.5",
-                              effectiveCogsCoveragePct == null
-                                ? "text-slate-600"
-                                : effectiveCogsCoveragePct >= 0.75
-                                ? "text-emerald-600"
-                                : effectiveCogsCoveragePct >= 0.5
-                                ? "text-amber-600"
-                                : "text-rose-600",
-                            ].join(" ")}
-                          >
-                            {effectiveCogsCoverageHasRows
-                              ? `${Math.round((effectiveCogsCoveragePct ?? 0) * 100)}%`
-                              : "—"}
                           </div>
                         </div>
                       ) : null}

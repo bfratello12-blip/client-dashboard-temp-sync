@@ -44,9 +44,10 @@ async function runStep(args: {
   step: string;
   url: string;
   headers?: Record<string, string>;
+  method?: "GET" | "POST";
 }) {
   const res = await fetch(args.url, {
-    method: "POST",
+    method: args.method ?? "POST",
     headers: args.headers,
   });
   const body = await safeJson(res);
@@ -114,7 +115,7 @@ export async function GET(req: NextRequest) {
     });
     googleParams.set("token", secret);
     const googleUrl = `${origin}/api/googleads/sync?${googleParams.toString()}`;
-    const google = await runStep({ step: "googleads_sync", url: googleUrl, headers: authHeader });
+    const google = await runStep({ step: "googleads_sync", url: googleUrl, headers: authHeader, method: "GET" });
     steps.push(google.summary);
     if (!google.summary.ok) {
       return NextResponse.json(
@@ -131,7 +132,7 @@ export async function GET(req: NextRequest) {
     });
     metaParams.set("token", secret);
     const metaUrl = `${origin}/api/meta/sync?${metaParams.toString()}`;
-    const meta = await runStep({ step: "meta_sync", url: metaUrl, headers: authHeader });
+    const meta = await runStep({ step: "meta_sync", url: metaUrl, headers: authHeader, method: "GET" });
     steps.push(meta.summary);
     if (!meta.summary.ok) {
       return NextResponse.json(

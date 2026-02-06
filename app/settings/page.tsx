@@ -284,6 +284,16 @@ function SettingsPage() {
     window.location.href = url;
   }, []);
 
+  const startMetaOAuth = useCallback(() => {
+    if (!clientId) return;
+    const connectUrl = `/api/meta/connect?client_id=${encodeURIComponent(clientId)}`;
+    if (window.top) {
+      window.top.location.href = connectUrl;
+    } else {
+      window.location.href = connectUrl;
+    }
+  }, [clientId]);
+
   const startGoogleOAuth = useCallback(async () => {
     if (!clientId) return;
 
@@ -880,7 +890,7 @@ function SettingsPage() {
                     {integrationStatus?.meta?.connected ? "Connected" : "Disconnected"}
                   </div>
                   <button
-                    onClick={() => openIntegration(`/api/meta/connect?client_id=${encodeURIComponent(clientId)}`)}
+                    onClick={startMetaOAuth}
                     disabled={!clientId || integrationStatus?.meta?.connected}
                     className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
                       integrationStatus?.meta?.connected || !clientId

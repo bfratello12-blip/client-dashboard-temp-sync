@@ -5,222 +5,227 @@ It is written for AI agents and engineers who need precise, non-speculative guid
 
 ---
 
-## 1) High-level purpose
+## 1) High-Level Architecture
 
-### What ScaleAble Dashboard is
+### What ScaleAble is
 - A profit-first analytics dashboard for Shopify merchants running paid media.
-- An embedded Shopify Admin app with a shared data layer (Supabase).
+- An embedded Shopify Admin app backed by Supabase (data storage + security).
+- A Next.js App Router app with server routes under app/api.
 
-### Problems it solves
-- Ad platforms report attributed revenue, not business-truth revenue.
-- Merchants need profit and efficiency metrics derived from Shopify sales plus paid spend and costs.
+### Multi-client architecture
+- Single repo with shared UI + API logic.
+- Multiple Shopify apps (per client) and multiple Vercel deployments.
+- All data is scoped by client_id; multi-tenant isolation is enforced at query level.
 
-### Profit-first analytics positioning
-- Shopify revenue (total_sales) is the ground truth.
-- Paid spend is included once.
-- Profit is computed after costs, not after attribution.
-
----
-
-## 2) Architecture overview
-
-- Single VS Code repo for all logic (UI + API).
-- Multiple client apps exist as separate Shopify apps and separate Vercel deployments.
-- Supabase is the shared data layer.
-- Client isolation is enforced by client_id across all tables and API routes.
+### Relationship between Shopify embedded app, Supabase, and cron jobs
+- Shopify embedded app handles OAuth and writes shop install metadata into Supabase.
+- Supabase stores all daily rollups, line items, unit costs, and profit summaries.
+- Vercel cron routes trigger daily sync and rolling recomputation.
 
 ---
 
-## 3) Core data model (tables + responsibility)
+## 2) Core Data Flow (End-to-End)
 
-### clients
-- Purpose: tenant root + per-client configuration.
-- Writes: internal admin processes, migrations.
-- Reads: Shopify sync, POS exclusions, UI.
+### Shopify OAuth → token storage (shopify_app_installs)
+- Shopify OAuth completes in /api/shopify/oauth.
+- Resulting access token and shop_domain are stored in shopify_app_installs.
+- shopify_app_installs maps shop_domain → client_id.
 
-### client_integrations
-- Purpose: OAuth configuration for Google Ads / Meta.
-- Writes: OAuth connect flows.
-- Reads: sync endpoints to fetch spend.
+### Shopify sync → daily sales + line items
+- /api/shopify/sync (ShopifyQL) writes daily_metrics (shopify revenue/orders/units).
+- /api/shopify/daily-line-items-sync writes shopify_daily_line_items and shopify_variant_unit_costs.
 
-### client_cost_settings
-- Purpose: cost assumptions for recompute.
-- Writes: Settings UI.
-- Reads: /api/shopify/recompute.
+### Ad platform syncs (Google Ads, Meta)
+- /api/googleads/sync writes daily_metrics for Google spend.
+- /api/meta/sync writes daily_metrics for Meta spend.
 
-### daily_metrics
-- Purpose: daily rollups by source (shopify, google, meta).
-- Writes: /api/shopify/sync, /api/googleads/sync, /api/meta/sync.
-- Reads: /api/shopify/recompute, UI charts, rolling summaries.
+### Convergence into daily_profit_summary
+- /api/shopify/recompute combines daily_metrics + shopify_daily_line_items + unit costs + client_cost_settings.
+- Outputs daily_profit_summary (source of truth for profitability metrics).
+
+---
+
+## 3) Shopify Data Model (Critical)
 
 ### shopify_daily_line_items
-- Purpose: per-day line item aggregation by inventory_item_id.
-- Writes: /api/shopify/daily-line-items-sync.
-- Reads: /api/shopify/recompute (for COGS coverage).
+- Purpose: per-day aggregation of Shopify line items by inventory_item_id.
+- Columns (key): client_id, date, inventory_item_id, variant_id, units, line_revenue.
+- Usage: Source of truth for unit-cost coverage and COGS composition.
+- Why: line items are the only reliable place to determine which units truly have a Shopify unit cost.
 
 ### shopify_variant_unit_costs
-- Purpose: unit costs by inventory item / variant.
-- Writes: /api/shopify/daily-line-items-sync (inventory cost fetch).
-- Reads: /api/shopify/recompute.
+- Purpose: cache of Shopify unit costs per inventory item/variant.
+- Columns (key): client_id, inventory_item_id, variant_id, unit_cost_amount, updated_at.
+- Usage: joined with shopify_daily_line_items to compute COGS coverage.
 
-### daily_shopify_cogs_coverage
-- Purpose: coverage of known COGS for Shopify revenue.
-- Writes: /api/shopify/recompute (after line item aggregation).
-- Reads: /api/shopify/recompute for profit summary.
+### shopify_unit_costs
+- Purpose: legacy/auxiliary table for unit costs (if present in environment).
+- Usage: generally superseded by shopify_variant_unit_costs.
+
+### daily_sales_summary
+- Purpose: aggregate daily sales metrics (if present in environment).
+- Usage: legacy; daily_metrics is the primary source for daily totals.
 
 ### daily_profit_summary
-- Purpose: profit truth table used by dashboard and rolling summaries.
-- Writes: /api/shopify/recompute.
-- Reads: UI, rolling summaries.
+- Purpose: profit truth table for UI + rolling summaries.
+- Columns (key): client_id, date, revenue, paid_spend, est_cogs, contribution_profit, units_with_cogs, etc.
+
+### inventory_item_id vs variant_id
+- inventory_item_id is the authoritative key for Shopify unit costs.
+- variant_id is useful for UI linking but unit costs are attached to inventory items.
+- Always use inventory_item_id when checking unit cost existence.
+
+### Why line items are the source of truth for unit coverage
+- Only line items can confirm whether a sold unit had a real Shopify unit cost.
+- Revenue totals can be derived elsewhere, but coverage must use line items.
 
 ---
 
-## 4) Shopify ingestion flow (IMPORTANT)
+## 4) COGS Logic (MOST IMPORTANT SECTION)
 
-### ShopifyQL revenue sync
-- Revenue is pulled via ShopifyQL: FROM sales SHOW total_sales TIMESERIES day.
-- POS exclusion is applied when enabled:
-	WHERE sales_channel NOT IN ('Point of Sale', ...)
-- The resulting total_sales is stored as daily_metrics.revenue (source=shopify).
+### A. Unit Cost Coverage
+- Meaning: share of units with a real Shopify unit cost.
+- Calculation (7-day weighted): sum(units_with_unit_cost) / sum(units_total).
+- Source of truth: unit_cost_coverage_daily (VIEW).
+- Only counts real Shopify unit costs.
+- Fallback costs are NOT included.
 
-### Revenue vs line item revenue
-- Revenue (ShopifyQL total_sales) includes taxes and shipping, minus discounts as per ShopifyQL definition.
-- Line item revenue is derived from lineItems.discountedTotalSet (line-level net of discounts).
-- These differ by taxes, shipping, and discounts.
-
----
-
-## 5) Line-item + unit cost flow
-
-### /api/shopify/daily-line-items-sync
-- Pulls orders + lineItems via Shopify Admin GraphQL.
-- Day bucketing is based on processedAt converted to shop timezone (YYYY-MM-DD).
-- Aggregates by day + inventory_item_id.
-- line_revenue uses discountedTotalSet (line-level net of discounts).
-
-### Unit costs
-- Inventory item unit costs are fetched via Shopify GraphQL.
-- Stored in shopify_variant_unit_costs.
+### B. Effective COGS Coverage
+- Meaning: revenue-weighted effective coverage used to stabilize profit.
+- Includes fallback costs.
+- Used internally for profit stability only.
+- Not shown in Settings anymore.
 
 ---
 
-## 6) COGS coverage logic (CRITICAL)
-
-### Definitions
-- productCogsKnown: sum(units * unit_cost) for line items with unit cost.
-- units_with_cogs: units that have known unit cost.
-- revenue_with_cogs_raw: sum(line_revenue) for items with known unit cost.
-
-### Why raw coverage can exceed 1.0
-- line_revenue excludes taxes/shipping and can exceed ShopifyQL total_sales in some edge cases.
-- This inflates revenue_with_cogs_raw relative to daily revenue.
-
-### Clamp and scaling
-- revenue_with_cogs is clamped to daily Shopify revenue:
-	revenue_with_cogs = min(revenue_with_cogs_raw, revenue)
-- productCogsKnown is scaled proportionally when clamping occurs:
-	scale = revenue_with_cogs_clamped / revenue_with_cogs_raw
-	productCogsKnown = productCogsKnownRaw * scale
-
-### Raw vs effective coverage
-- Raw coverage: revenue_with_cogs_raw / revenue
-- Effective coverage: revenue_with_cogs_clamped / revenue (must be <= 1)
-- Effective coverage can be 100% even if unit coverage < 100% because revenue_with_cogs_raw can exceed revenue.
-
----
-
-## 7) Fallback COGS behavior
+## 5) Fallback COGS System
 
 ### When fallback is used
-- Any uncovered revenue uses default_gross_margin_pct.
+- When a line item does not have a Shopify unit cost.
 
-### How fallback is applied
-- fallbackCogsPct = 1 - default_gross_margin_pct
-- fallbackCogs = uncoveredRevenue * fallbackCogsPct
+### How GM fallback rate works
+- default_gross_margin_pct is stored in client_cost_settings.
+- fallback_cogs_pct = 1 - default_gross_margin_pct.
+- fallback_cogs = uncovered_revenue * fallback_cogs_pct.
 
-### Priority
-- Unit costs always take precedence.
-- Fallback applies only to uncovered revenue.
+### Why fallback prevents profit cliffs
+- Without fallback, missing unit costs would create unrealistically high profit.
+- Fallback keeps profit stable while coverage improves.
 
----
-
-## 8) Profit recompute logic
-
-### Inputs
-- daily_metrics (shopify revenue/orders/units + paid spend)
-- shopify_daily_line_items
-- shopify_variant_unit_costs
-- client_cost_settings
-
-### Order of operations
-1) Build daily coverage from line items + unit costs.
-2) Clamp revenue_with_cogs and scale productCogsKnown when needed.
-3) Compute est_cogs and costs.
-4) Write daily_profit_summary and daily_shopify_cogs_coverage.
-
-### Cost formulas
-- est_processing_fees = revenue * processing_fee_pct + orders * processing_fee_fixed
-- est_fulfillment_costs = orders * pick_pack_per_order
-- est_other_variable_costs = orders * shipping_subsidy_per_order + orders * materials_per_order + revenue * other_variable_pct_revenue
-- est_other_fixed_costs = other_fixed_per_day
-
-### Contribution profit formula
-contribution_profit =
-	revenue - (
-		est_cogs +
-		est_processing_fees +
-		est_fulfillment_costs +
-		est_other_variable_costs +
-		est_other_fixed_costs +
-		paid_spend
-	)
+### How fallback affects revenue but not unit coverage
+- Revenue is always ShopifyQL total_sales.
+- Fallback impacts est_cogs but NOT unit cost coverage.
 
 ---
 
-## 9) Backfill strategy
+## 6) Profit Calculation Pipeline
 
-- Month-by-month historical backfill to avoid API limits.
-- Idempotent upserts for daily tables.
-- Full historical backfill uses ShopifyQL + line items + recompute.
-- Rolling-30 maintenance updates recent 30 days daily.
+### Inputs to computeDailyProfitSummary
+- daily_metrics (shopify revenue/orders/units + paid spend).
+- shopify_daily_line_items (units + line_revenue by inventory item).
+- shopify_variant_unit_costs (unit_cost_amount).
+- client_cost_settings (fallback + cost assumptions).
 
----
+### Meaning of key fields
+- product_cogs_known: sum(units * unit_cost) for items with a real unit cost.
+- estimated_cogs_missing: fallback COGS for uncovered revenue.
+- revenue_with_cogs: revenue covered by real unit costs (clamped to revenue).
+- est_cogs: product_cogs_known + estimated_cogs_missing.
 
-## 10) Cron strategy (INTENT)
-
-### Daily cron should do
-1) ShopifyQL revenue sync
-2) Google Ads sync
-3) Meta Ads sync
-4) Line-items sync
-5) Recompute
-6) Rolling-30 refresh
-
-### Why recompute is required
-- Line items and unit costs arrive asynchronously.
-- Recompute aligns profit with current COGS coverage.
-
-### Per-client isolation
-- All writes and reads are scoped by client_id.
-- Errors for one client must not block others.
+### Why clamping is used
+- line item revenue can exceed ShopifyQL total_sales.
+- Clamp revenue_with_cogs to revenue and scale product_cogs_known accordingly.
 
 ---
 
-## 11) Known gotchas & invariants
+## 7) Cron Jobs (VERY DETAILED)
 
-- ShopifyQL revenue (POS excluded when configured) is the authoritative revenue.
-- revenue_with_cogs must never exceed revenue in stored data.
-- Recompute must run after line-item sync to ensure accurate COGS coverage.
-- Failures for one client must not stop others in multi-client sync.
+### /api/cron/daily-sync
+- Purpose: daily sync of Shopify + ad platforms, then recompute.
+- Steps (per client):
+	- ShopifyQL revenue sync → daily_metrics.
+	- Google Ads sync → daily_metrics.
+	- Meta sync → daily_metrics.
+	- Shopify line-items sync → shopify_daily_line_items + shopify_variant_unit_costs.
+	- Recompute profit → daily_profit_summary.
+- Failure handling:
+	- Each step logs errors; a failed client should not stop other clients.
+	- Recompute must run after line-item sync for accurate coverage.
 
-## 13) Current Clients on Dashboard
+### /api/cron/rolling-30
+- Purpose: refresh last 30 days profitability using current unit costs.
+- Steps (per client):
+	- For each client_id, recompute profit for the last 30 days.
+	- Handles retries/backoff for transient errors.
+- Writes:
+	- daily_profit_summary (upserts for last 30 days).
+	- daily_shopify_cogs_coverage.
+- Important:
+	- Avoid writing to views like monthly_rollup or unit_cost_coverage_daily.
 
-- Clients Name: FlyFishSD
-- client_id: 6a3a4187-b224-4942-b658-0fa23cb79eac
-- Vercel Domain: client-dashboard-temp-customapp.vercel.app
-- Bearer: Laughing_Lab_1011
+### Why views cannot be written to
+- Supabase views are read-only unless explicitly defined as writable.
+- Attempted inserts into views fail and surface as schema cache errors.
 
-- Clients Name: Wild Water Fly Fishing
-- client_id: f298424f-d14c-4946-8a3a-4ce8ccabdadf
-- Vercel Domain: scaleable-dashboard-wildwater.vercel.app
-- Bearer: Laughing_Lab_1011
+---
+
+## 8) Views vs Tables (Important Gotcha)
+
+### Known views
+- unit_cost_coverage_daily (VIEW): read-only precomputed coverage.
+- monthly_rollup (VIEW): monthly aggregates for UI.
+
+### Why inserting into views causes failures
+- Postgres blocks inserts/updates on read-only views.
+- Supabase returns schema cache errors when attempting to write.
+
+### How schema cache errors surface
+- API responses will show Postgres errors like “cannot insert into view”.
+- Rolling-30 can fail if it attempts to write to a view.
+
+---
+
+## 9) Settings Page Logic
+
+### Where Settings pulls data from
+- Unit Cost Coverage (7d) is computed from unit_cost_coverage_daily (VIEW).
+- Effective COGS Coverage is no longer displayed in Settings.
+
+### How Unit Cost Coverage (7d) is computed
+- Query: unit_cost_coverage_daily (client_id) ordered by date desc limit 7.
+- Weighted average: sum(units_with_unit_cost) / sum(units_total).
+- If rows exist but sum(units_total) = 0 → display 0%.
+
+### Why this query is read-only
+- unit_cost_coverage_daily is a view; do not write to it.
+
+### Conditions that cause “—” to display
+- No rows for the last 7 days (coverageRows.length === 0).
+- cogsCoveragePct is null.
+
+---
+
+## 10) Common Debug Playbook
+
+### Validate profit for a single day
+- SQL:
+	- daily_profit_summary for client_id + date.
+	- compare to daily_metrics for revenue/spend.
+
+### Validate unit cost coverage
+- SQL:
+	- unit_cost_coverage_daily for last 7 days.
+	- verify units_with_unit_cost and units_total sums.
+
+### Safely re-run rolling-30 without resyncing
+- Call /api/cron/rolling-30 with skipSyncs=1 (if supported in current code).
+- Ensure it only recomputes profitability for last 30 days.
+
+### Confirm data freshness
+- Check latest date rows in daily_metrics and daily_profit_summary.
+- Verify line item sync timestamp in shopify_daily_line_items.
+
+### Warnings (easy mistakes)
+- Do not write to views (unit_cost_coverage_daily, monthly_rollup).
+- Do not treat effective COGS coverage as unit coverage.
+- Always clamp revenue_with_cogs to ShopifyQL total_sales.

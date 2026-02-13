@@ -907,11 +907,9 @@ function SettingsPage() {
                         integrationStatus?.meta?.connected ? "bg-emerald-500" : "bg-slate-300"
                       }`}
                     />
-                    {integrationStatus?.meta?.connected
+                    {integrationStatus?.meta?.connected || integrationStatus?.meta?.hasToken
                       ? "Connected"
-                      : integrationStatus?.meta?.hasToken
-                        ? "Needs account selection"
-                        : "Disconnected"}
+                      : "Disconnected"}
                   </div>
                   {integrationStatus?.meta?.accountId ? (
                     <div className="text-xs text-slate-600">

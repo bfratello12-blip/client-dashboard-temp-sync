@@ -457,6 +457,26 @@ function SettingsPage() {
     }
   }, [clientId, fetchIntegrationStatus, fetchGoogleIntegration]);
 
+  const disconnectMetaAds = useCallback(async () => {
+    if (!clientId) return;
+    setIntegrationError("");
+
+    try {
+      const res = await fetch("/api/meta/disconnect", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ client_id: clientId }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload?.ok) throw new Error(payload?.error || `Disconnect failed (${res.status})`);
+
+      await fetchIntegrationStatus();
+    } catch (e: any) {
+      console.error(e);
+      setIntegrationError(e?.message ?? "Failed to disconnect Meta Ads");
+    }
+  }, [clientId, fetchIntegrationStatus]);
+
   // Load: auth -> shop (sa_shop) -> client mapping -> cost settings
   useEffect(() => {
     let cancelled = false;
@@ -887,19 +907,36 @@ function SettingsPage() {
                         integrationStatus?.meta?.connected ? "bg-emerald-500" : "bg-slate-300"
                       }`}
                     />
-                    {integrationStatus?.meta?.connected ? "Connected" : "Disconnected"}
+                    {integrationStatus?.meta?.connected
+                      ? "Connected"
+                      : integrationStatus?.meta?.hasToken
+                        ? "Needs account selection"
+                        : "Disconnected"}
                   </div>
-                  <button
-                    onClick={startMetaOAuth}
-                    disabled={!clientId || integrationStatus?.meta?.connected}
-                    className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
-                      integrationStatus?.meta?.connected || !clientId
-                        ? "cursor-not-allowed bg-slate-300"
-                        : "bg-blue-600 hover:bg-blue-700"
-                    }`}
-                  >
-                    {integrationStatus?.meta?.connected ? "Connected" : "Connect"}
-                  </button>
+                  {integrationStatus?.meta?.accountId ? (
+                    <div className="text-xs text-slate-600">
+                      Account: <span className="font-semibold text-slate-800">{integrationStatus?.meta?.accountId}</span>
+                    </div>
+                  ) : null}
+
+                  {integrationStatus?.meta?.hasToken ? (
+                    <button
+                      onClick={disconnectMetaAds}
+                      className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100"
+                    >
+                      Disconnect
+                    </button>
+                  ) : (
+                    <button
+                      onClick={startMetaOAuth}
+                      disabled={!clientId}
+                      className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
+                        !clientId ? "cursor-not-allowed bg-slate-300" : "bg-blue-600 hover:bg-blue-700"
+                      }`}
+                    >
+                      Connect Meta Ads
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

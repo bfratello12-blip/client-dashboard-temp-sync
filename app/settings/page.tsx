@@ -831,7 +831,7 @@ function SettingsPage() {
                         !clientId ? "cursor-not-allowed bg-slate-300" : "bg-blue-600 hover:bg-blue-700"
                       }`}
                     >
-                      Connect Google Ads
+                      Connect
                     </button>
                   ) : (
                     <button

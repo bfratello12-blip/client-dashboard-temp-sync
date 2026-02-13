@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { fetchMetaAdAccounts, normalizeMetaAdAccountId } from "@/lib/meta/adAccounts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -149,6 +150,66 @@ export async function GET(req: NextRequest) {
       if (insErr) throw insErr;
     }
 
+    let autoSelectedAccount: { id: string; name?: string } | null = null;
+    try {
+      const accounts = await fetchMetaAdAccounts({
+        accessToken,
+        apiVersion: process.env.META_API_VERSION || "v19.0",
+      });
+
+      if (accounts.length === 1) {
+        const acct = accounts[0];
+        const normalizedId = normalizeMetaAdAccountId(acct.id);
+        autoSelectedAccount = { id: normalizedId, name: acct.name };
+
+        const { data: rows, error: rowErr } = await supabase
+          .from("client_integrations")
+          .select("*")
+          .eq("client_id", clientId)
+          .eq("provider", "meta")
+          .limit(1);
+
+        if (rowErr) throw rowErr;
+        const row = (rows?.[0] as Record<string, any> | undefined) ?? null;
+
+        if (row) {
+          const update: Record<string, any> = { meta_ad_account_id: normalizedId };
+          if (acct.name && "meta_ad_account_name" in row) update.meta_ad_account_name = acct.name;
+          const { error: updAcctErr } = await supabase
+            .from("client_integrations")
+            .update(update)
+            .eq("client_id", clientId)
+            .eq("provider", "meta");
+          if (updAcctErr) throw updAcctErr;
+        } else {
+          const baseInsert: Record<string, any> = {
+            client_id: clientId,
+            provider: "meta",
+            meta_access_token: accessToken,
+            meta_connected_at: new Date().toISOString(),
+            status: "connected",
+            is_active: true,
+            meta_ad_account_id: normalizedId,
+          };
+          if (acct.name) {
+            const { error: insErr } = await supabase.from("client_integrations").insert({
+              ...baseInsert,
+              meta_ad_account_name: acct.name,
+            });
+            if (insErr) {
+              const { error: retryErr } = await supabase.from("client_integrations").insert(baseInsert);
+              if (retryErr) throw retryErr;
+            }
+          } else {
+            const { error: insErr } = await supabase.from("client_integrations").insert(baseInsert);
+            if (insErr) throw insErr;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("meta/callback adaccounts fetch failed:", err);
+    }
+
     const html = `<!doctype html>
 <html>
   <head>
@@ -167,7 +228,8 @@ export async function GET(req: NextRequest) {
       <div class="ok">✅ Meta Ads connected</div>
       <p>Access token saved for client:</p>
       <p><code>${clientId}</code></p>
-      <p>You can close this tab and return to Settings.</p>
+      ${autoSelectedAccount ? `<p>Ad account auto-selected: <code>${autoSelectedAccount.id}</code></p>` : ""}
+      <p>${autoSelectedAccount ? "You can close this tab and return to Settings." : "Select an ad account in Settings to finish setup."}</p>
     </div>
   </body>
 </html>`;

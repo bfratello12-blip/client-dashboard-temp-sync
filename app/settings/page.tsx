@@ -26,7 +26,7 @@ type ClientCostSettings = {
 type IntegrationStatus = {
   shopify: { connected: boolean; needsReconnect: boolean; shop?: string | null };
   google: { connected: boolean; hasToken?: boolean; customerId?: string | null };
-  meta: { connected: boolean; hasToken?: boolean; accountId?: string | null };
+  meta: { connected: boolean; hasToken?: boolean; accountId?: string | null; accountName?: string | null };
 };
 
 const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
@@ -132,6 +132,12 @@ function SettingsPage() {
   const [googleAccountsError, setGoogleAccountsError] = useState("");
   const [googleSelectedAccountId, setGoogleSelectedAccountId] = useState("");
   const [googleAccountSaving, setGoogleAccountSaving] = useState(false);
+
+  const [metaAccounts, setMetaAccounts] = useState<Array<{ id: string; name?: string | null }>>([]);
+  const [metaAccountsLoading, setMetaAccountsLoading] = useState(false);
+  const [metaAccountsError, setMetaAccountsError] = useState("");
+  const [metaSelectedAccountId, setMetaSelectedAccountId] = useState("");
+  const [metaAccountSaving, setMetaAccountSaving] = useState(false);
 
   // Product cost source UX: Shopify unit costs vs estimated fallback inputs
   const [productCostMode, setProductCostMode] = useState<'shopify' | 'estimate'>('shopify');
@@ -411,6 +417,32 @@ function SettingsPage() {
     }
   }, [clientId, googleSelectedAccountId]);
 
+  const fetchMetaAccounts = useCallback(async () => {
+    if (!clientId) return;
+    setMetaAccountsLoading(true);
+    setMetaAccountsError("");
+
+    try {
+      const res = await fetch(`/api/meta/adaccounts?client_id=${encodeURIComponent(clientId)}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload?.ok) throw new Error(payload?.error || `Account fetch failed (${res.status})`);
+
+      const accounts = Array.isArray(payload?.accounts) ? payload.accounts : [];
+      setMetaAccounts(accounts);
+      if (!metaSelectedAccountId && accounts.length > 0) {
+        setMetaSelectedAccountId(String(accounts[0]?.id ?? ""));
+      }
+    } catch (e: any) {
+      console.error(e);
+      setMetaAccountsError(e?.message ?? "Failed to load Meta ad accounts");
+    } finally {
+      setMetaAccountsLoading(false);
+    }
+  }, [clientId, metaSelectedAccountId]);
+
   const saveGoogleAccount = useCallback(async () => {
     if (!clientId || !googleSelectedAccountId) return;
     setGoogleAccountSaving(true);
@@ -434,6 +466,34 @@ function SettingsPage() {
       setGoogleAccountSaving(false);
     }
   }, [clientId, googleSelectedAccountId, fetchIntegrationStatus, fetchGoogleIntegration]);
+
+  const saveMetaAccount = useCallback(async () => {
+    if (!clientId || !metaSelectedAccountId) return;
+    setMetaAccountSaving(true);
+    setIntegrationError("");
+
+    try {
+      const selected = metaAccounts.find((acct) => String(acct.id) === String(metaSelectedAccountId));
+      const res = await fetch("/api/meta/select-adaccount", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          client_id: clientId,
+          meta_ad_account_id: metaSelectedAccountId,
+          meta_ad_account_name: selected?.name ?? null,
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload?.ok) throw new Error(payload?.error || `Save failed (${res.status})`);
+
+      await fetchIntegrationStatus();
+    } catch (e: any) {
+      console.error(e);
+      setIntegrationError(e?.message ?? "Failed to save Meta ad account");
+    } finally {
+      setMetaAccountSaving(false);
+    }
+  }, [clientId, metaSelectedAccountId, metaAccounts, fetchIntegrationStatus]);
 
   const disconnectGoogleAds = useCallback(async () => {
     if (!clientId) return;
@@ -696,6 +756,10 @@ function SettingsPage() {
     setGoogleAccounts([]);
     setGoogleSelectedAccountId("");
     setGoogleAccountsError("");
+
+    setMetaAccounts([]);
+    setMetaSelectedAccountId("");
+    setMetaAccountsError("");
   }, [clientId]);
 
   useEffect(() => {
@@ -704,6 +768,13 @@ function SettingsPage() {
     setGoogleSelectedAccountId("");
     setGoogleAccountsError("");
   }, [integrationStatus?.google?.hasToken]);
+
+  useEffect(() => {
+    if (integrationStatus?.meta?.hasToken) return;
+    setMetaAccounts([]);
+    setMetaSelectedAccountId("");
+    setMetaAccountsError("");
+  }, [integrationStatus?.meta?.hasToken]);
 
   useEffect(() => {
     if (!clientId) return;
@@ -719,6 +790,22 @@ function SettingsPage() {
     googleAccountsLoading,
     googleAccounts.length,
     fetchGoogleAccounts,
+  ]);
+
+  useEffect(() => {
+    if (!clientId) return;
+    if (!integrationStatus?.meta?.hasToken) return;
+    if (integrationStatus?.meta?.accountId) return;
+    if (metaAccountsLoading || metaAccounts.length > 0) return;
+
+    fetchMetaAccounts();
+  }, [
+    clientId,
+    integrationStatus?.meta?.hasToken,
+    integrationStatus?.meta?.accountId,
+    metaAccountsLoading,
+    metaAccounts.length,
+    fetchMetaAccounts,
   ]);
 
   const costs = useMemo(() => costSettings || ({ client_id: clientId } as ClientCostSettings), [costSettings, clientId]);
@@ -914,7 +1001,12 @@ function SettingsPage() {
                   </div>
                   {integrationStatus?.meta?.accountId ? (
                     <div className="text-xs text-slate-600">
-                      Account: <span className="font-semibold text-slate-800">{integrationStatus?.meta?.accountId}</span>
+                      Account:{" "}
+                      <span className="font-semibold text-slate-800">
+                        {integrationStatus?.meta?.accountName
+                          ? `${integrationStatus?.meta?.accountName} (${integrationStatus?.meta?.accountId})`
+                          : integrationStatus?.meta?.accountId}
+                      </span>
                     </div>
                   ) : null}
 
@@ -938,6 +1030,54 @@ function SettingsPage() {
                   )}
                 </div>
               </div>
+
+              {integrationStatus?.meta?.hasToken && !integrationStatus?.meta?.accountId ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="text-sm font-semibold text-slate-900">Select Meta Ad Account</div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    Choose the ad account to sync for this client.
+                  </div>
+
+                  {metaAccountsError ? (
+                    <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-2 text-xs text-rose-800">
+                      {metaAccountsError}
+                    </div>
+                  ) : null}
+
+                  <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <select
+                      value={metaSelectedAccountId}
+                      onChange={(e) => setMetaSelectedAccountId(e.target.value)}
+                      disabled={metaAccountsLoading || metaAccounts.length === 0}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 sm:max-w-md"
+                    >
+                      {metaAccountsLoading ? (
+                        <option>Loading accounts…</option>
+                      ) : metaAccounts.length === 0 ? (
+                        <option>No accounts found</option>
+                      ) : (
+                        metaAccounts.map((acct) => (
+                          <option key={acct.id} value={acct.id}>
+                            {acct.name ? `${acct.name} (${acct.id})` : acct.id}
+                          </option>
+                        ))
+                      )}
+                    </select>
+
+                    <button
+                      onClick={saveMetaAccount}
+                      disabled={!metaSelectedAccountId || metaAccountSaving}
+                      className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
+                        !metaSelectedAccountId || metaAccountSaving
+                          ? "cursor-not-allowed bg-slate-300"
+                          : "bg-blue-600 hover:bg-blue-700"
+                      }`}
+                    >
+                      {metaAccountSaving ? "Saving…" : "Save account"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </section>
 

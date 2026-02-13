@@ -30,7 +30,7 @@ export async function GET(req: Request) {
         .limit(1),
       admin
         .from("client_integrations")
-        .select("meta_access_token, meta_ad_account_id, status, is_active")
+        .select("meta_access_token, meta_ad_account_id, meta_ad_account_name, status, is_active")
         .eq("client_id", clientId)
         .eq("provider", "meta")
         .limit(1),
@@ -53,6 +53,7 @@ export async function GET(req: Request) {
     const metaRow = metaRes.data?.[0] ?? null;
     const metaToken = metaRow?.meta_access_token;
     const metaAccountId = metaRow?.meta_ad_account_id;
+    const metaAccountName = metaRow?.meta_ad_account_name;
     const metaConnected =
       hasNonEmpty(metaToken) && hasNonEmpty(metaAccountId) && isConnectedStatus(metaRow?.status, metaRow?.is_active);
 
@@ -73,6 +74,7 @@ export async function GET(req: Request) {
         connected: metaConnected,
         hasToken: hasNonEmpty(metaToken),
         accountId: hasNonEmpty(metaAccountId) ? String(metaAccountId) : null,
+        accountName: hasNonEmpty(metaAccountName) ? String(metaAccountName) : null,
       },
     });
   } catch (e: any) {

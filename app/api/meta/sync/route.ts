@@ -271,6 +271,25 @@ async function handler(req: NextRequest) {
   const { data: integrations, error: integErr } = await q;
   if (integErr) return NextResponse.json({ ok: false, error: integErr.message }, { status: 500 });
 
+  if (client_id) {
+    const row = (integrations ?? [])[0] as any;
+    if (!row?.meta_ad_account_id) {
+      console.warn("Meta sync skipped: no meta_ad_account_id", { client_id });
+      return NextResponse.json({
+        ok: true,
+        source: "meta",
+        start: startISO,
+        end: endISO,
+        fillZeros,
+        clients: 0,
+        daysWritten: 0,
+        zerosInserted: 0,
+        errors: [],
+        results: [],
+      });
+    }
+  }
+
   const active = (integrations ?? []).filter(
     (i: any) => i?.meta_ad_account_id && i?.meta_access_token
   ) as IntegrationRow[];

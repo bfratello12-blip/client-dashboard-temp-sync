@@ -255,10 +255,11 @@ function SettingsPage() {
       setSaveError("");
       setSaveSuccess("");
 
-      const syncToken = process.env.NEXT_PUBLIC_SYNC_TOKEN || "";
-      const syncParams = new URLSearchParams({ client_id: clientId });
-      if (syncToken) syncParams.set("token", syncToken);
-      const res = await fetch(`/api/cron/daily-sync?${syncParams.toString()}`, { method: "POST" });
+      const res = await fetch("/api/sync/manual-refresh", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ client_id: clientId }),
+      });
 
       if (!res.ok) {
         const t = await res.text();

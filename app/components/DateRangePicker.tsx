@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   format,
   startOfDay,
@@ -291,12 +292,19 @@ export default function DateRangePicker({
 }: DateRangePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [draft, setDraft] = useState<DraftState>({ ...value });
+  const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties>({});
+  const [portalReady, setPortalReady] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   // Update draft when value changes
   useEffect(() => {
     setDraft({ ...value });
   }, [value]);
+
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
 
   // Handle outside click
   useEffect(() => {
@@ -310,6 +318,54 @@ export default function DateRangePicker({
       document.addEventListener("mousedown", handleClickOutside);
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const updatePosition = () => {
+      const trigger = triggerRef.current;
+      const pop = popoverRef.current;
+      if (!trigger || !pop) return;
+
+      const rect = trigger.getBoundingClientRect();
+      const viewportW = window.innerWidth;
+      const viewportH = window.innerHeight;
+      const gap = 8;
+
+      const maxWidth = Math.min(600, Math.floor(viewportW * 0.95));
+      const width = Math.min(pop.offsetWidth || maxWidth, maxWidth);
+
+      let left = rect.right - width;
+      if (left < 8) left = 8;
+      if (left + width > viewportW - 8) left = Math.max(8, viewportW - width - 8);
+
+      let top = rect.bottom + gap;
+      const maxHeight = Math.floor(viewportH * 0.9);
+      if (top + pop.offsetHeight > viewportH - 8) {
+        const above = rect.top - gap - pop.offsetHeight;
+        if (above > 8) top = Math.max(8, above);
+      }
+
+      setPopoverStyle({
+        position: "fixed",
+        top,
+        left,
+        width,
+        maxWidth: "95vw",
+        maxHeight: "90vh",
+      });
+    };
+
+    const raf = requestAnimationFrame(updatePosition);
+    const onResize = () => updatePosition();
+    window.addEventListener("resize", onResize);
+    window.addEventListener("scroll", onResize, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("scroll", onResize, true);
+    };
   }, [isOpen]);
 
   // Handle keyboard
@@ -393,6 +449,7 @@ export default function DateRangePicker({
     <div className="relative inline-block">
       {/* Trigger button */}
       <button
+        ref={triggerRef}
         onClick={() => setIsOpen(!isOpen)}
         className="rounded-xl border bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap"
       >
@@ -400,97 +457,100 @@ export default function DateRangePicker({
       </button>
 
       {/* Popover */}
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 bg-black/20 md:bg-transparent md:absolute md:inset-auto md:right-0 md:top-full md:mt-2 md:p-0 md:block">
-          <div
-            ref={popoverRef}
-            className="w-full max-w-[600px] overflow-hidden bg-white border border-black/10 rounded-2xl shadow-xl p-4 origin-top-right max-h-[calc(100vh-32px)] overflow-y-auto md:max-h-none"
-          >
-          {/* Main content grid */}
-          <div className="grid grid-cols-1 md:grid-cols-[200px_minmax(0,1fr)] gap-4">
-            {/* Presets column */}
-            <div className="min-w-[200px]">
-              <h3 className="text-sm font-semibold text-slate-900 mb-3">Presets</h3>
-              <div className="space-y-1 max-h-80 overflow-y-auto">
-                {PRESETS.map((preset) => (
-                  <button
-                    key={preset.key}
-                    onClick={() => handlePresetSelect(preset.key)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                      currentPreset === preset.key
-                        ? "bg-slate-900 text-white font-medium"
-                        : "text-slate-700 hover:bg-slate-50"
-                    }`}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+      {isOpen && portalReady
+        ? createPortal(
+            <div
+              ref={popoverRef}
+              style={popoverStyle}
+              className="z-[9999] bg-white border border-black/10 rounded-2xl shadow-xl p-4 overflow-y-auto"
+            >
+              {/* Main content grid */}
+              <div className="grid grid-cols-1 md:grid-cols-[200px_minmax(0,1fr)] gap-4">
+                {/* Presets column */}
+                <div className="min-w-[200px]">
+                  <h3 className="text-sm font-semibold text-slate-900 mb-3">Presets</h3>
+                  <div className="space-y-1 max-h-80 overflow-y-auto">
+                    {PRESETS.map((preset) => (
+                      <button
+                        key={preset.key}
+                        onClick={() => handlePresetSelect(preset.key)}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                          currentPreset === preset.key
+                            ? "bg-slate-900 text-white font-medium"
+                            : "text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-            {/* Calendar column */}
-            <div className="min-w-[280px] min-w-0">
-              <h3 className="text-sm font-semibold text-slate-900 mb-3">Custom Range</h3>
-              <Calendar
-                startDate={startDate}
-                endDate={endDate}
-                onSelect={handleDateSelect}
-                availableMinISO={availableMinISO}
-                availableMaxISO={availableMaxISO}
-              />
-            </div>
-          </div>
+                {/* Calendar column */}
+                <div className="min-w-[280px] min-w-0">
+                  <h3 className="text-sm font-semibold text-slate-900 mb-3">Custom Range</h3>
+                  <Calendar
+                    startDate={startDate}
+                    endDate={endDate}
+                    onSelect={handleDateSelect}
+                    availableMinISO={availableMinISO}
+                    availableMaxISO={availableMaxISO}
+                  />
+                </div>
+              </div>
 
-          {/* Footer */}
-          <div className="mt-4 pt-3 border-t border-black/10">
-            {/* Comparison Controls */}
-            <div className="flex items-center justify-between mb-3">
-              <label className="flex items-center gap-2 text-sm">
-                <input 
-                  type="checkbox" 
-                  checked={comparisonEnabled} 
-                  onChange={(e) => onComparisonEnabledChange?.(e.target.checked)}
-                  className="rounded border-slate-300"
-                />
-                Show comparison
-              </label>
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-slate-500">Mode</span>
-                <select
-                  value={compareMode}
-                  disabled={!comparisonEnabled}
-                  onChange={(e) => onCompareModeChange?.(e.target.value as "previous_period" | "previous_year")}
-                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700 disabled:opacity-60"
-                >
-                  <option value="previous_period">Previous period</option>
-                  <option value="previous_year">Previous year</option>
-                </select>
-              </div>
-            </div>
+              {/* Footer */}
+              <div className="mt-4 pt-3 border-t border-black/10">
+                {/* Comparison Controls */}
+                <div className="flex items-center justify-between mb-3">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input 
+                      type="checkbox" 
+                      checked={comparisonEnabled} 
+                      onChange={(e) => onComparisonEnabledChange?.(e.target.checked)}
+                      className="rounded border-slate-300"
+                    />
+                    Show comparison
+                  </label>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-slate-500">Mode</span>
+                    <select
+                      value={compareMode}
+                      disabled={!comparisonEnabled}
+                      onChange={(e) => onCompareModeChange?.(e.target.value as "previous_period" | "previous_year")}
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700 disabled:opacity-60"
+                    >
+                      <option value="previous_period">Previous period</option>
+                      <option value="previous_year">Previous year</option>
+                    </select>
+                  </div>
+                </div>
 
-            {/* Bottom row with timezone and buttons */}
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-black/50">
-                All dates in {TIMEZONE.replace("_", " ")}
+                {/* Bottom row with timezone and buttons */}
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-black/50">
+                    All dates in {TIMEZONE.replace("_", " ")}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleCancel}
+                      className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleApply}
+                      className="px-4 py-2 text-sm font-medium bg-slate-900 text-white hover:bg-slate-800 rounded-lg transition-colors"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleCancel}
-                  className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleApply}
-                  className="px-4 py-2 text-sm font-medium bg-slate-900 text-white hover:bg-slate-800 rounded-lg transition-colors"
-                >
-                  Apply
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

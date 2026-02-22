@@ -401,10 +401,11 @@ export default function DateRangePicker({
 
       {/* Popover */}
       {isOpen && (
-        <div
-          ref={popoverRef}
-          className="absolute right-0 mt-2 z-50 w-[600px] max-w-[calc(100vw-32px)] overflow-hidden bg-white border border-black/10 rounded-2xl shadow-xl p-4 origin-top-right"
-        >
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 bg-black/20 md:bg-transparent md:absolute md:inset-auto md:right-0 md:top-full md:mt-2 md:p-0 md:block">
+          <div
+            ref={popoverRef}
+            className="w-full max-w-[600px] overflow-hidden bg-white border border-black/10 rounded-2xl shadow-xl p-4 origin-top-right max-h-[calc(100vh-32px)] overflow-y-auto md:max-h-none"
+          >
           {/* Main content grid */}
           <div className="grid grid-cols-1 md:grid-cols-[200px_minmax(0,1fr)] gap-4">
             {/* Presets column */}

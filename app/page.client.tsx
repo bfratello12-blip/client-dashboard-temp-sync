@@ -178,6 +178,14 @@ function formatSignedPct(n: number) {
   const sign = n > 0 ? "+" : n < 0 ? "−" : "";
   return `${sign}${Math.abs(n).toFixed(1)}%`;
 }
+const GOOGLE_SOURCES = new Set(["google", "google_ads", "googleads"]);
+const META_SOURCES = new Set(["meta", "meta_ads", "facebook", "fb"]);
+function normalizeAdSource(source: string): "google" | "meta" | null {
+  const s = String(source || "").toLowerCase();
+  if (GOOGLE_SOURCES.has(s)) return "google";
+  if (META_SOURCES.has(s)) return "meta";
+  return null;
+}
 function toISODate(d: Date) {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -2270,11 +2278,12 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         const spend = Number(r.spend || 0);
         const revenue = Number(r.revenue || 0);
         const source = String(r.source || "").toLowerCase();
-        if (source === "meta") {
+        const adSource = normalizeAdSource(source);
+        if (adSource === "meta") {
           metaSpendByDatePrimary[iso] = (metaSpendByDatePrimary[iso] || 0) + spend;
           trackedRevByDatePrimary[iso] = (trackedRevByDatePrimary[iso] || 0) + revenue;
           metaRevByDatePrimary[iso] = (metaRevByDatePrimary[iso] || 0) + revenue;
-        } else if (source === "google") {
+        } else if (adSource === "google") {
           googleSpendByDatePrimary[iso] = (googleSpendByDatePrimary[iso] || 0) + spend;
           trackedRevByDatePrimary[iso] = (trackedRevByDatePrimary[iso] || 0) + revenue;
           googleRevByDatePrimary[iso] = (googleRevByDatePrimary[iso] || 0) + revenue;
@@ -2468,11 +2477,12 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
           const spend = Number(r.spend || 0);
           const revenue = Number(r.revenue || 0);
           const source = String(r.source || "").toLowerCase();
-          if (source === "meta") {
+          const adSource = normalizeAdSource(source);
+          if (adSource === "meta") {
             metaSpendByDateCompare[iso] = (metaSpendByDateCompare[iso] || 0) + spend;
             trackedRevByDateCompare[iso] = (trackedRevByDateCompare[iso] || 0) + revenue;
             metaRevByDateCompare[iso] = (metaRevByDateCompare[iso] || 0) + revenue;
-          } else if (source === "google") {
+          } else if (adSource === "google") {
             googleSpendByDateCompare[iso] = (googleSpendByDateCompare[iso] || 0) + spend;
             trackedRevByDateCompare[iso] = (trackedRevByDateCompare[iso] || 0) + revenue;
             googleRevByDateCompare[iso] = (googleRevByDateCompare[iso] || 0) + revenue;

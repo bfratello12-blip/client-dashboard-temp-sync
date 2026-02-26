@@ -6,6 +6,17 @@ import { requireCronAuth } from "@/lib/cronAuth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const GOOGLE_SOURCES = ["google", "google_ads", "googleads"];
+const META_SOURCES = ["meta", "meta_ads", "facebook", "fb"];
+const AD_SOURCES = [...GOOGLE_SOURCES, ...META_SOURCES];
+
+function normalizeAdSource(source: string): "google" | "meta" | null {
+  const s = String(source || "").toLowerCase();
+  if (GOOGLE_SOURCES.includes(s)) return "google";
+  if (META_SOURCES.includes(s)) return "meta";
+  return null;
+}
+
 type CostSettingsRow = {
   client_id: string;
   default_gross_margin_pct: number | null;
@@ -203,7 +214,7 @@ export async function POST(req: NextRequest) {
       supabase
         .from("daily_metrics")
         .select("client_id")
-        .in("source", ["shopify", "google", "meta"])
+        .in("source", ["shopify", ...AD_SOURCES])
         .gte("date", start)
         .lte("date", end)
     );
@@ -254,7 +265,7 @@ export async function POST(req: NextRequest) {
         .eq("client_id", cid)
         .gte("date", start)
         .lte("date", end)
-        .in("source", ["shopify", "google", "meta"]);
+        .in("source", ["shopify", ...AD_SOURCES]);
       if (mErr) throw mErr;
 
       const lineItems = await fetchAllSupabase<any>((from, to) =>
@@ -382,11 +393,12 @@ export async function POST(req: NextRequest) {
         if (!byDate[d]) byDate[d] = { revenue: 0, orders: 0, units: 0, paidSpend: 0 };
 
         const source = String((r as any).source || "");
+        const adSource = normalizeAdSource(source);
         if (source === "shopify") {
           byDate[d].revenue += n((r as any).revenue);
           byDate[d].orders += n((r as any).orders);
           byDate[d].units += n((r as any).units);
-        } else if (source === "google" || source === "meta") {
+        } else if (adSource) {
           byDate[d].paidSpend += n((r as any).spend);
         }
       }

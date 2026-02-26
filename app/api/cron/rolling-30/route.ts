@@ -7,6 +7,17 @@ import { requireCronAuth } from "@/lib/cronAuth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const GOOGLE_SOURCES = ["google", "google_ads", "googleads"];
+const META_SOURCES = ["meta", "meta_ads", "facebook", "fb"];
+const AD_SOURCES = [...GOOGLE_SOURCES, ...META_SOURCES];
+
+function normalizeAdSource(source: string): "google" | "meta" | null {
+  const s = String(source || "").toLowerCase();
+  if (GOOGLE_SOURCES.includes(s)) return "google";
+  if (META_SOURCES.includes(s)) return "meta";
+  return null;
+}
+
 /**
  * Rolling profitability builder
  * - Reads raw daily_metrics (shopify revenue/orders/units + paid spend from google/meta)
@@ -503,7 +514,7 @@ export async function POST(req: NextRequest) {
           .eq("client_id", cid)
           .gte("date", startISO)
           .lte("date", endISO)
-          .in("source", ["shopify", "google", "meta"]);
+          .in("source", ["shopify", ...AD_SOURCES]);
         if (mErr) throw mErr;
 
         const coverageByDate: Record<
@@ -687,11 +698,12 @@ export async function POST(req: NextRequest) {
           if (!byDate[d]) byDate[d] = { revenue: 0, orders: 0, units: 0, paidSpend: 0 };
 
           const source = String((r as any).source || "");
+          const adSource = normalizeAdSource(source);
           if (source === "shopify") {
             byDate[d].revenue += n((r as any).revenue);
             byDate[d].orders += n((r as any).orders);
             byDate[d].units += n((r as any).units);
-          } else if (source === "google" || source === "meta") {
+          } else if (adSource) {
             byDate[d].paidSpend += n((r as any).spend);
           }
         }
@@ -832,8 +844,9 @@ export async function POST(req: NextRequest) {
               };
             }
             const source = String((r as any).source || "");
-            if (source === "meta") monthly[m].meta_spend += n((r as any).spend);
-            if (source === "google") monthly[m].google_spend += n((r as any).spend);
+            const adSource = normalizeAdSource(source);
+            if (adSource === "meta") monthly[m].meta_spend += n((r as any).spend);
+            if (adSource === "google") monthly[m].google_spend += n((r as any).spend);
           }
 
           const monthlyUpserts = Object.entries(monthly).map(([m, v]) => {

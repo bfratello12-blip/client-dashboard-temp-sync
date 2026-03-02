@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import createApp from "@shopify/app-bridge";
-import { getSessionToken } from "@shopify/app-bridge-utils";
+import { getSessionToken } from "@shopify/app-bridge/utilities";
 
 type ShopifyBootstrapProps = {
   host?: string;
@@ -14,23 +14,11 @@ export default function ShopifyBootstrap({ host }: ShopifyBootstrapProps) {
 
   const normalizedHost = useMemo(() => {
     const hostValue = host ? (Array.isArray(host) ? host[0] : host) : "";
-    if (hostValue) {
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("shopify.host", hostValue);
-      }
-      return hostValue;
-    }
+    if (hostValue) return hostValue;
 
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      const hostFromQuery = params.get("host") || "";
-      if (hostFromQuery) {
-        window.localStorage.setItem("shopify.host", hostFromQuery);
-        return hostFromQuery;
-      }
-
-      const storedHost = window.localStorage.getItem("shopify.host") || "";
-      if (storedHost) return storedHost;
+      return params.get("host") || "";
     }
 
     return "";
@@ -66,6 +54,12 @@ export default function ShopifyBootstrap({ host }: ShopifyBootstrapProps) {
     const run = async () => {
       setStatus("loading");
       try {
+        console.debug("[AB INIT]", {
+          href: window.location.href,
+          host: normalizedHost,
+          shop: new URLSearchParams(window.location.search).get("shop") || "",
+          inIframe: window.self !== window.top,
+        });
         const app = createApp({
           apiKey,
           host: normalizedHost,

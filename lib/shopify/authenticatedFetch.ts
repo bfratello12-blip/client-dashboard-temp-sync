@@ -1,5 +1,5 @@
 // lib/shopify/authenticatedFetch.ts
-import { getSessionToken } from "@shopify/app-bridge-utils";
+import { getSessionToken } from "@shopify/app-bridge/utilities";
 import createApp from "@shopify/app-bridge";
 
 let app: any | null = null;
@@ -10,13 +10,7 @@ function getApiKey() {
 }
 
 function getHost() {
-  const fromQuery = new URLSearchParams(window.location.search).get("host") || "";
-  if (fromQuery) return fromQuery;
-  try {
-    return window.localStorage.getItem("shopify.host") || "";
-  } catch {
-    return "";
-  }
+  return new URLSearchParams(window.location.search).get("host") || "";
 }
 
 function getAppBridge() {
@@ -33,6 +27,13 @@ function getAppBridge() {
     });
     return null;
   }
+
+  console.debug("[AB INIT]", {
+    href: window.location.href,
+    host,
+    shop: new URLSearchParams(window.location.search).get("shop") || "",
+    inIframe: window.self !== window.top,
+  });
 
   app = createApp({
     apiKey,

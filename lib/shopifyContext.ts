@@ -7,13 +7,5 @@ export function hasShopifyContextClient(): boolean {
   const idToken = params.get("id_token") || "";
   if (shop || host || idToken) return true;
 
-  try {
-    const storedHost = window.localStorage.getItem("shopify.host") || "";
-    if (storedHost) return true;
-  } catch {
-    // ignore storage access issues
-  }
-
-  const cookie = typeof document !== "undefined" ? document.cookie || "" : "";
-  return /(?:^|;\s*)sa_shop=/.test(cookie);
+  return false;
 }

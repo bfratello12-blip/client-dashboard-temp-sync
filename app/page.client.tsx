@@ -2278,12 +2278,11 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         const spend = Number(r.spend || 0);
         const revenue = Number(r.revenue || 0);
         const source = String(r.source || "").toLowerCase();
-        const adSource = normalizeAdSource(source);
-        if (adSource === "meta") {
+        if (source === "meta") {
           metaSpendByDatePrimary[iso] = (metaSpendByDatePrimary[iso] || 0) + spend;
           trackedRevByDatePrimary[iso] = (trackedRevByDatePrimary[iso] || 0) + revenue;
           metaRevByDatePrimary[iso] = (metaRevByDatePrimary[iso] || 0) + revenue;
-        } else if (adSource === "google") {
+        } else if (source === "google") {
           googleSpendByDatePrimary[iso] = (googleSpendByDatePrimary[iso] || 0) + spend;
           trackedRevByDatePrimary[iso] = (trackedRevByDatePrimary[iso] || 0) + revenue;
           googleRevByDatePrimary[iso] = (googleRevByDatePrimary[iso] || 0) + revenue;
@@ -2477,12 +2476,11 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
           const spend = Number(r.spend || 0);
           const revenue = Number(r.revenue || 0);
           const source = String(r.source || "").toLowerCase();
-          const adSource = normalizeAdSource(source);
-          if (adSource === "meta") {
+          if (source === "meta") {
             metaSpendByDateCompare[iso] = (metaSpendByDateCompare[iso] || 0) + spend;
             trackedRevByDateCompare[iso] = (trackedRevByDateCompare[iso] || 0) + revenue;
             metaRevByDateCompare[iso] = (metaRevByDateCompare[iso] || 0) + revenue;
-          } else if (adSource === "google") {
+          } else if (source === "google") {
             googleSpendByDateCompare[iso] = (googleSpendByDateCompare[iso] || 0) + spend;
             trackedRevByDateCompare[iso] = (trackedRevByDateCompare[iso] || 0) + revenue;
             googleRevByDateCompare[iso] = (googleRevByDateCompare[iso] || 0) + revenue;

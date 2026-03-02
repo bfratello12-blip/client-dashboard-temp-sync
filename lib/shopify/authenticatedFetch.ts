@@ -10,7 +10,13 @@ function getApiKey() {
 }
 
 function getHost() {
-  return new URLSearchParams(window.location.search).get("host") || "";
+  const fromQuery = new URLSearchParams(window.location.search).get("host") || "";
+  if (fromQuery) return fromQuery;
+  try {
+    return window.localStorage.getItem("shopify.host") || "";
+  } catch {
+    return "";
+  }
 }
 
 function getAppBridge() {
@@ -21,7 +27,11 @@ function getAppBridge() {
 
   if (!apiKey || !host) {
     // If host is missing, you are NOT in the embedded Shopify Admin URL.
-    throw new Error(`Missing apiKey/host. apiKey=${!!apiKey} host=${!!host}`);
+    console.warn("[app-bridge] Missing apiKey/host; skipping App Bridge init", {
+      hasApiKey: !!apiKey,
+      hasHost: !!host,
+    });
+    return null;
   }
 
   app = createApp({
@@ -35,6 +45,9 @@ function getAppBridge() {
 
 export async function authenticatedFetch(input: string, init: RequestInit = {}) {
   const app = getAppBridge();
+  if (!app) {
+    return fetch(input, init);
+  }
   const token = await getSessionToken(app);
 
   const headers = new Headers(init.headers || {});

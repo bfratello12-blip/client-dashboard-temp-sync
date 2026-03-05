@@ -24,6 +24,7 @@ type ProductPerfRow = {
   uncovered_revenue: number;
   est_cogs: number;
   profit: number;
+  profit_per_unit?: number;
   cogs_coverage_pct: number;
 };
 
@@ -71,15 +72,20 @@ export default function ProductPerformancePage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [limit, setLimit] = useState(100);
+  const [showLossesOnly, setShowLossesOnly] = useState(false);
+
+  const filteredRows = useMemo(() => {
+    return showLossesOnly ? rows.filter((r) => (r.profit ?? 0) < 0) : rows;
+  }, [rows, showLossesOnly]);
 
   const sortedRows = useMemo(() => {
-    return [...rows].sort((a, b) => {
+    return [...filteredRows].sort((a, b) => {
       const aVal: any = (a as any)[sortKey] ?? 0;
       const bVal: any = (b as any)[sortKey] ?? 0;
       if (sortDirection === "asc") return aVal > bVal ? 1 : -1;
       return aVal < bVal ? 1 : -1;
     });
-  }, [rows, sortKey, sortDirection]);
+  }, [filteredRows, sortKey, sortDirection]);
 
   const handleSort = (key: keyof ProductPerfRow) => {
     if (key === sortKey) {
@@ -97,7 +103,7 @@ export default function ProductPerformancePage() {
 
   useEffect(() => {
     setPage(1);
-  }, [rangeValue, sortKey, sortDirection, pageSize, limit]);
+  }, [rangeValue, sortKey, sortDirection, pageSize, limit, showLossesOnly]);
 
   const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
   const pagedRows = useMemo(() => {
@@ -121,7 +127,17 @@ export default function ProductPerformancePage() {
         if (!res.ok || !json?.ok) {
           throw new Error(json?.error || `Request failed (${res.status})`);
         }
-        if (!cancelled) setRows((json?.rows || []) as ProductPerfRow[]);
+        if (!cancelled) {
+          const nextRows = (json?.rows || []).map((row: ProductPerfRow) => {
+            const units = Number(row?.units || 0);
+            const profit = Number(row?.profit || 0);
+            return {
+              ...row,
+              profit_per_unit: units > 0 ? profit / units : 0,
+            } as ProductPerfRow;
+          });
+          setRows(nextRows as ProductPerfRow[]);
+        }
       } catch (e: any) {
         if (!cancelled) setError(e?.message || "Failed to load product performance");
       } finally {
@@ -155,6 +171,15 @@ export default function ProductPerformancePage() {
                 ))}
               </select>
             </div>
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+                checked={showLossesOnly}
+                onChange={(e) => setShowLossesOnly(e.target.checked)}
+              />
+              Show Losing Products
+            </label>
             <DateRangePicker
               value={rangeValue}
               onChange={setRangeValue}
@@ -183,6 +208,9 @@ export default function ProductPerformancePage() {
                     <button className="inline-flex items-center" onClick={() => handleSort("profit")}>Profit{sortIndicator("profit")}</button>
                   </th>
                   <th className="px-3 py-2 text-right">
+                    <button className="inline-flex items-center" onClick={() => handleSort("profit_per_unit")}>Profit / Unit{sortIndicator("profit_per_unit")}</button>
+                  </th>
+                  <th className="px-3 py-2 text-right">
                     <button className="inline-flex items-center" onClick={() => handleSort("cogs_coverage_pct")}>COGS Coverage{sortIndicator("cogs_coverage_pct")}</button>
                   </th>
                 </tr>
@@ -200,7 +228,7 @@ export default function ProductPerformancePage() {
                       {error}
                     </td>
                   </tr>
-                ) : rows.length === 0 ? (
+                ) : filteredRows.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
                       No products found for this range.
@@ -208,7 +236,10 @@ export default function ProductPerformancePage() {
                   </tr>
                 ) : (
                   pagedRows.map((row) => (
-                    <tr key={`${row.variant_id}-${row.inventory_item_id}`}>
+                    <tr
+                      key={`${row.variant_id}-${row.inventory_item_id}`}
+                      className={Number(row.profit || 0) < 0 ? "bg-rose-50" : ""}
+                    >
                       <td className="px-3 py-2">
                         <a
                           href={row.admin_variant_url || row.admin_product_url || undefined}
@@ -249,6 +280,9 @@ export default function ProductPerformancePage() {
                       >
                         {formatCurrency(Number(row.profit || 0))}
                       </td>
+                      <td className="px-3 py-2 text-right text-slate-700">
+                        {formatCurrency(Number(row.profit_per_unit || 0))}
+                      </td>
                       <td className="px-3 py-2 text-right text-slate-700">{formatPct1(Number(row.cogs_coverage_pct || 0))}</td>
                     </tr>
                   ))
@@ -256,7 +290,7 @@ export default function ProductPerformancePage() {
               </tbody>
             </table>
           </div>
-          {!loading && !error && rows.length > 0 ? (
+          {!loading && !error && filteredRows.length > 0 ? (
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
               <div className="flex items-center gap-2">
                 <button

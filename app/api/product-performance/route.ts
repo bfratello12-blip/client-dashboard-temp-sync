@@ -5,6 +5,18 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+type VariantMeta = {
+  product_title?: string;
+  variant_title?: string;
+  sku?: string;
+  image_url?: string;
+  admin_product_url?: string;
+  admin_variant_url?: string;
+};
+
+const VARIANT_META_TTL_MS = 6 * 60 * 60 * 1000;
+const variantMetaCache = new Map<string, { value: VariantMeta; expiresAt: number }>();
+
 function normalizeShopDomain(shop: string) {
   const s = (shop || "").trim().toLowerCase();
   if (!s) return "";
@@ -92,6 +104,28 @@ function gidToVariantId(gid: string) {
   return m?.[1] || gid;
 }
 
+function gidToProductId(gid: string) {
+  const m = gid.match(/Product\/(\d+)/);
+  return m?.[1] || "";
+}
+
+function storeHandleFromShopDomain(shopDomain: string) {
+  const s = String(shopDomain || "").trim().toLowerCase();
+  return s.endsWith(".myshopify.com") ? s.replace(".myshopify.com", "") : "";
+}
+
+function buildAdminUrls(shopDomain: string, productId: string, variantId: string) {
+  const handle = storeHandleFromShopDomain(shopDomain);
+  if (handle) {
+    const productUrl = `https://admin.shopify.com/store/${handle}/products/${productId}`;
+    const variantUrl = `https://admin.shopify.com/store/${handle}/products/${productId}?variant=${variantId}`;
+    return { productUrl, variantUrl };
+  }
+  const productUrl = `https://${shopDomain}/admin/products/${productId}`;
+  const variantUrl = `https://${shopDomain}/admin/products/${productId}?variant=${variantId}`;
+  return { productUrl, variantUrl };
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -147,24 +181,37 @@ export async function GET(req: NextRequest) {
         new Set(rows.map((r) => String(r?.variant_id || "")).filter(Boolean))
       );
 
-      const productByVariant = new Map<string, { title?: string; image?: string }>();
+      const productByVariant = new Map<string, VariantMeta>();
+      const now = Date.now();
+      const toFetch: string[] = [];
+
+      for (const id of variantIds) {
+        const key = `${shopDomain}:${id}`;
+        const cached = variantMetaCache.get(key);
+        if (cached && cached.expiresAt > now) {
+          productByVariant.set(id, cached.value);
+        } else {
+          toFetch.push(id);
+        }
+      }
+
       const chunkSize = 50;
       const query = `
         query Variants($ids: [ID!]!) {
           nodes(ids: $ids) {
             ... on ProductVariant {
               id
-              product {
-                title
-                featuredImage { url }
-              }
+              title
+              sku
+              image { url }
+              product { id title featuredImage { url } }
             }
           }
         }
       `;
 
-      for (let i = 0; i < variantIds.length; i += chunkSize) {
-        const chunk = variantIds.slice(i, i + chunkSize).map(toVariantGid);
+      for (let i = 0; i < toFetch.length; i += chunkSize) {
+        const chunk = toFetch.slice(i, i + chunkSize).map(toVariantGid);
         const data = await shopifyGraphQL({
           shopDomain,
           accessToken,
@@ -175,24 +222,46 @@ export async function GET(req: NextRequest) {
         const nodes = (data?.nodes || []) as any[];
         for (const node of nodes) {
           if (!node?.id) continue;
-          const id = String(node.id);
-          const variantId = gidToVariantId(id);
+          const variantGid = String(node.id);
+          const variantId = gidToVariantId(variantGid);
+          const productId = gidToProductId(String(node?.product?.id || ""));
+          const imageUrl = node?.image?.url || node?.product?.featuredImage?.url || "";
           const title = node?.product?.title || "";
-          const image = node?.product?.featuredImage?.url || "";
-          if (variantId) productByVariant.set(variantId, { title, image });
-          productByVariant.set(id, { title, image });
+          const variantTitle = node?.title || "";
+          const sku = node?.sku || "";
+          const urls = productId
+            ? buildAdminUrls(shopDomain, productId, variantId)
+            : { productUrl: "", variantUrl: "" };
+
+          const meta: VariantMeta = {
+            product_title: title || null,
+            variant_title: variantTitle || null,
+            sku: sku || null,
+            image_url: imageUrl || null,
+            admin_product_url: urls.productUrl || null,
+            admin_variant_url: urls.variantUrl || null,
+          };
+
+          if (variantId) {
+            productByVariant.set(variantId, meta);
+            variantMetaCache.set(`${shopDomain}:${variantId}`, {
+              value: meta,
+              expiresAt: now + VARIANT_META_TTL_MS,
+            });
+          }
         }
       }
 
       for (const r of rows) {
         const rawId = String(r?.variant_id || "");
-        const info =
-          productByVariant.get(rawId) ||
-          productByVariant.get(toVariantGid(rawId)) ||
-          productByVariant.get(gidToVariantId(rawId));
+        const info = productByVariant.get(rawId) || productByVariant.get(gidToVariantId(rawId));
         if (info) {
-          r.product_title = info.title || null;
-          r.product_image = info.image || null;
+          r.product_title = info.product_title || null;
+          r.variant_title = info.variant_title || null;
+          r.sku = info.sku || null;
+          r.image_url = info.image_url || null;
+          r.admin_product_url = info.admin_product_url || null;
+          r.admin_variant_url = info.admin_variant_url || null;
         }
       }
     }

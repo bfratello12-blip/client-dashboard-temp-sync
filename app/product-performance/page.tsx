@@ -12,7 +12,11 @@ type ProductPerfRow = {
   variant_id: string;
   inventory_item_id: string;
   product_title?: string;
-  product_image?: string;
+  variant_title?: string;
+  sku?: string;
+  image_url?: string;
+  admin_product_url?: string;
+  admin_variant_url?: string;
   units: number;
   revenue: number;
   known_cogs: number;
@@ -64,6 +68,9 @@ export default function ProductPerformancePage() {
   const [error, setError] = useState("");
   const [sortKey, setSortKey] = useState<keyof ProductPerfRow>("profit");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [limit, setLimit] = useState(100);
 
   const sortedRows = useMemo(() => {
     return [...rows].sort((a, b) => {
@@ -89,6 +96,16 @@ export default function ProductPerformancePage() {
   };
 
   useEffect(() => {
+    setPage(1);
+  }, [rangeValue, sortKey, sortDirection, pageSize, limit]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
+  const pagedRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return sortedRows.slice(start, start + pageSize);
+  }, [sortedRows, page, pageSize]);
+
+  useEffect(() => {
     let cancelled = false;
     const run = async () => {
       setLoading(true);
@@ -97,7 +114,7 @@ export default function ProductPerformancePage() {
         const params = new URLSearchParams({
           start: rangeValue.startISO,
           end: rangeValue.endISO,
-          limit: "100",
+          limit: String(limit),
         });
         const res = await authenticatedFetch(`/api/product-performance?${params.toString()}`);
         const json = await res.json().catch(() => ({}));
@@ -125,12 +142,26 @@ export default function ProductPerformancePage() {
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">Product Performance</h1>
             <p className="mt-1 text-slate-600">Top 100 variants by estimated profit</p>
           </div>
-          <DateRangePicker
-            value={rangeValue}
-            onChange={setRangeValue}
-            availableMinISO={undefined}
-            availableMaxISO={undefined}
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 text-sm text-slate-600">
+              <span>Top</span>
+              <select
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm"
+                value={limit}
+                onChange={(e) => setLimit(Number(e.target.value))}
+              >
+                {[50, 100, 200, 500].map((v) => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            </div>
+            <DateRangePicker
+              value={rangeValue}
+              onChange={setRangeValue}
+              availableMinISO={undefined}
+              availableMaxISO={undefined}
+            />
+          </div>
         </header>
 
         <section className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
@@ -176,13 +207,18 @@ export default function ProductPerformancePage() {
                     </td>
                   </tr>
                 ) : (
-                  sortedRows.map((row) => (
+                  pagedRows.map((row) => (
                     <tr key={`${row.variant_id}-${row.inventory_item_id}`}>
                       <td className="px-3 py-2">
-                        <div className="flex items-center">
-                          {row.product_image ? (
+                        <a
+                          href={row.admin_variant_url || row.admin_product_url || undefined}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center hover:opacity-80"
+                        >
+                          {row.image_url ? (
                             <img
-                              src={row.product_image}
+                              src={row.image_url}
                               alt={row.product_title || "Product"}
                               className="h-10 w-10 rounded-md object-cover mr-3"
                             />
@@ -191,14 +227,28 @@ export default function ProductPerformancePage() {
                           )}
                           <div>
                             <div className="font-medium text-slate-900">{row.product_title || "Untitled product"}</div>
+                            <div className="text-xs text-slate-500">
+                              {[row.variant_title, row.sku].filter(Boolean).join(" • ")}
+                            </div>
                             <div className="text-xs text-slate-500">{row.variant_id}</div>
                           </div>
-                        </div>
+                        </a>
                       </td>
                       <td className="px-3 py-2 text-right text-slate-700">{Number(row.units || 0).toLocaleString()}</td>
                       <td className="px-3 py-2 text-right text-slate-700">{formatCurrency(Number(row.revenue || 0))}</td>
                       <td className="px-3 py-2 text-right text-slate-700">{formatCurrency(Number(row.est_cogs || 0))}</td>
-                      <td className="px-3 py-2 text-right font-semibold text-slate-900">{formatCurrency(Number(row.profit || 0))}</td>
+                      <td
+                        className={[
+                          "px-3 py-2 text-right font-semibold",
+                          Number(row.profit || 0) > 0
+                            ? "text-green-700"
+                            : Number(row.profit || 0) < 0
+                            ? "text-rose-700"
+                            : "text-slate-700",
+                        ].join(" ")}
+                      >
+                        {formatCurrency(Number(row.profit || 0))}
+                      </td>
                       <td className="px-3 py-2 text-right text-slate-700">{formatPct1(Number(row.cogs_coverage_pct || 0))}</td>
                     </tr>
                   ))
@@ -206,6 +256,39 @@ export default function ProductPerformancePage() {
               </tbody>
             </table>
           </div>
+          {!loading && !error && rows.length > 0 ? (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+              <div className="flex items-center gap-2">
+                <button
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1 disabled:opacity-50"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  Previous
+                </button>
+                <button
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1 disabled:opacity-50"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Next
+                </button>
+                <span>Page {page} of {totalPages}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span>Rows</span>
+                <select
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1"
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                >
+                  {[25, 50, 100].map((v) => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ) : null}
         </section>
       </div>
     </DashboardLayout>

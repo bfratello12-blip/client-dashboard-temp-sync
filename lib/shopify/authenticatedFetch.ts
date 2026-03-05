@@ -50,7 +50,6 @@ function getAppBridge() {
   app = createApp({
     apiKey,
     host,
-    shopOrigin,
     forceRedirect: true,
   });
 

@@ -69,7 +69,7 @@ export default function ShopifyBootstrap({ host }: ShopifyBootstrapProps) {
         const app = createApp({
           apiKey,
           host: normalizedHost,
-          shopOrigin,
+          shop: shopOrigin,
           forceRedirect: true,
         });
         const token = await getSessionToken(app);

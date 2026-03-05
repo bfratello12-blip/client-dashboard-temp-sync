@@ -18,7 +18,12 @@ export default function ShopifyBootstrap({ host }: ShopifyBootstrapProps) {
 
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      return params.get("host") || "";
+      const hostFromQuery = params.get("host") || "";
+      if (hostFromQuery) {
+        window.localStorage.setItem("shopify_host", hostFromQuery);
+        return hostFromQuery;
+      }
+      return window.localStorage.getItem("shopify_host") || "";
     }
 
     return "";
@@ -60,9 +65,11 @@ export default function ShopifyBootstrap({ host }: ShopifyBootstrapProps) {
           shop: new URLSearchParams(window.location.search).get("shop") || "",
           inIframe: window.self !== window.top,
         });
+        const shopOrigin = new URLSearchParams(window.location.search).get("shop") || "";
         const app = createApp({
           apiKey,
           host: normalizedHost,
+          shopOrigin,
           forceRedirect: true,
         });
         const token = await getSessionToken(app);

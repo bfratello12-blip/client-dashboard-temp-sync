@@ -76,6 +76,11 @@ export default function Sidebar({
 
       <nav className="mt-8 space-y-1">
         <NavItem href="/" active={pathname === "/"} label="Dashboard" />
+        <NavItem
+          href="/product-performance"
+          active={pathname?.startsWith("/product-performance")}
+          label="Product Performance"
+        />
         <NavItem href="/settings" active={pathname?.startsWith("/settings")} label="Settings" />
       </nav>
 

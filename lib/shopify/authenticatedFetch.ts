@@ -10,7 +10,18 @@ function getApiKey() {
 }
 
 function getHost() {
-  return new URLSearchParams(window.location.search).get("host") || "";
+  const params = new URLSearchParams(window.location.search);
+  const hostFromQuery = params.get("host") || "";
+  if (hostFromQuery) {
+    window.localStorage.setItem("shopify_host", hostFromQuery);
+    return hostFromQuery;
+  }
+  return window.localStorage.getItem("shopify_host") || "";
+}
+
+function getShopOrigin() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("shop") || "";
 }
 
 function getAppBridge() {
@@ -18,6 +29,7 @@ function getAppBridge() {
 
   const apiKey = getApiKey();
   const host = getHost();
+  const shopOrigin = getShopOrigin();
 
   if (!apiKey || !host) {
     // If host is missing, you are NOT in the embedded Shopify Admin URL.
@@ -31,28 +43,61 @@ function getAppBridge() {
   console.debug("[AB INIT]", {
     href: window.location.href,
     host,
-    shop: new URLSearchParams(window.location.search).get("shop") || "",
+    shop: shopOrigin,
     inIframe: window.self !== window.top,
   });
 
   app = createApp({
     apiKey,
     host,
+    shopOrigin,
     forceRedirect: true,
   });
 
   return app;
 }
 
-export async function authenticatedFetch(input: string, init: RequestInit = {}) {
-  const app = getAppBridge();
-  if (!app) {
-    return fetch(input, init);
+function isSameOriginApiRequest(input: RequestInfo | URL): boolean {
+  try {
+    const href = typeof input === "string" ? input : (input as Request).url || String(input);
+    if (href.startsWith("/api/")) return true;
+    const url = new URL(href, window.location.href);
+    return url.origin === window.location.origin && url.pathname.startsWith("/api/");
+  } catch {
+    return false;
   }
-  const token = await getSessionToken(app);
+}
+
+export async function authenticatedFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+  const sameOriginApi = isSameOriginApiRequest(input);
+  const app = getAppBridge();
+
+  let token = "";
+  if (sameOriginApi && app) {
+    try {
+      token = await getSessionToken(app);
+    } catch (e) {
+      console.warn("[authenticatedFetch] Failed to get session token", e);
+    }
+  } else if (sameOriginApi && !app) {
+    console.warn("[authenticatedFetch] Missing App Bridge instance; token not attached");
+  }
 
   const headers = new Headers(init.headers || {});
-  headers.set("Authorization", `Bearer ${token}`);
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+    if (process.env.NEXT_PUBLIC_DEBUG_AUTH === "1") {
+      console.debug("[authenticatedFetch] attached token", {
+        url: typeof input === "string" ? input : (input as Request).url,
+      });
+    }
+  }
 
-  return fetch(input, { ...init, headers });
+  const finalInit: RequestInit = {
+    ...init,
+    headers,
+    credentials: init.credentials ?? "include",
+  };
+
+  return fetch(input, finalInit);
 }

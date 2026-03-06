@@ -85,7 +85,7 @@ function HeaderTooltip({ text }: { text: string }) {
       >
         i
       </span>
-      <span className="pointer-events-none absolute z-50 w-56 rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700 shadow-lg opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+      <span className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 w-56 -translate-x-1/2 rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700 shadow-lg opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
         {text}
       </span>
     </span>

@@ -103,7 +103,10 @@ query InventoryLevels($ids: [ID!]!) {
       inventoryLevels(first: 250) {
         edges {
           node {
-            availableQuantity
+            quantities(names: ["available"]) {
+              name
+              quantity
+            }
             location { id }
           }
         }
@@ -199,10 +202,12 @@ export async function POST(req: NextRequest) {
         const invId = gidToInventoryItemId(node?.id);
         if (!invId) continue;
         const edges = node?.inventoryLevels?.edges || [];
-        const totalAvailable = edges.reduce(
-          (sum: number, edge: any) => sum + n(edge?.node?.availableQuantity),
-          0
-        );
+        const totalAvailable = edges.reduce((sum: number, edge: any) => {
+          const quantities = edge?.node?.quantities || [];
+          if (!Array.isArray(quantities) || !quantities.length) return sum;
+          const available = quantities.find((q: any) => q?.name === "available");
+          return sum + n(available?.quantity);
+        }, 0);
         availableByInventoryId.set(invId, totalAvailable);
       }
     }

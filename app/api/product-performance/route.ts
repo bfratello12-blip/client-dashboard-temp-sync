@@ -145,7 +145,10 @@ export async function GET(req: NextRequest) {
     const start = (searchParams.get("start") || "").trim();
     const end = (searchParams.get("end") || "").trim();
     const limitRaw = (searchParams.get("limit") || "").trim();
-    const limit = Math.max(1, Math.min(500, Number(limitRaw || 100) || 100));
+    const pageRaw = (searchParams.get("page") || "").trim();
+    const limit = Math.max(1, Number(limitRaw || 100) || 100);
+    const page = Math.max(1, Number(pageRaw || 1) || 1);
+    const offset = (page - 1) * limit;
 
     if (!start || !end || !isIsoDate(start) || !isIsoDate(end)) {
       return NextResponse.json({ ok: false, error: "Invalid or missing start/end" }, { status: 400 });
@@ -179,17 +182,50 @@ export async function GET(req: NextRequest) {
       p_start: start,
       p_end: end,
       p_limit: limit,
+      p_offset: offset,
     });
 
     if (error) {
       return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     }
 
+    const { data: countData, error: countErr } = await supabase.rpc(
+      "get_product_performance_count",
+      {
+        p_client_id: install.client_id,
+        p_start: start,
+        p_end: end,
+      }
+    );
+
+    if (countErr) {
+      return NextResponse.json({ ok: false, error: countErr.message }, { status: 500 });
+    }
+
+    const totalCount = Number(countData || 0);
+
+    const { data: totalsData, error: totalsErr } = await supabase.rpc(
+      "get_product_performance_totals",
+      {
+        p_client_id: install.client_id,
+        p_start: start,
+        p_end: end,
+      }
+    );
+
+    if (totalsErr) {
+      return NextResponse.json({ ok: false, error: totalsErr.message }, { status: 500 });
+    }
+
     const rows = (data || []) as any[];
+    const totalsRow = Array.isArray(totalsData) ? totalsData[0] : totalsData;
+    const totalRevenueAll = Number(totalsRow?.total_revenue || 0);
+    const totalUnitsAll = Number(totalsRow?.total_units || 0);
+    const totalProfitAll = Number(totalsRow?.total_profit || 0);
     const rangeDays = daysInclusive(start, end);
     const prevEnd = addDaysIso(start, -1);
     const prevStart = addDaysIso(prevEnd, -(rangeDays - 1));
-    const prevLimit = Math.min(500, Math.max(limit, 100));
+    const prevLimit = Math.max(limit, 100);
 
     const { data: prevData } = await supabase.rpc("get_product_performance", {
       p_client_id: install.client_id,
@@ -205,8 +241,8 @@ export async function GET(req: NextRequest) {
       if (id) prevByVariant.set(id, r);
     }
 
-    const totalRevenue = rows.reduce((s, r) => s + Number(r?.revenue || 0), 0);
-    const totalUnits = rows.reduce((s, r) => s + Number(r?.units || 0), 0);
+    const totalRevenue = totalRevenueAll;
+    const totalUnits = totalUnitsAll;
 
     for (const r of rows) {
       const revenue = Number(r?.revenue || 0);
@@ -417,6 +453,13 @@ export async function GET(req: NextRequest) {
         range_days: rangeDays,
         total_revenue: totalRevenue,
         total_units: totalUnits,
+        total_profit: totalProfitAll,
+      },
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages: Math.max(1, Math.ceil(totalCount / limit)),
       },
       rows,
     });

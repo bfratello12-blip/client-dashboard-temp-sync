@@ -50,6 +50,13 @@ type PresetKey =
 
 type RangeValue = { mode: "preset" | "custom"; preset?: PresetKey; startISO: string; endISO: string };
 
+type PaginationInfo = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
 function formatCurrency(n: number) {
   return n.toLocaleString(undefined, { style: "currency", currency: "USD" });
 }
@@ -114,11 +121,17 @@ export default function ProductPerformancePage() {
   const [activeFilter, setActiveFilter] = useState<
     "all" | "rising" | "declining" | "low-inventory" | "high-margin" | "losing"
   >("all");
+  const [pagination, setPagination] = useState<PaginationInfo>({
+    page: 1,
+    limit: 25,
+    total: 0,
+    totalPages: 1,
+  });
+  const [totals, setTotals] = useState({ totalRevenue: 0, totalProfit: 0, totalUnits: 0 });
   const [sortKey, setSortKey] = useState<keyof ProductPerfRow>("profit");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const [limit, setLimit] = useState(100);
 
   const filteredRows = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -193,17 +206,17 @@ export default function ProductPerformancePage() {
 
   useEffect(() => {
     setPage(1);
-  }, [rangeValue, sortKey, sortDirection, pageSize, limit, searchTerm, activeFilter]);
+  }, [rangeValue, sortKey, sortDirection, pageSize, searchTerm, activeFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
+  const totalPages = pagination.totalPages || 1;
   const pagedRows = useMemo(() => {
     const start = (page - 1) * pageSize;
     return sortedRows.slice(start, start + pageSize);
   }, [sortedRows, page, pageSize]);
 
   const summary = useMemo(() => {
-    const totalRevenue = rows.reduce((sum, r) => sum + Number(r?.revenue || 0), 0);
-    const totalProfit = rows.reduce((sum, r) => sum + Number(r?.profit || 0), 0);
+    const totalRevenue = totals.totalRevenue;
+    const totalProfit = totals.totalProfit;
     const filteredRevenue = filteredRows.reduce(
       (sum, r) => sum + Number(r?.revenue || 0),
       0
@@ -233,7 +246,8 @@ export default function ProductPerformancePage() {
         const params = new URLSearchParams({
           start: range.startISO,
           end: range.endISO,
-          limit: String(limit),
+          limit: String(pageSize),
+          page: String(page),
         });
         const res = await authenticatedFetch(`/api/product-performance?${params.toString()}`);
         const json = await res.json().catch(() => ({}));
@@ -250,6 +264,17 @@ export default function ProductPerformancePage() {
             } as ProductPerfRow;
           });
           setRows(nextRows as ProductPerfRow[]);
+          setPagination({
+            page: Number(json?.pagination?.page || page),
+            limit: Number(json?.pagination?.limit || pageSize),
+            total: Number(json?.pagination?.total || 0),
+            totalPages: Number(json?.pagination?.totalPages || 1),
+          });
+          setTotals({
+            totalRevenue: Number(json?.meta?.total_revenue || 0),
+            totalProfit: Number(json?.meta?.total_profit || 0),
+            totalUnits: Number(json?.meta?.total_units || 0),
+          });
         }
       } catch (e: any) {
         if (!isCancelled?.()) setError(e?.message || "Failed to load product performance");
@@ -257,7 +282,7 @@ export default function ProductPerformancePage() {
         if (!isCancelled?.()) setLoading(false);
       }
     },
-    [limit]
+    [page, pageSize]
   );
 
   useEffect(() => {
@@ -293,7 +318,8 @@ export default function ProductPerformancePage() {
         <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">Product Performance</h1>
-            <p className="mt-1 text-slate-600">Top 100 variants by estimated profit</p>
+            <p className="mt-1 text-slate-600">Products with sales in the selected date range</p>
+            <p className="mt-1 text-sm text-slate-500">Sorted by profit by default.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <input
@@ -311,18 +337,6 @@ export default function ProductPerformancePage() {
               {syncingInventory ? "Syncing…" : "Sync Inventory"}
             </button>
             {syncMessage ? <span className="text-xs text-slate-500">{syncMessage}</span> : null}
-            <div className="flex items-center gap-2 text-sm text-slate-600">
-              <span>Top</span>
-              <select
-                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm"
-                value={limit}
-                onChange={(e) => setLimit(Number(e.target.value))}
-              >
-                {[50, 100, 200, 500].map((v) => (
-                  <option key={v} value={v}>{v}</option>
-                ))}
-              </select>
-            </div>
             <DateRangePicker
               value={rangeValue}
               onChange={setRangeValue}
@@ -418,6 +432,15 @@ export default function ProductPerformancePage() {
             </div>
           </div>
           <div className="overflow-x-auto">
+            <div className="mb-2 text-xs text-slate-500">
+              {(() => {
+                const filterActive = searchTerm.trim().length > 0 || activeFilter !== "all";
+                if (filterActive) {
+                  return `Showing ${filteredRows.length} of ${rows.length} loaded products (${pagination.total} total with sales)`;
+                }
+                return `Showing ${rows.length} of ${pagination.total} products with sales`;
+              })()}
+            </div>
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-slate-600">

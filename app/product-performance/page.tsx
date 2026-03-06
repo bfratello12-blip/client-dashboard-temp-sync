@@ -204,14 +204,26 @@ export default function ProductPerformancePage() {
   const summary = useMemo(() => {
     const totalRevenue = rows.reduce((sum, r) => sum + Number(r?.revenue || 0), 0);
     const totalProfit = rows.reduce((sum, r) => sum + Number(r?.profit || 0), 0);
-    const avgMargin = totalRevenue > 0 ? totalProfit / totalRevenue : 0;
+    const filteredRevenue = filteredRows.reduce(
+      (sum, r) => sum + Number(r?.revenue || 0),
+      0
+    );
+    const filteredProfit = filteredRows.reduce(
+      (sum, r) => sum + Number(r?.profit || 0),
+      0
+    );
+    const avgMargin = filteredRevenue > 0 ? filteredProfit / filteredRevenue : 0;
+    const revenueCoveragePct = totalRevenue > 0 ? filteredRevenue / totalRevenue : 0;
+    const profitCoveragePct = totalProfit !== 0 ? filteredProfit / totalProfit : 0;
     return {
-      products: rows.length,
-      totalRevenue,
-      totalProfit,
+      products: filteredRows.length,
+      filteredRevenue,
+      filteredProfit,
       avgMargin,
+      revenueCoveragePct,
+      profitCoveragePct,
     };
-  }, [rows]);
+  }, [rows, filteredRows]);
 
   const fetchRows = React.useCallback(
     async (range: RangeValue, isCancelled?: () => boolean) => {
@@ -352,15 +364,23 @@ export default function ProductPerformancePage() {
             </div>
             <div>
               <span className="text-slate-500">Revenue covered:</span>{" "}
-              <span className="font-medium text-slate-800">{formatCurrency(summary.totalRevenue)}</span>
+              <span className="font-medium text-slate-800">{formatCurrency(summary.filteredRevenue)}</span>
             </div>
             <div>
               <span className="text-slate-500">Profit covered:</span>{" "}
-              <span className="font-medium text-slate-800">{formatCurrency(summary.totalProfit)}</span>
+              <span className="font-medium text-slate-800">{formatCurrency(summary.filteredProfit)}</span>
             </div>
             <div>
               <span className="text-slate-500">Avg margin:</span>{" "}
               <span className="font-medium text-slate-800">{formatPct1(summary.avgMargin)}</span>
+            </div>
+            <div>
+              <span className="text-slate-500">% of Revenue:</span>{" "}
+              <span className="font-medium text-slate-800">{formatPct1(summary.revenueCoveragePct)}</span>
+            </div>
+            <div>
+              <span className="text-slate-500">% of Profit:</span>{" "}
+              <span className="font-medium text-slate-800">{formatPct1(summary.profitCoveragePct)}</span>
             </div>
           </div>
           <div className="overflow-x-auto">

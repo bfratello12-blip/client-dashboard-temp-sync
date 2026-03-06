@@ -75,7 +75,11 @@ function last30DaysRange() {
   return { startISO, endISO };
 }
 
-function HeaderTooltip({ text }: { text: string }) {
+function HeaderTooltip({ text, align = "center" }: { text: string; align?: "center" | "right" }) {
+  const positionClass =
+    align === "right"
+      ? "right-0"
+      : "left-1/2 -translate-x-1/2";
   return (
     <span className="relative inline-flex items-center group">
       <span
@@ -85,7 +89,9 @@ function HeaderTooltip({ text }: { text: string }) {
       >
         i
       </span>
-      <span className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 w-56 -translate-x-1/2 rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700 shadow-lg opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+      <span
+        className={`pointer-events-none absolute top-full z-50 mt-2 w-56 rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700 shadow-lg opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 ${positionClass}`}
+      >
         {text}
       </span>
     </span>
@@ -164,6 +170,18 @@ export default function ProductPerformancePage() {
     const start = (page - 1) * pageSize;
     return sortedRows.slice(start, start + pageSize);
   }, [sortedRows, page, pageSize]);
+
+  const summary = useMemo(() => {
+    const totalRevenue = rows.reduce((sum, r) => sum + Number(r?.revenue || 0), 0);
+    const totalProfit = rows.reduce((sum, r) => sum + Number(r?.profit || 0), 0);
+    const avgMargin = totalRevenue > 0 ? totalProfit / totalRevenue : 0;
+    return {
+      products: rows.length,
+      totalRevenue,
+      totalProfit,
+      avgMargin,
+    };
+  }, [rows]);
 
   const fetchRows = React.useCallback(
     async (range: RangeValue, isCancelled?: () => boolean) => {
@@ -275,9 +293,27 @@ export default function ProductPerformancePage() {
         </header>
 
         <section className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <div className="mb-4 flex flex-wrap gap-6 text-sm text-slate-600">
+            <div>
+              <span className="text-slate-500">Products analyzed:</span>{" "}
+              <span className="font-medium text-slate-800">{summary.products.toLocaleString()}</span>
+            </div>
+            <div>
+              <span className="text-slate-500">Revenue covered:</span>{" "}
+              <span className="font-medium text-slate-800">{formatCurrency(summary.totalRevenue)}</span>
+            </div>
+            <div>
+              <span className="text-slate-500">Profit covered:</span>{" "}
+              <span className="font-medium text-slate-800">{formatCurrency(summary.totalProfit)}</span>
+            </div>
+            <div>
+              <span className="text-slate-500">Avg margin:</span>{" "}
+              <span className="font-medium text-slate-800">{formatPct1(summary.avgMargin)}</span>
+            </div>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-white border-b border-slate-200">
                 <tr className="text-left text-slate-600">
                   <th className="px-3 py-2">Product</th>
                   <th className="px-3 py-2 text-right">
@@ -365,12 +401,15 @@ export default function ProductPerformancePage() {
                       <button className="inline-flex items-center" onClick={() => handleSort("cogs_coverage_pct")}>
                         COGS Coverage{sortIndicator("cogs_coverage_pct")}
                       </button>
-                      <HeaderTooltip text="Percent of this product’s revenue covered by known cost data instead of fallback estimates." />
+                      <HeaderTooltip
+                        text="Percent of this product’s revenue covered by known cost data instead of fallback estimates."
+                        align="right"
+                      />
                     </span>
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody>
                 {loading ? (
                   <tr>
                     <td colSpan={12} className="px-3 py-6 text-center text-slate-500">
@@ -393,7 +432,10 @@ export default function ProductPerformancePage() {
                   pagedRows.map((row) => (
                     <tr
                       key={`${row.variant_id}-${row.inventory_item_id}`}
-                      className={Number(row.profit || 0) < 0 ? "bg-rose-50" : ""}
+                      className={[
+                        "hover:bg-slate-50 transition-colors border-b border-slate-200 last:border-b-0",
+                        Number(row.profit || 0) < 0 ? "bg-rose-50" : "",
+                      ].join(" ")}
                     >
                       <td className="px-3 py-2">
                         <a
@@ -426,14 +468,7 @@ export default function ProductPerformancePage() {
                       <td className="px-3 py-2 text-right text-slate-700">{formatPct1(Number(row.revenue_share_pct || 0))}</td>
                       <td className="px-3 py-2 text-right text-slate-700">{formatCurrency(Number(row.est_cogs || 0))}</td>
                       <td
-                        className={[
-                          "px-3 py-2 text-right font-semibold",
-                          Number(row.profit || 0) > 0
-                            ? "text-green-700"
-                            : Number(row.profit || 0) < 0
-                            ? "text-rose-700"
-                            : "text-slate-700",
-                        ].join(" ")}
+                        className="px-3 py-2 text-right font-semibold text-emerald-700"
                       >
                         {formatCurrency(Number(row.profit || 0))}
                       </td>

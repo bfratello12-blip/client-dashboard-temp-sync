@@ -57,6 +57,15 @@ type PaginationInfo = {
   totalPages: number;
 };
 
+type SummaryInfo = {
+  productsAnalyzed: number;
+  revenueCovered: number;
+  profitCovered: number;
+  avgMarginPct: number;
+  revenueCoveragePct: number;
+  profitCoveragePct: number;
+};
+
 function formatCurrency(n: number) {
   return n.toLocaleString(undefined, { style: "currency", currency: "USD" });
 }
@@ -127,45 +136,21 @@ export default function ProductPerformancePage() {
     total: 0,
     totalPages: 1,
   });
-  const [totals, setTotals] = useState({ totalRevenue: 0, totalProfit: 0, totalUnits: 0 });
+  const [summary, setSummary] = useState<SummaryInfo>({
+    productsAnalyzed: 0,
+    revenueCovered: 0,
+    profitCovered: 0,
+    avgMarginPct: 0,
+    revenueCoveragePct: 0,
+    profitCoveragePct: 0,
+  });
   const [sortKey, setSortKey] = useState<keyof ProductPerfRow>("profit");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
-  const filteredRows = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    let next = rows;
-    if (term) {
-      next = next.filter((r) => {
-        const hay = [r.product_title, r.variant_title, r.sku, r.variant_id]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        return hay.includes(term);
-      });
-    }
-
-    switch (activeFilter) {
-      case "rising":
-        return next.filter((r) => Number(r?.trend_pct || 0) > 0);
-      case "declining":
-        return next.filter((r) => Number(r?.trend_pct || 0) < 0);
-      case "low-inventory":
-        return next.filter(
-          (r) => r.days_of_inventory != null && Number(r.days_of_inventory) <= 7
-        );
-      case "high-margin":
-        return next.filter((r) => Number(r?.profit_margin_pct || 0) >= 0.4);
-      case "losing":
-        return next.filter((r) => Number(r?.profit || 0) < 0);
-      default:
-        return next;
-    }
-  }, [rows, searchTerm, activeFilter]);
-
   const sortedRows = useMemo(() => {
-    return [...filteredRows].sort((a, b) => {
+    return [...rows].sort((a, b) => {
       const aRaw: any = (a as any)[sortKey];
       const bRaw: any = (b as any)[sortKey];
 
@@ -188,7 +173,7 @@ export default function ProductPerformancePage() {
       if (sortDirection === "asc") return aVal > bVal ? 1 : -1;
       return aVal < bVal ? 1 : -1;
     });
-  }, [filteredRows, sortKey, sortDirection]);
+  }, [rows, sortKey, sortDirection]);
 
   const handleSort = (key: keyof ProductPerfRow) => {
     if (key === sortKey) {
@@ -211,29 +196,6 @@ export default function ProductPerformancePage() {
   const totalPages = pagination.totalPages || 1;
   const displayedRows = sortedRows;
 
-  const summary = useMemo(() => {
-    const totalRevenue = totals.totalRevenue;
-    const totalProfit = totals.totalProfit;
-    const filteredRevenue = filteredRows.reduce(
-      (sum, r) => sum + Number(r?.revenue || 0),
-      0
-    );
-    const filteredProfit = filteredRows.reduce(
-      (sum, r) => sum + Number(r?.profit || 0),
-      0
-    );
-    const avgMargin = filteredRevenue > 0 ? filteredProfit / filteredRevenue : 0;
-    const revenueCoveragePct = totalRevenue > 0 ? filteredRevenue / totalRevenue : 0;
-    const profitCoveragePct = totalProfit !== 0 ? filteredProfit / totalProfit : 0;
-    return {
-      products: filteredRows.length,
-      filteredRevenue,
-      filteredProfit,
-      avgMargin,
-      revenueCoveragePct,
-      profitCoveragePct,
-    };
-  }, [rows, filteredRows]);
 
   const fetchRows = React.useCallback(
     async (range: RangeValue, isCancelled?: () => boolean) => {
@@ -246,6 +208,17 @@ export default function ProductPerformancePage() {
           limit: String(pageSize),
           page: String(page),
         });
+        const search = searchTerm.trim();
+        if (search) params.set("search", search);
+        const filterMap: Record<string, string> = {
+          all: "all",
+          rising: "rising",
+          declining: "declining",
+          "low-inventory": "low_inventory",
+          "high-margin": "high_margin",
+          losing: "losing_products",
+        };
+        params.set("filter", filterMap[activeFilter] || "all");
         const res = await authenticatedFetch(`/api/product-performance?${params.toString()}`);
         const json = await res.json().catch(() => ({}));
         if (!res.ok || !json?.ok) {
@@ -267,10 +240,13 @@ export default function ProductPerformancePage() {
             total: Number(json?.pagination?.total || 0),
             totalPages: Number(json?.pagination?.totalPages || 1),
           });
-          setTotals({
-            totalRevenue: Number(json?.meta?.total_revenue || 0),
-            totalProfit: Number(json?.meta?.total_profit || 0),
-            totalUnits: Number(json?.meta?.total_units || 0),
+          setSummary({
+            productsAnalyzed: Number(json?.summary?.productsAnalyzed || 0),
+            revenueCovered: Number(json?.summary?.revenueCovered || 0),
+            profitCovered: Number(json?.summary?.profitCovered || 0),
+            avgMarginPct: Number(json?.summary?.avgMarginPct || 0),
+            revenueCoveragePct: Number(json?.summary?.revenueCoveragePct || 0),
+            profitCoveragePct: Number(json?.summary?.profitCoveragePct || 0),
           });
         }
       } catch (e: any) {
@@ -279,7 +255,7 @@ export default function ProductPerformancePage() {
         if (!isCancelled?.()) setLoading(false);
       }
     },
-    [page, pageSize]
+    [page, pageSize, searchTerm, activeFilter]
   );
 
   useEffect(() => {
@@ -374,7 +350,7 @@ export default function ProductPerformancePage() {
                 Products analyzed
               </div>
               <div className="mt-1 text-lg font-semibold text-slate-900">
-                {summary.products.toLocaleString()}
+                {summary.productsAnalyzed.toLocaleString()}
               </div>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-shadow hover:shadow-md">
@@ -382,7 +358,7 @@ export default function ProductPerformancePage() {
                 Revenue covered
               </div>
               <div className="mt-1 text-lg font-semibold text-slate-900">
-                {formatCurrency(summary.filteredRevenue)}
+                {formatCurrency(summary.revenueCovered)}
               </div>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-shadow hover:shadow-md">
@@ -392,10 +368,10 @@ export default function ProductPerformancePage() {
               <div
                 className={[
                   "mt-1 text-lg font-semibold",
-                  summary.filteredProfit >= 0 ? "text-emerald-700" : "text-rose-700",
+                  summary.profitCovered >= 0 ? "text-emerald-700" : "text-rose-700",
                 ].join(" ")}
               >
-                {formatCurrency(summary.filteredProfit)}
+                {formatCurrency(summary.profitCovered)}
               </div>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-shadow hover:shadow-md">
@@ -405,10 +381,10 @@ export default function ProductPerformancePage() {
               <div
                 className={[
                   "mt-1 text-lg font-semibold",
-                  summary.avgMargin >= 0 ? "text-slate-900" : "text-rose-700",
+                  summary.avgMarginPct >= 0 ? "text-slate-900" : "text-rose-700",
                 ].join(" ")}
               >
-                {formatPct1(summary.avgMargin)}
+                {formatPct1(summary.avgMarginPct)}
               </div>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-shadow hover:shadow-md">
@@ -433,7 +409,7 @@ export default function ProductPerformancePage() {
               {(() => {
                 const filterActive = searchTerm.trim().length > 0 || activeFilter !== "all";
                 if (filterActive) {
-                  return `Showing ${filteredRows.length} of ${rows.length} loaded products (${pagination.total} total with sales)`;
+                  return `Showing ${rows.length} of ${pagination.total} matching products`;
                 }
                 return `Showing ${rows.length} of ${pagination.total} products with sales`;
               })()}
@@ -548,7 +524,7 @@ export default function ProductPerformancePage() {
                       {error}
                     </td>
                   </tr>
-                ) : filteredRows.length === 0 ? (
+                ) : rows.length === 0 ? (
                   <tr>
                     <td colSpan={12} className="px-3 py-6 text-center text-slate-500">
                       No products found for this range.
@@ -646,7 +622,7 @@ export default function ProductPerformancePage() {
               </tbody>
             </table>
           </div>
-          {!loading && !error && filteredRows.length > 0 ? (
+          {!loading && !error && rows.length > 0 ? (
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
               <div className="flex items-center gap-2">
                 <button

@@ -146,6 +146,16 @@ export async function GET(req: NextRequest) {
     const end = (searchParams.get("end") || "").trim();
     const limitRaw = (searchParams.get("limit") || "").trim();
     const pageRaw = (searchParams.get("page") || "").trim();
+    const search = (searchParams.get("search") || "").trim().toLowerCase();
+    const filterRaw = (searchParams.get("filter") || "all").trim().toLowerCase();
+    const filter =
+      filterRaw === "rising" ||
+      filterRaw === "declining" ||
+      filterRaw === "low_inventory" ||
+      filterRaw === "high_margin" ||
+      filterRaw === "losing_products"
+        ? filterRaw
+        : "all";
     const limit = Math.max(1, Number(limitRaw || 100) || 100);
     const page = Math.max(1, Number(pageRaw || 1) || 1);
     const offset = (page - 1) * limit;
@@ -177,33 +187,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const { data, error } = await supabase.rpc("get_product_performance", {
-      p_client_id: install.client_id,
-      p_start: start,
-      p_end: end,
-      p_limit: limit,
-      p_offset: offset,
-    });
-
-    if (error) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-    }
-
-    const { data: countData, error: countErr } = await supabase.rpc(
-      "get_product_performance_count",
-      {
-        p_client_id: install.client_id,
-        p_start: start,
-        p_end: end,
-      }
-    );
-
-    if (countErr) {
-      return NextResponse.json({ ok: false, error: countErr.message }, { status: 500 });
-    }
-
-    const totalCount = Number(countData || 0);
-
     const { data: totalsData, error: totalsErr } = await supabase.rpc(
       "get_product_performance_totals",
       {
@@ -217,7 +200,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, error: totalsErr.message }, { status: 500 });
     }
 
-    const rows = (data || []) as any[];
     const totalsRow = Array.isArray(totalsData) ? totalsData[0] : totalsData;
     const totalRevenueAll = Number(totalsRow?.total_revenue || 0);
     const totalUnitsAll = Number(totalsRow?.total_units || 0);
@@ -225,16 +207,31 @@ export async function GET(req: NextRequest) {
     const rangeDays = daysInclusive(start, end);
     const prevEnd = addDaysIso(start, -1);
     const prevStart = addDaysIso(prevEnd, -(rangeDays - 1));
-    const prevLimit = Math.max(limit, 100);
+    const chunkSize = 1000;
+    async function fetchAllPerformance(startISO: string, endISO: string) {
+      const out: any[] = [];
+      for (let off = 0; ; off += chunkSize) {
+        const { data: chunk, error: chunkErr } = await supabase.rpc(
+          "get_product_performance",
+          {
+            p_client_id: install.client_id,
+            p_start: startISO,
+            p_end: endISO,
+            p_limit: chunkSize,
+            p_offset: off,
+          }
+        );
+        if (chunkErr) throw chunkErr;
+        const rowsChunk = (chunk || []) as any[];
+        if (!rowsChunk.length) break;
+        out.push(...rowsChunk);
+        if (rowsChunk.length < chunkSize) break;
+      }
+      return out;
+    }
 
-    const { data: prevData } = await supabase.rpc("get_product_performance", {
-      p_client_id: install.client_id,
-      p_start: prevStart,
-      p_end: prevEnd,
-      p_limit: prevLimit,
-    });
-
-    const prevRows = (prevData || []) as any[];
+    const allRows = await fetchAllPerformance(start, end);
+    const prevRows = await fetchAllPerformance(prevStart, prevEnd);
     const prevByVariant = new Map<string, any>();
     for (const r of prevRows) {
       const id = String(r?.variant_id || "");
@@ -244,7 +241,7 @@ export async function GET(req: NextRequest) {
     const totalRevenue = totalRevenueAll;
     const totalUnits = totalUnitsAll;
 
-    for (const r of rows) {
+    for (const r of allRows) {
       const revenue = Number(r?.revenue || 0);
       const profit = Number(r?.profit || 0);
       const units = Number(r?.units || 0);
@@ -266,21 +263,21 @@ export async function GET(req: NextRequest) {
       r.days_of_inventory = null;
     }
 
-    if (rows.length) {
+    if (allRows.length) {
       const rowVariantIds = Array.from(
-        new Set(rows.map((r) => String(r?.variant_id || "")).filter(Boolean))
+        new Set(allRows.map((r) => String(r?.variant_id || "")).filter(Boolean))
       );
       const rowInventoryItemIds = Array.from(
-        new Set(rows.map((r) => String(r?.inventory_item_id || "")).filter(Boolean))
+        new Set(allRows.map((r) => String(r?.inventory_item_id || "")).filter(Boolean))
       );
 
       const inventoryRows: any[] = [];
-      const chunkSize = 200;
+      const invChunkSize = 200;
 
       if (rowVariantIds.length && rowInventoryItemIds.length) {
-        for (let i = 0; i < Math.max(rowVariantIds.length, rowInventoryItemIds.length); i += chunkSize) {
-          const variantChunk = rowVariantIds.slice(i, i + chunkSize);
-          const invChunk = rowInventoryItemIds.slice(i, i + chunkSize);
+        for (let i = 0; i < Math.max(rowVariantIds.length, rowInventoryItemIds.length); i += invChunkSize) {
+          const variantChunk = rowVariantIds.slice(i, i + invChunkSize);
+          const invChunk = rowInventoryItemIds.slice(i, i + invChunkSize);
           const orParts = [] as string[];
           if (variantChunk.length) orParts.push(`variant_id.in.(${variantChunk.join(",")})`);
           if (invChunk.length) orParts.push(`inventory_item_id.in.(${invChunk.join(",")})`);
@@ -296,8 +293,8 @@ export async function GET(req: NextRequest) {
           if (invData?.length) inventoryRows.push(...invData);
         }
       } else if (rowVariantIds.length) {
-        for (let i = 0; i < rowVariantIds.length; i += chunkSize) {
-          const chunk = rowVariantIds.slice(i, i + chunkSize);
+        for (let i = 0; i < rowVariantIds.length; i += invChunkSize) {
+          const chunk = rowVariantIds.slice(i, i + invChunkSize);
           const { data: invData, error: invErr } = await supabase
             .from("shopify_variant_inventory")
             .select("variant_id, inventory_item_id, available")
@@ -307,8 +304,8 @@ export async function GET(req: NextRequest) {
           if (invData?.length) inventoryRows.push(...invData);
         }
       } else if (rowInventoryItemIds.length) {
-        for (let i = 0; i < rowInventoryItemIds.length; i += chunkSize) {
-          const chunk = rowInventoryItemIds.slice(i, i + chunkSize);
+        for (let i = 0; i < rowInventoryItemIds.length; i += invChunkSize) {
+          const chunk = rowInventoryItemIds.slice(i, i + invChunkSize);
           const { data: invData, error: invErr } = await supabase
             .from("shopify_variant_inventory")
             .select("variant_id, inventory_item_id, available")
@@ -331,7 +328,7 @@ export async function GET(req: NextRequest) {
           if (varId) availableByVariantId.set(varId, Number.isFinite(available) ? available : 0);
         }
 
-        for (const r of rows) {
+        for (const r of allRows) {
           const invId = String(r?.inventory_item_id || "");
           const varId = String(r?.variant_id || "");
           const available =
@@ -353,9 +350,10 @@ export async function GET(req: NextRequest) {
     const shopDomain = (install?.shop_domain || "").trim();
     const accessToken = (install?.access_token || "").trim();
 
-    if (shopDomain && accessToken && rows.length) {
+    const shouldFetchMeta = !!search;
+    if (shopDomain && accessToken && allRows.length && shouldFetchMeta) {
       const variantIds = Array.from(
-        new Set(rows.map((r) => String(r?.variant_id || "")).filter(Boolean))
+        new Set(allRows.map((r) => String(r?.variant_id || "")).filter(Boolean))
       );
 
       const productByVariant = new Map<string, VariantMeta>();
@@ -429,7 +427,137 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      for (const r of rows) {
+      for (const r of allRows) {
+        const rawId = String(r?.variant_id || "");
+        const info = productByVariant.get(rawId) || productByVariant.get(gidToVariantId(rawId));
+        if (info) {
+          r.product_title = info.product_title || null;
+          r.variant_title = info.variant_title || null;
+          r.sku = info.sku || null;
+          r.image_url = info.image_url || null;
+          r.admin_product_url = info.admin_product_url || null;
+          r.admin_variant_url = info.admin_variant_url || null;
+        }
+      }
+    }
+
+    const searchLower = search.toLowerCase();
+    const matchesSearch = (r: any) => {
+      if (!searchLower) return true;
+      const hay = [r.product_title, r.variant_title, r.sku, r.variant_id]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(searchLower);
+    };
+
+    const matchesFilter = (r: any) => {
+      switch (filter) {
+        case "rising":
+          return Number(r?.trend_pct || 0) > 0;
+        case "declining":
+          return Number(r?.trend_pct || 0) < 0;
+        case "low_inventory":
+          return r.days_of_inventory != null && Number(r.days_of_inventory) <= 7;
+        case "high_margin":
+          return Number(r?.profit_margin_pct || 0) >= 0.4;
+        case "losing_products":
+          return Number(r?.profit || 0) < 0;
+        default:
+          return true;
+      }
+    };
+
+    const matchedRows = allRows.filter((r) => matchesSearch(r) && matchesFilter(r));
+
+    const productsAnalyzed = matchedRows.length;
+    const revenueCovered = matchedRows.reduce((s, r) => s + Number(r?.revenue || 0), 0);
+    const profitCovered = matchedRows.reduce((s, r) => s + Number(r?.profit || 0), 0);
+    const avgMarginPct = revenueCovered > 0 ? profitCovered / revenueCovered : 0;
+    const revenueCoveragePct = totalRevenueAll > 0 ? revenueCovered / totalRevenueAll : 0;
+    const profitCoveragePct = totalProfitAll !== 0 ? profitCovered / totalProfitAll : 0;
+
+    const totalCount = productsAnalyzed;
+    const totalPages = Math.max(1, Math.ceil(totalCount / limit));
+    const pageRows = matchedRows.slice(offset, offset + limit);
+
+    if (shopDomain && accessToken && pageRows.length && !shouldFetchMeta) {
+      const variantIds = Array.from(
+        new Set(pageRows.map((r) => String(r?.variant_id || "")).filter(Boolean))
+      );
+
+      const productByVariant = new Map<string, VariantMeta>();
+      const now = Date.now();
+      const toFetch: string[] = [];
+
+      for (const id of variantIds) {
+        const key = `${shopDomain}:${id}`;
+        const cached = variantMetaCache.get(key);
+        if (cached && cached.expiresAt > now) {
+          productByVariant.set(id, cached.value);
+        } else {
+          toFetch.push(id);
+        }
+      }
+
+      const chunkSize = 50;
+      const query = `
+        query Variants($ids: [ID!]!) {
+          nodes(ids: $ids) {
+            ... on ProductVariant {
+              id
+              title
+              sku
+              image { url }
+              product { id title featuredImage { url } }
+            }
+          }
+        }
+      `;
+
+      for (let i = 0; i < toFetch.length; i += chunkSize) {
+        const chunk = toFetch.slice(i, i + chunkSize).map(toVariantGid);
+        const data = await shopifyGraphQL({
+          shopDomain,
+          accessToken,
+          query,
+          variables: { ids: chunk },
+        });
+
+        const nodes = (data?.nodes || []) as any[];
+        for (const node of nodes) {
+          if (!node?.id) continue;
+          const variantGid = String(node.id);
+          const variantId = gidToVariantId(variantGid);
+          const productId = gidToProductId(String(node?.product?.id || ""));
+          const imageUrl = node?.image?.url || node?.product?.featuredImage?.url || "";
+          const title = node?.product?.title || "";
+          const variantTitle = node?.title || "";
+          const sku = node?.sku || "";
+          const urls = productId
+            ? buildAdminUrls(shopDomain, productId, variantId)
+            : { productUrl: "", variantUrl: "" };
+
+          const meta: VariantMeta = {
+            product_title: title || null,
+            variant_title: variantTitle || null,
+            sku: sku || null,
+            image_url: imageUrl || null,
+            admin_product_url: urls.productUrl || null,
+            admin_variant_url: urls.variantUrl || null,
+          };
+
+          if (variantId) {
+            productByVariant.set(variantId, meta);
+            variantMetaCache.set(`${shopDomain}:${variantId}`, {
+              value: meta,
+              expiresAt: now + VARIANT_META_TTL_MS,
+            });
+          }
+        }
+      }
+
+      for (const r of pageRows) {
         const rawId = String(r?.variant_id || "");
         const info = productByVariant.get(rawId) || productByVariant.get(gidToVariantId(rawId));
         if (info) {
@@ -459,9 +587,17 @@ export async function GET(req: NextRequest) {
         page,
         limit,
         total: totalCount,
-        totalPages: Math.max(1, Math.ceil(totalCount / limit)),
+        totalPages,
       },
-      rows,
+      summary: {
+        productsAnalyzed,
+        revenueCovered,
+        profitCovered,
+        avgMarginPct,
+        revenueCoveragePct,
+        profitCoveragePct,
+      },
+      rows: pageRows,
     });
   } catch (e: any) {
     return NextResponse.json(

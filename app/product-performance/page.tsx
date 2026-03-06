@@ -75,6 +75,23 @@ function last30DaysRange() {
   return { startISO, endISO };
 }
 
+function HeaderTooltip({ text }: { text: string }) {
+  return (
+    <span className="relative inline-flex items-center group">
+      <span
+        className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 text-[10px] text-slate-500 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"
+        tabIndex={0}
+        aria-label={text}
+      >
+        i
+      </span>
+      <span className="pointer-events-none absolute z-50 w-56 rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700 shadow-lg opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+        {text}
+      </span>
+    </span>
+  );
+}
+
 export default function ProductPerformancePage() {
   const initialRange = useMemo(() => {
     const { startISO, endISO } = last30DaysRange();
@@ -264,37 +281,92 @@ export default function ProductPerformancePage() {
                 <tr className="text-left text-slate-600">
                   <th className="px-3 py-2">Product</th>
                   <th className="px-3 py-2 text-right">
-                    <button className="inline-flex items-center" onClick={() => handleSort("units")}>Units{sortIndicator("units")}</button>
+                    <span className="inline-flex items-center">
+                      <button className="inline-flex items-center" onClick={() => handleSort("units")}>
+                        Units{sortIndicator("units")}
+                      </button>
+                      <HeaderTooltip text="Units sold in the selected date range." />
+                    </span>
                   </th>
                   <th className="px-3 py-2 text-right">
-                    <button className="inline-flex items-center" onClick={() => handleSort("units_per_day")}>Units/Day{sortIndicator("units_per_day")}</button>
+                    <span className="inline-flex items-center">
+                      <button className="inline-flex items-center" onClick={() => handleSort("units_per_day")}>
+                        Units/Day{sortIndicator("units_per_day")}
+                      </button>
+                      <HeaderTooltip text="Average units sold per day in the selected date range." />
+                    </span>
                   </th>
                   <th className="px-3 py-2 text-right">
-                    <button className="inline-flex items-center" onClick={() => handleSort("revenue")}>Revenue{sortIndicator("revenue")}</button>
+                    <span className="inline-flex items-center">
+                      <button className="inline-flex items-center" onClick={() => handleSort("revenue")}>
+                        Revenue{sortIndicator("revenue")}
+                      </button>
+                      <HeaderTooltip text="Total product revenue in the selected date range." />
+                    </span>
                   </th>
                   <th className="px-3 py-2 text-right">
-                    <button className="inline-flex items-center" onClick={() => handleSort("revenue_share_pct")}>Rev Share{sortIndicator("revenue_share_pct")}</button>
+                    <span className="inline-flex items-center">
+                      <button className="inline-flex items-center" onClick={() => handleSort("revenue_share_pct")}>
+                        Rev Share{sortIndicator("revenue_share_pct")}
+                      </button>
+                      <HeaderTooltip text="This product’s share of total store revenue for the selected date range." />
+                    </span>
                   </th>
                   <th className="px-3 py-2 text-right">
-                    <button className="inline-flex items-center" onClick={() => handleSort("est_cogs")}>Est. COGS{sortIndicator("est_cogs")}</button>
+                    <span className="inline-flex items-center">
+                      <button className="inline-flex items-center" onClick={() => handleSort("est_cogs")}>
+                        Est. COGS{sortIndicator("est_cogs")}
+                      </button>
+                      <HeaderTooltip text="Estimated cost of goods sold based on known unit costs and fallback margin settings." />
+                    </span>
                   </th>
                   <th className="px-3 py-2 text-right">
-                    <button className="inline-flex items-center" onClick={() => handleSort("profit")}>Profit{sortIndicator("profit")}</button>
+                    <span className="inline-flex items-center">
+                      <button className="inline-flex items-center" onClick={() => handleSort("profit")}>
+                        Profit{sortIndicator("profit")}
+                      </button>
+                      <HeaderTooltip text="Revenue minus estimated cost of goods sold." />
+                    </span>
                   </th>
                   <th className="px-3 py-2 text-right">
-                    <button className="inline-flex items-center" onClick={() => handleSort("profit_per_unit")}>Profit / Unit{sortIndicator("profit_per_unit")}</button>
+                    <span className="inline-flex items-center">
+                      <button className="inline-flex items-center" onClick={() => handleSort("profit_per_unit")}>
+                        Profit / Unit{sortIndicator("profit_per_unit")}
+                      </button>
+                      <HeaderTooltip text="Average profit earned per unit sold." />
+                    </span>
                   </th>
                   <th className="px-3 py-2 text-right">
-                    <button className="inline-flex items-center" onClick={() => handleSort("profit_margin_pct")}>Margin{sortIndicator("profit_margin_pct")}</button>
+                    <span className="inline-flex items-center">
+                      <button className="inline-flex items-center" onClick={() => handleSort("profit_margin_pct")}>
+                        Margin{sortIndicator("profit_margin_pct")}
+                      </button>
+                      <HeaderTooltip text="Profit as a percentage of revenue." />
+                    </span>
                   </th>
                   <th className="px-3 py-2 text-right">
-                    <button className="inline-flex items-center" onClick={() => handleSort("trend_pct")}>Trend{sortIndicator("trend_pct")}</button>
+                    <span className="inline-flex items-center">
+                      <button className="inline-flex items-center" onClick={() => handleSort("trend_pct")}>
+                        Trend{sortIndicator("trend_pct")}
+                      </button>
+                      <HeaderTooltip text="Revenue change compared with the previous matching date range." />
+                    </span>
                   </th>
                   <th className="px-3 py-2 text-right">
-                    <button className="inline-flex items-center" onClick={() => handleSort("days_of_inventory")}>Inventory{sortIndicator("days_of_inventory")}</button>
+                    <span className="inline-flex items-center">
+                      <button className="inline-flex items-center" onClick={() => handleSort("days_of_inventory")}>
+                        Inventory{sortIndicator("days_of_inventory")}
+                      </button>
+                      <HeaderTooltip text="Estimated days of inventory remaining, with current units on hand shown in parentheses." />
+                    </span>
                   </th>
                   <th className="px-3 py-2 text-right">
-                    <button className="inline-flex items-center" onClick={() => handleSort("cogs_coverage_pct")}>COGS Coverage{sortIndicator("cogs_coverage_pct")}</button>
+                    <span className="inline-flex items-center">
+                      <button className="inline-flex items-center" onClick={() => handleSort("cogs_coverage_pct")}>
+                        COGS Coverage{sortIndicator("cogs_coverage_pct")}
+                      </button>
+                      <HeaderTooltip text="Percent of this product’s revenue covered by known cost data instead of fallback estimates." />
+                    </span>
                   </th>
                 </tr>
               </thead>

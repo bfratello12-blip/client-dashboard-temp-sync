@@ -26,6 +26,13 @@ type ProductPerfRow = {
   profit: number;
   profit_per_unit?: number;
   cogs_coverage_pct: number;
+  profit_margin_pct?: number;
+  revenue_share_pct?: number;
+  units_per_day?: number;
+  prev_revenue?: number;
+  trend_pct?: number;
+  on_hand_units?: number | null;
+  days_of_inventory?: number | null;
 };
 
 type PresetKey =
@@ -51,6 +58,17 @@ function formatPct1(n: number) {
   return `${(n * 100).toFixed(1)}%`;
 }
 
+function formatPct0(n: number) {
+  return `${(n * 100).toFixed(0)}%`;
+}
+
+function trendLabel(v: number) {
+  if (!Number.isFinite(v)) return { icon: "•", tone: "text-slate-600", value: "0%" };
+  if (Math.abs(v) < 0.005) return { icon: "•", tone: "text-slate-600", value: "0%" };
+  if (v > 0) return { icon: "▲", tone: "text-green-700", value: `+${formatPct1(v)}` };
+  return { icon: "▼", tone: "text-rose-700", value: formatPct1(v) };
+}
+
 function last30DaysRange() {
   const endISO = format(new Date(), "yyyy-MM-dd");
   const startISO = format(subDays(new Date(), 29), "yyyy-MM-dd");
@@ -67,6 +85,8 @@ export default function ProductPerformancePage() {
   const [rows, setRows] = useState<ProductPerfRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [syncingInventory, setSyncingInventory] = useState(false);
+  const [syncMessage, setSyncMessage] = useState("");
   const [sortKey, setSortKey] = useState<keyof ProductPerfRow>("profit");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
@@ -80,8 +100,21 @@ export default function ProductPerformancePage() {
 
   const sortedRows = useMemo(() => {
     return [...filteredRows].sort((a, b) => {
-      const aVal: any = (a as any)[sortKey] ?? 0;
-      const bVal: any = (b as any)[sortKey] ?? 0;
+      const aRaw: any = (a as any)[sortKey];
+      const bRaw: any = (b as any)[sortKey];
+
+      const toNum = (v: any) => (v == null || Number.isNaN(Number(v)) ? 0 : Number(v));
+      let aVal = toNum(aRaw);
+      let bVal = toNum(bRaw);
+
+      if (sortKey === "days_of_inventory") {
+        const aNull = aRaw == null;
+        const bNull = bRaw == null;
+        if (aNull && bNull) return 0;
+        if (aNull) return sortDirection === "asc" ? 1 : -1;
+        if (bNull) return sortDirection === "asc" ? -1 : 1;
+      }
+
       if (sortDirection === "asc") return aVal > bVal ? 1 : -1;
       return aVal < bVal ? 1 : -1;
     });
@@ -111,15 +144,14 @@ export default function ProductPerformancePage() {
     return sortedRows.slice(start, start + pageSize);
   }, [sortedRows, page, pageSize]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
+  const fetchRows = React.useCallback(
+    async (range: RangeValue, isCancelled?: () => boolean) => {
       setLoading(true);
       setError("");
       try {
         const params = new URLSearchParams({
-          start: rangeValue.startISO,
-          end: rangeValue.endISO,
+          start: range.startISO,
+          end: range.endISO,
           limit: String(limit),
         });
         const res = await authenticatedFetch(`/api/product-performance?${params.toString()}`);
@@ -127,7 +159,7 @@ export default function ProductPerformancePage() {
         if (!res.ok || !json?.ok) {
           throw new Error(json?.error || `Request failed (${res.status})`);
         }
-        if (!cancelled) {
+        if (!isCancelled?.()) {
           const nextRows = (json?.rows || []).map((row: ProductPerfRow) => {
             const units = Number(row?.units || 0);
             const profit = Number(row?.profit || 0);
@@ -139,16 +171,40 @@ export default function ProductPerformancePage() {
           setRows(nextRows as ProductPerfRow[]);
         }
       } catch (e: any) {
-        if (!cancelled) setError(e?.message || "Failed to load product performance");
+        if (!isCancelled?.()) setError(e?.message || "Failed to load product performance");
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!isCancelled?.()) setLoading(false);
       }
-    };
-    run();
+    },
+    [limit]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchRows(rangeValue, () => cancelled);
     return () => {
       cancelled = true;
     };
-  }, [rangeValue]);
+  }, [fetchRows, rangeValue]);
+
+  const handleInventorySync = async () => {
+    if (syncingInventory) return;
+    setSyncingInventory(true);
+    setSyncMessage("");
+    try {
+      const res = await authenticatedFetch("/api/inventory/sync", { method: "POST" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || `Sync failed (${res.status})`);
+      }
+      setSyncMessage(`Inventory synced (${Number(json?.updated || 0).toLocaleString()})`);
+      await fetchRows(rangeValue);
+    } catch (e: any) {
+      setSyncMessage(e?.message || "Inventory sync failed");
+    } finally {
+      setSyncingInventory(false);
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -159,6 +215,14 @@ export default function ProductPerformancePage() {
             <p className="mt-1 text-slate-600">Top 100 variants by estimated profit</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <button
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              disabled={syncingInventory}
+              onClick={handleInventorySync}
+            >
+              {syncingInventory ? "Syncing…" : "Sync Inventory"}
+            </button>
+            {syncMessage ? <span className="text-xs text-slate-500">{syncMessage}</span> : null}
             <div className="flex items-center gap-2 text-sm text-slate-600">
               <span>Top</span>
               <select
@@ -199,7 +263,13 @@ export default function ProductPerformancePage() {
                     <button className="inline-flex items-center" onClick={() => handleSort("units")}>Units{sortIndicator("units")}</button>
                   </th>
                   <th className="px-3 py-2 text-right">
+                    <button className="inline-flex items-center" onClick={() => handleSort("units_per_day")}>Units/Day{sortIndicator("units_per_day")}</button>
+                  </th>
+                  <th className="px-3 py-2 text-right">
                     <button className="inline-flex items-center" onClick={() => handleSort("revenue")}>Revenue{sortIndicator("revenue")}</button>
+                  </th>
+                  <th className="px-3 py-2 text-right">
+                    <button className="inline-flex items-center" onClick={() => handleSort("revenue_share_pct")}>Rev Share{sortIndicator("revenue_share_pct")}</button>
                   </th>
                   <th className="px-3 py-2 text-right">
                     <button className="inline-flex items-center" onClick={() => handleSort("est_cogs")}>Est. COGS{sortIndicator("est_cogs")}</button>
@@ -211,6 +281,15 @@ export default function ProductPerformancePage() {
                     <button className="inline-flex items-center" onClick={() => handleSort("profit_per_unit")}>Profit / Unit{sortIndicator("profit_per_unit")}</button>
                   </th>
                   <th className="px-3 py-2 text-right">
+                    <button className="inline-flex items-center" onClick={() => handleSort("profit_margin_pct")}>Margin{sortIndicator("profit_margin_pct")}</button>
+                  </th>
+                  <th className="px-3 py-2 text-right">
+                    <button className="inline-flex items-center" onClick={() => handleSort("trend_pct")}>Trend{sortIndicator("trend_pct")}</button>
+                  </th>
+                  <th className="px-3 py-2 text-right">
+                    <button className="inline-flex items-center" onClick={() => handleSort("days_of_inventory")}>Inventory Days{sortIndicator("days_of_inventory")}</button>
+                  </th>
+                  <th className="px-3 py-2 text-right">
                     <button className="inline-flex items-center" onClick={() => handleSort("cogs_coverage_pct")}>COGS Coverage{sortIndicator("cogs_coverage_pct")}</button>
                   </th>
                 </tr>
@@ -218,19 +297,19 @@ export default function ProductPerformancePage() {
               <tbody className="divide-y divide-slate-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
+                    <td colSpan={12} className="px-3 py-6 text-center text-slate-500">
                       Loading product performance…
                     </td>
                   </tr>
                 ) : error ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-6 text-center text-rose-600">
+                    <td colSpan={12} className="px-3 py-6 text-center text-rose-600">
                       {error}
                     </td>
                   </tr>
                 ) : filteredRows.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
+                    <td colSpan={12} className="px-3 py-6 text-center text-slate-500">
                       No products found for this range.
                     </td>
                   </tr>
@@ -266,7 +345,9 @@ export default function ProductPerformancePage() {
                         </a>
                       </td>
                       <td className="px-3 py-2 text-right text-slate-700">{Number(row.units || 0).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right text-slate-700">{Number(row.units_per_day || 0).toFixed(1)}</td>
                       <td className="px-3 py-2 text-right text-slate-700">{formatCurrency(Number(row.revenue || 0))}</td>
+                      <td className="px-3 py-2 text-right text-slate-700">{formatPct1(Number(row.revenue_share_pct || 0))}</td>
                       <td className="px-3 py-2 text-right text-slate-700">{formatCurrency(Number(row.est_cogs || 0))}</td>
                       <td
                         className={[
@@ -282,6 +363,33 @@ export default function ProductPerformancePage() {
                       </td>
                       <td className="px-3 py-2 text-right text-slate-700">
                         {formatCurrency(Number(row.profit_per_unit || 0))}
+                      </td>
+                      <td className="px-3 py-2 text-right text-slate-700">
+                        {formatPct1(Number(row.profit_margin_pct || 0))}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        {(() => {
+                          const t = trendLabel(Number(row.trend_pct || 0));
+                          return (
+                            <span className={t.tone}>
+                              {t.icon} {t.value}
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td
+                        className={[
+                          "px-3 py-2 text-right",
+                          row.days_of_inventory == null
+                            ? "text-slate-400"
+                            : row.days_of_inventory <= 7
+                            ? "text-rose-700"
+                            : row.days_of_inventory <= 21
+                            ? "text-amber-700"
+                            : "text-slate-700",
+                        ].join(" ")}
+                      >
+                        {row.days_of_inventory == null ? "—" : Number(row.days_of_inventory).toFixed(1)}
                       </td>
                       <td className="px-3 py-2 text-right text-slate-700">{formatPct1(Number(row.cogs_coverage_pct || 0))}</td>
                     </tr>

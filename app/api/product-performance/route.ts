@@ -64,6 +64,19 @@ function isIsoDate(s: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s);
 }
 
+function addDaysIso(iso: string, days: number) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function daysInclusive(startISO: string, endISO: string) {
+  const s = new Date(`${startISO}T00:00:00Z`).getTime();
+  const e = new Date(`${endISO}T00:00:00Z`).getTime();
+  const diff = Math.round((e - s) / (24 * 3600 * 1000));
+  return Math.max(1, diff + 1);
+}
+
 async function shopifyGraphQL(args: {
   shopDomain: string;
   accessToken: string;
@@ -173,6 +186,134 @@ export async function GET(req: NextRequest) {
     }
 
     const rows = (data || []) as any[];
+    const rangeDays = daysInclusive(start, end);
+    const prevEnd = addDaysIso(start, -1);
+    const prevStart = addDaysIso(prevEnd, -(rangeDays - 1));
+    const prevLimit = Math.min(500, Math.max(limit, 100));
+
+    const { data: prevData } = await supabase.rpc("get_product_performance", {
+      p_client_id: install.client_id,
+      p_start: prevStart,
+      p_end: prevEnd,
+      p_limit: prevLimit,
+    });
+
+    const prevRows = (prevData || []) as any[];
+    const prevByVariant = new Map<string, any>();
+    for (const r of prevRows) {
+      const id = String(r?.variant_id || "");
+      if (id) prevByVariant.set(id, r);
+    }
+
+    const totalRevenue = rows.reduce((s, r) => s + Number(r?.revenue || 0), 0);
+    const totalUnits = rows.reduce((s, r) => s + Number(r?.units || 0), 0);
+
+    for (const r of rows) {
+      const revenue = Number(r?.revenue || 0);
+      const profit = Number(r?.profit || 0);
+      const units = Number(r?.units || 0);
+      const prev = prevByVariant.get(String(r?.variant_id || ""));
+      const prevRevenue = Number(prev?.revenue || 0);
+
+      r.profit_margin_pct = revenue > 0 ? profit / revenue : 0;
+      r.revenue_share_pct = totalRevenue > 0 ? revenue / totalRevenue : 0;
+      r.units_per_day = rangeDays > 0 ? units / rangeDays : 0;
+      r.prev_revenue = prevRevenue;
+      r.trend_pct =
+        prevRevenue > 0
+          ? (revenue - prevRevenue) / prevRevenue
+          : revenue > 0
+          ? 1
+          : 0;
+
+      r.on_hand_units = null;
+      r.days_of_inventory = null;
+    }
+
+    if (rows.length) {
+      const rowVariantIds = Array.from(
+        new Set(rows.map((r) => String(r?.variant_id || "")).filter(Boolean))
+      );
+      const rowInventoryItemIds = Array.from(
+        new Set(rows.map((r) => String(r?.inventory_item_id || "")).filter(Boolean))
+      );
+
+      const inventoryRows: any[] = [];
+      const chunkSize = 200;
+
+      if (rowVariantIds.length && rowInventoryItemIds.length) {
+        for (let i = 0; i < Math.max(rowVariantIds.length, rowInventoryItemIds.length); i += chunkSize) {
+          const variantChunk = rowVariantIds.slice(i, i + chunkSize);
+          const invChunk = rowInventoryItemIds.slice(i, i + chunkSize);
+          const orParts = [] as string[];
+          if (variantChunk.length) orParts.push(`variant_id.in.(${variantChunk.join(",")})`);
+          if (invChunk.length) orParts.push(`inventory_item_id.in.(${invChunk.join(",")})`);
+          if (!orParts.length) continue;
+
+          const { data: invData, error: invErr } = await supabase
+            .from("shopify_variant_inventory")
+            .select("variant_id, inventory_item_id, available")
+            .eq("client_id", install.client_id)
+            .or(orParts.join(","));
+
+          if (invErr) throw invErr;
+          if (invData?.length) inventoryRows.push(...invData);
+        }
+      } else if (rowVariantIds.length) {
+        for (let i = 0; i < rowVariantIds.length; i += chunkSize) {
+          const chunk = rowVariantIds.slice(i, i + chunkSize);
+          const { data: invData, error: invErr } = await supabase
+            .from("shopify_variant_inventory")
+            .select("variant_id, inventory_item_id, available")
+            .eq("client_id", install.client_id)
+            .in("variant_id", chunk);
+          if (invErr) throw invErr;
+          if (invData?.length) inventoryRows.push(...invData);
+        }
+      } else if (rowInventoryItemIds.length) {
+        for (let i = 0; i < rowInventoryItemIds.length; i += chunkSize) {
+          const chunk = rowInventoryItemIds.slice(i, i + chunkSize);
+          const { data: invData, error: invErr } = await supabase
+            .from("shopify_variant_inventory")
+            .select("variant_id, inventory_item_id, available")
+            .eq("client_id", install.client_id)
+            .in("inventory_item_id", chunk);
+          if (invErr) throw invErr;
+          if (invData?.length) inventoryRows.push(...invData);
+        }
+      }
+
+      if (inventoryRows.length) {
+        const availableByInventoryId = new Map<string, number>();
+        const availableByVariantId = new Map<string, number>();
+
+        for (const inv of inventoryRows) {
+          const invId = String(inv?.inventory_item_id || "");
+          const varId = String(inv?.variant_id || "");
+          const available = Number(inv?.available);
+          if (invId) availableByInventoryId.set(invId, Number.isFinite(available) ? available : 0);
+          if (varId) availableByVariantId.set(varId, Number.isFinite(available) ? available : 0);
+        }
+
+        for (const r of rows) {
+          const invId = String(r?.inventory_item_id || "");
+          const varId = String(r?.variant_id || "");
+          const available =
+            (invId && availableByInventoryId.has(invId)
+              ? availableByInventoryId.get(invId)
+              : undefined) ??
+            (varId && availableByVariantId.has(varId)
+              ? availableByVariantId.get(varId)
+              : undefined);
+
+          r.on_hand_units = available ?? null;
+          r.days_of_inventory =
+            available != null && Number(r?.units_per_day || 0) > 0
+              ? available / Number(r?.units_per_day || 0)
+              : null;
+        }
+      }
+    }
     const shopDomain = (install?.shop_domain || "").trim();
     const accessToken = (install?.access_token || "").trim();
 
@@ -266,7 +407,19 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ok: true, rows });
+    return NextResponse.json({
+      ok: true,
+      meta: {
+        start,
+        end,
+        prev_start: prevStart,
+        prev_end: prevEnd,
+        range_days: rangeDays,
+        total_revenue: totalRevenue,
+        total_units: totalUnits,
+      },
+      rows,
+    });
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message || String(e) },

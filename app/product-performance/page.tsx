@@ -357,30 +357,64 @@ export default function ProductPerformancePage() {
               </button>
             ))}
           </div>
-          <div className="mb-4 flex flex-wrap gap-6 text-sm text-slate-600">
-            <div>
-              <span className="text-slate-500">Products analyzed:</span>{" "}
-              <span className="font-medium text-slate-800">{summary.products.toLocaleString()}</span>
+          <div className="mb-4 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-shadow hover:shadow-md">
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Products analyzed
+              </div>
+              <div className="mt-1 text-lg font-semibold text-slate-900">
+                {summary.products.toLocaleString()}
+              </div>
             </div>
-            <div>
-              <span className="text-slate-500">Revenue covered:</span>{" "}
-              <span className="font-medium text-slate-800">{formatCurrency(summary.filteredRevenue)}</span>
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-shadow hover:shadow-md">
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Revenue covered
+              </div>
+              <div className="mt-1 text-lg font-semibold text-slate-900">
+                {formatCurrency(summary.filteredRevenue)}
+              </div>
             </div>
-            <div>
-              <span className="text-slate-500">Profit covered:</span>{" "}
-              <span className="font-medium text-slate-800">{formatCurrency(summary.filteredProfit)}</span>
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-shadow hover:shadow-md">
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Profit covered
+              </div>
+              <div
+                className={[
+                  "mt-1 text-lg font-semibold",
+                  summary.filteredProfit >= 0 ? "text-emerald-700" : "text-rose-700",
+                ].join(" ")}
+              >
+                {formatCurrency(summary.filteredProfit)}
+              </div>
             </div>
-            <div>
-              <span className="text-slate-500">Avg margin:</span>{" "}
-              <span className="font-medium text-slate-800">{formatPct1(summary.avgMargin)}</span>
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-shadow hover:shadow-md">
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Avg margin
+              </div>
+              <div
+                className={[
+                  "mt-1 text-lg font-semibold",
+                  summary.avgMargin >= 0 ? "text-slate-900" : "text-rose-700",
+                ].join(" ")}
+              >
+                {formatPct1(summary.avgMargin)}
+              </div>
             </div>
-            <div>
-              <span className="text-slate-500">% of Revenue:</span>{" "}
-              <span className="font-medium text-slate-800">{formatPct1(summary.revenueCoveragePct)}</span>
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-shadow hover:shadow-md">
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                % of Revenue
+              </div>
+              <div className="mt-1 text-lg font-semibold text-slate-900">
+                {formatPct1(summary.revenueCoveragePct)}
+              </div>
             </div>
-            <div>
-              <span className="text-slate-500">% of Profit:</span>{" "}
-              <span className="font-medium text-slate-800">{formatPct1(summary.profitCoveragePct)}</span>
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-shadow hover:shadow-md">
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                % of Profit
+              </div>
+              <div className="mt-1 text-lg font-semibold text-slate-900">
+                {formatPct1(summary.profitCoveragePct)}
+              </div>
             </div>
           </div>
           <div className="overflow-x-auto">

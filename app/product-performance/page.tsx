@@ -209,10 +209,7 @@ export default function ProductPerformancePage() {
   }, [rangeValue, sortKey, sortDirection, pageSize, searchTerm, activeFilter]);
 
   const totalPages = pagination.totalPages || 1;
-  const pagedRows = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return sortedRows.slice(start, start + pageSize);
-  }, [sortedRows, page, pageSize]);
+  const displayedRows = sortedRows;
 
   const summary = useMemo(() => {
     const totalRevenue = totals.totalRevenue;
@@ -558,7 +555,7 @@ export default function ProductPerformancePage() {
                     </td>
                   </tr>
                 ) : (
-                  pagedRows.map((row) => (
+                  displayedRows.map((row) => (
                     <tr
                       key={`${row.variant_id}-${row.inventory_item_id}`}
                       className={[

@@ -110,16 +110,46 @@ export default function ProductPerformancePage() {
   const [error, setError] = useState("");
   const [syncingInventory, setSyncingInventory] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [activeFilter, setActiveFilter] = useState<
+    "all" | "rising" | "declining" | "low-inventory" | "high-margin" | "losing"
+  >("all");
   const [sortKey, setSortKey] = useState<keyof ProductPerfRow>("profit");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [limit, setLimit] = useState(100);
-  const [showLossesOnly, setShowLossesOnly] = useState(false);
 
   const filteredRows = useMemo(() => {
-    return showLossesOnly ? rows.filter((r) => (r.profit ?? 0) < 0) : rows;
-  }, [rows, showLossesOnly]);
+    const term = searchTerm.trim().toLowerCase();
+    let next = rows;
+    if (term) {
+      next = next.filter((r) => {
+        const hay = [r.product_title, r.variant_title, r.sku, r.variant_id]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(term);
+      });
+    }
+
+    switch (activeFilter) {
+      case "rising":
+        return next.filter((r) => Number(r?.trend_pct || 0) > 0);
+      case "declining":
+        return next.filter((r) => Number(r?.trend_pct || 0) < 0);
+      case "low-inventory":
+        return next.filter(
+          (r) => r.days_of_inventory != null && Number(r.days_of_inventory) <= 7
+        );
+      case "high-margin":
+        return next.filter((r) => Number(r?.profit_margin_pct || 0) >= 0.4);
+      case "losing":
+        return next.filter((r) => Number(r?.profit || 0) < 0);
+      default:
+        return next;
+    }
+  }, [rows, searchTerm, activeFilter]);
 
   const sortedRows = useMemo(() => {
     return [...filteredRows].sort((a, b) => {
@@ -163,7 +193,7 @@ export default function ProductPerformancePage() {
 
   useEffect(() => {
     setPage(1);
-  }, [rangeValue, sortKey, sortDirection, pageSize, limit, showLossesOnly]);
+  }, [rangeValue, sortKey, sortDirection, pageSize, limit, searchTerm, activeFilter]);
 
   const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
   const pagedRows = useMemo(() => {
@@ -254,6 +284,13 @@ export default function ProductPerformancePage() {
             <p className="mt-1 text-slate-600">Top 100 variants by estimated profit</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <input
+              type="search"
+              className="w-64 rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm text-slate-700 placeholder:text-slate-400"
+              placeholder="Search products, SKU, or variant ID"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
             <button
               className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
               disabled={syncingInventory}
@@ -274,15 +311,6 @@ export default function ProductPerformancePage() {
                 ))}
               </select>
             </div>
-            <label className="flex items-center gap-2 text-sm text-slate-600">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
-                checked={showLossesOnly}
-                onChange={(e) => setShowLossesOnly(e.target.checked)}
-              />
-              Show Losing Products
-            </label>
             <DateRangePicker
               value={rangeValue}
               onChange={setRangeValue}
@@ -293,6 +321,30 @@ export default function ProductPerformancePage() {
         </header>
 
         <section className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            {([
+              { key: "all", label: "All Products" },
+              { key: "rising", label: "Rising" },
+              { key: "declining", label: "Declining" },
+              { key: "low-inventory", label: "Low Inventory" },
+              { key: "high-margin", label: "High Margin" },
+              { key: "losing", label: "Losing Products" },
+            ] as const).map((chip) => (
+              <button
+                key={chip.key}
+                type="button"
+                onClick={() => setActiveFilter(chip.key)}
+                className={[
+                  "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                  activeFilter === chip.key
+                    ? "border-slate-500 bg-slate-100 text-slate-800"
+                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                ].join(" ")}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
           <div className="mb-4 flex flex-wrap gap-6 text-sm text-slate-600">
             <div>
               <span className="text-slate-500">Products analyzed:</span>{" "}

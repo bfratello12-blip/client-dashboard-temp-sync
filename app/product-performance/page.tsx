@@ -108,11 +108,15 @@ export default function ProductPerformancePage() {
       let bVal = toNum(bRaw);
 
       if (sortKey === "days_of_inventory") {
-        const aNull = aRaw == null;
-        const bNull = bRaw == null;
-        if (aNull && bNull) return 0;
-        if (aNull) return sortDirection === "asc" ? 1 : -1;
-        if (bNull) return sortDirection === "asc" ? -1 : 1;
+        const normalize = (row: ProductPerfRow) => {
+          if (row.days_of_inventory != null) return Number(row.days_of_inventory);
+          if (row.on_hand_units != null) {
+            return sortDirection === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+          }
+          return sortDirection === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+        };
+        aVal = normalize(a);
+        bVal = normalize(b);
       }
 
       if (sortDirection === "asc") return aVal > bVal ? 1 : -1;
@@ -287,7 +291,7 @@ export default function ProductPerformancePage() {
                     <button className="inline-flex items-center" onClick={() => handleSort("trend_pct")}>Trend{sortIndicator("trend_pct")}</button>
                   </th>
                   <th className="px-3 py-2 text-right">
-                    <button className="inline-flex items-center" onClick={() => handleSort("days_of_inventory")}>Inventory Days{sortIndicator("days_of_inventory")}</button>
+                    <button className="inline-flex items-center" onClick={() => handleSort("days_of_inventory")}>Inventory{sortIndicator("days_of_inventory")}</button>
                   </th>
                   <th className="px-3 py-2 text-right">
                     <button className="inline-flex items-center" onClick={() => handleSort("cogs_coverage_pct")}>COGS Coverage{sortIndicator("cogs_coverage_pct")}</button>
@@ -381,7 +385,7 @@ export default function ProductPerformancePage() {
                         className={[
                           "px-3 py-2 text-right",
                           row.days_of_inventory == null
-                            ? "text-slate-400"
+                            ? "text-slate-500"
                             : row.days_of_inventory <= 7
                             ? "text-rose-700"
                             : row.days_of_inventory <= 21
@@ -389,7 +393,18 @@ export default function ProductPerformancePage() {
                             : "text-slate-700",
                         ].join(" ")}
                       >
-                        {row.days_of_inventory == null ? "—" : Number(row.days_of_inventory).toFixed(1)}
+                        {(() => {
+                          const days = row.days_of_inventory;
+                          const onHand = row.on_hand_units;
+                          if (days != null && onHand != null) {
+                            const daysRounded = days < 10 ? days.toFixed(1) : days.toFixed(0);
+                            return `${daysRounded}d (${Number(onHand).toLocaleString()})`;
+                          }
+                          if (days == null && onHand != null) {
+                            return `(${Number(onHand).toLocaleString()})`;
+                          }
+                          return "—";
+                        })()}
                       </td>
                       <td className="px-3 py-2 text-right text-slate-700">{formatPct1(Number(row.cogs_coverage_pct || 0))}</td>
                     </tr>

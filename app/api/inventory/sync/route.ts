@@ -103,7 +103,7 @@ query InventoryLevels($ids: [ID!]!) {
       inventoryLevels(first: 250) {
         edges {
           node {
-            available
+            availableQuantity
             location { id }
           }
         }
@@ -200,7 +200,7 @@ export async function POST(req: NextRequest) {
         if (!invId) continue;
         const edges = node?.inventoryLevels?.edges || [];
         const totalAvailable = edges.reduce(
-          (sum: number, edge: any) => sum + n(edge?.node?.available),
+          (sum: number, edge: any) => sum + n(edge?.node?.availableQuantity),
           0
         );
         availableByInventoryId.set(invId, totalAvailable);

@@ -157,12 +157,11 @@ export default function ProductPerformancePage() {
 
 
   const handleSort = (key: keyof ProductPerfRow) => {
-    if (key === sortKey) {
-      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDirection("desc");
-    }
+    const nextDir = key === sortKey ? (sortDirection === "desc" ? "asc" : "desc") : "desc";
+    console.debug("[product-performance] sort", { sortKey: key, sortDir: nextDir });
+    setPage(1);
+    setSortKey(key);
+    setSortDirection(nextDir);
   };
 
   const sortIndicator = (key: keyof ProductPerfRow) => {
@@ -202,12 +201,20 @@ export default function ProductPerformancePage() {
           losing: "losing_products",
         };
         params.set("filter", filterMap[activeFilter] || "all");
-        const res = await authenticatedFetch(`/api/product-performance?${params.toString()}`);
+        const url = `/api/product-performance?${params.toString()}`;
+        console.debug("[product-performance] fetch", { url });
+        const res = await authenticatedFetch(url);
         const json = await res.json().catch(() => ({}));
         if (!res.ok || !json?.ok) {
           throw new Error(json?.error || `Request failed (${res.status})`);
         }
         if (!isCancelled?.()) {
+          console.debug("[product-performance] response", {
+            sample: (json?.rows || []).slice(0, 3).map((row: ProductPerfRow) => ({
+              variant_id: row?.variant_id,
+              profit: row?.profit,
+            })),
+          });
           const nextRows = (json?.rows || []).map((row: ProductPerfRow) => {
             const units = Number(row?.units || 0);
             const profit = Number(row?.profit || 0);
@@ -238,7 +245,7 @@ export default function ProductPerformancePage() {
         if (!isCancelled?.()) setLoading(false);
       }
     },
-    [page, pageSize, searchTerm, activeFilter]
+    [page, pageSize, searchTerm, activeFilter, sortKey, sortDirection]
   );
 
   useEffect(() => {

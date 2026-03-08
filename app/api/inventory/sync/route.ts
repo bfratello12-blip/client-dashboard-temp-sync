@@ -63,6 +63,12 @@ function n(v: any): number {
   return Number.isFinite(x) ? x : 0;
 }
 
+function toSafeAvailable(v: any): number {
+  const num = Number(v ?? 0);
+  if (!Number.isFinite(num)) return 0;
+  return Math.max(0, Math.floor(num));
+}
+
 async function shopifyGraphQL(args: {
   shopDomain: string;
   accessToken: string;
@@ -185,6 +191,16 @@ export async function POST(req: NextRequest) {
     }
 
     const availableByInventoryId = new Map<string, number>();
+    const missingInventoryIds = new Set<string>();
+    const logMissing = (invId: string, reason: string) => {
+      if (!invId || missingInventoryIds.has(invId)) return;
+      missingInventoryIds.add(invId);
+      console.warn("[inventory/sync] missing inventory data", {
+        inventory_item_id: invId,
+        variant_id: invToVariant.get(invId) ?? null,
+        reason,
+      });
+    };
     const chunkSize = 75;
 
     for (let i = 0; i < uniqueIds.length; i += chunkSize) {
@@ -201,27 +217,62 @@ export async function POST(req: NextRequest) {
         if (!node || node.__typename !== "InventoryItem") continue;
         const invId = gidToInventoryItemId(node?.id);
         if (!invId) continue;
-        const edges = node?.inventoryLevels?.edges || [];
-        const totalAvailable = edges.reduce((sum: number, edge: any) => {
-          const quantities = edge?.node?.quantities || [];
-          if (!Array.isArray(quantities) || !quantities.length) return sum;
-          const available = quantities.find((q: any) => q?.name === "available");
-          return sum + n(available?.quantity);
-        }, 0);
-        availableByInventoryId.set(invId, totalAvailable);
+        const edges = node?.inventoryLevels?.edges;
+        if (!Array.isArray(edges) || edges.length === 0) {
+          logMissing(invId, "missing_inventory_levels");
+          availableByInventoryId.set(invId, 0);
+          continue;
+        }
+
+        let totalAvailable = 0;
+        let hadAvailable = false;
+
+        for (const edge of edges) {
+          const quantities = edge?.node?.quantities;
+          if (!Array.isArray(quantities) || quantities.length === 0) {
+            logMissing(invId, "missing_quantities");
+            continue;
+          }
+          const availableEntry = quantities.find((q: any) => q?.name === "available");
+          if (!availableEntry) {
+            logMissing(invId, "missing_available_entry");
+            continue;
+          }
+          const qtyRaw = Number(availableEntry?.quantity ?? 0);
+          if (!Number.isFinite(qtyRaw)) {
+            logMissing(invId, "invalid_quantity");
+            continue;
+          }
+          hadAvailable = true;
+          totalAvailable += qtyRaw;
+        }
+
+        if (!hadAvailable) {
+          logMissing(invId, "no_available_quantities");
+          totalAvailable = 0;
+        }
+
+        availableByInventoryId.set(invId, toSafeAvailable(totalAvailable));
       }
     }
 
     const now = new Date().toISOString();
-    const upsertRows = uniqueIds.map((invId) => ({
+    const upsertRows = uniqueIds.map((invId) => {
+      const rawAvailable = availableByInventoryId.has(invId)
+        ? availableByInventoryId.get(invId)
+        : null;
+      if (!availableByInventoryId.has(invId)) {
+        logMissing(invId, "missing_inventory_item_node");
+      }
+      const safeAvailable = toSafeAvailable(rawAvailable);
+      return {
       client_id: clientId,
       variant_id: invToVariant.get(invId) ?? null,
       inventory_item_id: invId,
-      available: availableByInventoryId.has(invId)
-        ? availableByInventoryId.get(invId)
-        : null,
+      available: safeAvailable,
       updated_at: now,
-    }));
+      };
+    });
 
     let rowsUpserted = 0;
     const upsertChunk = 500;

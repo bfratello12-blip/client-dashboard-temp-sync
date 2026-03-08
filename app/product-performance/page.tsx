@@ -78,6 +78,12 @@ function formatPct0(n: number) {
   return `${(n * 100).toFixed(0)}%`;
 }
 
+function getValueColor(value: number) {
+  if (value > 0) return "text-green-600";
+  if (value < 0) return "text-red-600";
+  return "text-gray-600";
+}
+
 function trendLabel(v: number) {
   if (!Number.isFinite(v)) return { icon: "•", tone: "text-slate-600", value: "0%" };
   if (Math.abs(v) < 0.005) return { icon: "•", tone: "text-slate-600", value: "0%" };
@@ -569,16 +575,20 @@ export default function ProductPerformancePage() {
                       <td className="px-3 py-2 text-center text-slate-700">{formatCurrency(Number(row.revenue || 0))}</td>
                       <td className="px-3 py-2 text-center text-slate-700">{formatPct1(Number(row.revenue_share_pct || 0))}</td>
                       <td className="px-3 py-2 text-center text-slate-700">{formatCurrency(Number(row.est_cogs || 0))}</td>
-                      <td
-                        className="px-3 py-2 text-center font-semibold text-emerald-700"
-                      >
-                        {formatCurrency(Number(row.profit || 0))}
+                      <td className="px-3 py-2 text-center font-semibold">
+                        <span className={getValueColor(Number(row.profit || 0))}>
+                          {formatCurrency(Number(row.profit || 0))}
+                        </span>
                       </td>
-                      <td className="px-3 py-2 text-center text-slate-700">
-                        {formatCurrency(Number(row.profit_per_unit || 0))}
+                      <td className="px-3 py-2 text-center">
+                        <span className={getValueColor(Number(row.profit_per_unit || 0))}>
+                          {formatCurrency(Number(row.profit_per_unit || 0))}
+                        </span>
                       </td>
-                      <td className="px-3 py-2 text-center text-slate-700">
-                        {formatPct1(Number(row.profit_margin_pct || 0))}
+                      <td className="px-3 py-2 text-center">
+                        <span className={getValueColor(Number(row.profit_margin_pct || 0))}>
+                          {formatPct1(Number(row.profit_margin_pct || 0))}
+                        </span>
                       </td>
                       <td className="px-3 py-2 text-center">
                         {(() => {

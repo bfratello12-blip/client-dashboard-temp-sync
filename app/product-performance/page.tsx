@@ -155,31 +155,6 @@ export default function ProductPerformancePage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
-  const sortedRows = useMemo(() => {
-    return [...rows].sort((a, b) => {
-      const aRaw: any = (a as any)[sortKey];
-      const bRaw: any = (b as any)[sortKey];
-
-      const toNum = (v: any) => (v == null || Number.isNaN(Number(v)) ? 0 : Number(v));
-      let aVal = toNum(aRaw);
-      let bVal = toNum(bRaw);
-
-      if (sortKey === "days_of_inventory") {
-        const normalize = (row: ProductPerfRow) => {
-          if (row.days_of_inventory != null) return Number(row.days_of_inventory);
-          if (row.on_hand_units != null) {
-            return sortDirection === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
-          }
-          return sortDirection === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
-        };
-        aVal = normalize(a);
-        bVal = normalize(b);
-      }
-
-      if (sortDirection === "asc") return aVal > bVal ? 1 : -1;
-      return aVal < bVal ? 1 : -1;
-    });
-  }, [rows, sortKey, sortDirection]);
 
   const handleSort = (key: keyof ProductPerfRow) => {
     if (key === sortKey) {
@@ -200,7 +175,7 @@ export default function ProductPerformancePage() {
   }, [rangeValue, sortKey, sortDirection, pageSize, searchTerm, activeFilter]);
 
   const totalPages = pagination.totalPages || 1;
-  const displayedRows = sortedRows;
+  const displayedRows = rows;
 
 
   const fetchRows = React.useCallback(
@@ -214,6 +189,8 @@ export default function ProductPerformancePage() {
           limit: String(pageSize),
           page: String(page),
         });
+        params.set("sortKey", String(sortKey));
+        params.set("sortDir", String(sortDirection));
         const search = searchTerm.trim();
         if (search) params.set("search", search);
         const filterMap: Record<string, string> = {

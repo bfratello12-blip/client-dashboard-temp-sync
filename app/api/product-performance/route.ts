@@ -146,6 +146,8 @@ export async function GET(req: NextRequest) {
     const end = (searchParams.get("end") || "").trim();
     const limitRaw = (searchParams.get("limit") || "").trim();
     const pageRaw = (searchParams.get("page") || "").trim();
+    const sortKeyRaw = (searchParams.get("sortKey") || "").trim();
+    const sortDirRaw = (searchParams.get("sortDir") || "").trim().toLowerCase();
     const search = (searchParams.get("search") || "").trim().toLowerCase();
     const filterRaw = (searchParams.get("filter") || "all").trim().toLowerCase();
     const filter =
@@ -159,6 +161,23 @@ export async function GET(req: NextRequest) {
     const limit = Math.max(1, Number(limitRaw || 100) || 100);
     const page = Math.max(1, Number(pageRaw || 1) || 1);
     const offset = (page - 1) * limit;
+
+    const allowedSortKeys = new Set([
+      "units",
+      "units_per_day",
+      "revenue",
+      "revenue_share_pct",
+      "est_cogs",
+      "profit",
+      "profit_per_unit",
+      "profit_margin_pct",
+      "trend_pct",
+      "days_of_inventory",
+      "cogs_coverage_pct",
+    ]);
+
+    const sortKey = allowedSortKeys.has(sortKeyRaw) ? sortKeyRaw : "profit";
+    const sortDir = sortDirRaw === "asc" ? "asc" : "desc";
 
     if (!start || !end || !isIsoDate(start) || !isIsoDate(end)) {
       return NextResponse.json({ ok: false, error: "Invalid or missing start/end" }, { status: 400 });
@@ -251,6 +270,7 @@ export async function GET(req: NextRequest) {
       r.profit_margin_pct = revenue > 0 ? profit / revenue : 0;
       r.revenue_share_pct = totalRevenue > 0 ? revenue / totalRevenue : 0;
       r.units_per_day = rangeDays > 0 ? units / rangeDays : 0;
+      r.profit_per_unit = units > 0 ? profit / units : 0;
       r.prev_revenue = prevRevenue;
       r.trend_pct =
         prevRevenue > 0
@@ -470,6 +490,24 @@ export async function GET(req: NextRequest) {
 
     const matchedRows = allRows.filter((r) => matchesSearch(r) && matchesFilter(r));
 
+    const toNum = (v: any) => (v == null || Number.isNaN(Number(v)) ? 0 : Number(v));
+    const sortedRows = [...matchedRows].sort((a, b) => {
+      if (sortKey === "days_of_inventory") {
+        const aVal = a.days_of_inventory;
+        const bVal = b.days_of_inventory;
+        if (aVal == null && bVal == null) return 0;
+        if (aVal == null) return 1;
+        if (bVal == null) return -1;
+        if (sortDir === "asc") return Number(aVal) > Number(bVal) ? 1 : -1;
+        return Number(aVal) < Number(bVal) ? 1 : -1;
+      }
+
+      const aVal = toNum((a as any)[sortKey]);
+      const bVal = toNum((b as any)[sortKey]);
+      if (sortDir === "asc") return aVal > bVal ? 1 : -1;
+      return aVal < bVal ? 1 : -1;
+    });
+
     const productsAnalyzed = matchedRows.length;
     const revenueCovered = matchedRows.reduce((s, r) => s + Number(r?.revenue || 0), 0);
     const profitCovered = matchedRows.reduce((s, r) => s + Number(r?.profit || 0), 0);
@@ -479,7 +517,7 @@ export async function GET(req: NextRequest) {
 
     const totalCount = productsAnalyzed;
     const totalPages = Math.max(1, Math.ceil(totalCount / limit));
-    const pageRows = matchedRows.slice(offset, offset + limit);
+    const pageRows = sortedRows.slice(offset, offset + limit);
 
     if (shopDomain && accessToken && pageRows.length && !shouldFetchMeta) {
       const variantIds = Array.from(

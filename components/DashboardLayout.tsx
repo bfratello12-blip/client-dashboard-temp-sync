@@ -43,8 +43,10 @@ export default function DashboardLayout({ children, skipSupabaseAuth }: Dashboar
 
   useEffect(() => {
     const checkAuth = async () => {
-      const bypass = Boolean(skipSupabaseAuth) || hasShopifyContextClient();
-      if (bypass) {
+      const isEmbedded = Boolean(skipSupabaseAuth) || hasShopifyContextClient();
+      console.log("Embedded Shopify context:", isEmbedded);
+      console.log("Client ID resolved:", clientId);
+      if (isEmbedded) {
         setLoading(false);
         return;
       }
@@ -82,11 +84,12 @@ export default function DashboardLayout({ children, skipSupabaseAuth }: Dashboar
         }
       }
 
+      console.log("Client ID resolved:", cid || "");
       setLoading(false);
     };
 
     checkAuth();
-  }, [router]);
+  }, [router, skipSupabaseAuth, clientId]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();

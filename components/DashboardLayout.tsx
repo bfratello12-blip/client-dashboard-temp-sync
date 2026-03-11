@@ -1,9 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
-import { hasShopifyContextClient } from "@/lib/shopifyContext";
+import React, { useState } from "react";
 import Sidebar from "@/components/Sidebar";
 
 interface DashboardLayoutProps {
@@ -12,10 +9,9 @@ interface DashboardLayoutProps {
 }
 
 export default function DashboardLayout({ children, skipSupabaseAuth }: DashboardLayoutProps) {
-  const router = useRouter();
-  const [clientId, setClientId] = useState<string>("");
-  const [clientName, setClientName] = useState<string>("");
-  const [loading, setLoading] = useState(true);
+  void skipSupabaseAuth;
+  const [clientName] = useState<string>("");
+  const [loading] = useState(false);
 
   // Mock data health values - these would normally come from the main dashboard state
   const [dataHealth] = useState({
@@ -40,61 +36,6 @@ export default function DashboardLayout({ children, skipSupabaseAuth }: Dashboar
   const [compareCoverageLabel] = useState("100%");
   const [effectiveShowComparison] = useState(false);
   const [lastSalesDateISO] = useState("");
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      const isEmbedded = Boolean(skipSupabaseAuth) || hasShopifyContextClient();
-      console.log("Embedded Shopify context:", isEmbedded);
-      console.log("Client ID resolved:", clientId);
-      if (isEmbedded) {
-        setLoading(false);
-        return;
-      }
-      const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
-      if (sessionErr) {
-        console.error(sessionErr);
-        router.push("/login");
-        return;
-      }
-
-      const userId = sessionData.session?.user?.id;
-      if (!userId) {
-        router.push("/login");
-        return;
-      }
-
-      const { data: mapping, error: mapErr } = await supabase
-        .from("user_clients")
-        .select("client_id")
-        .eq("user_id", userId)
-        .limit(1);
-
-      if (mapErr) {
-        console.error(mapErr);
-        return;
-      }
-
-      const cid = mapping?.[0]?.client_id as string | undefined;
-      if (cid) {
-        setClientId(cid);
-
-        const { data: clientRow } = await supabase.from("clients").select("name").eq("id", cid).limit(1);
-        if (clientRow?.[0]?.name) {
-          setClientName(clientRow[0].name);
-        }
-      }
-
-      console.log("Client ID resolved:", cid || "");
-      setLoading(false);
-    };
-
-    checkAuth();
-  }, [router, skipSupabaseAuth, clientId]);
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push("/login");
-  };
 
   return (
     <div className="flex min-h-screen bg-slate-50">

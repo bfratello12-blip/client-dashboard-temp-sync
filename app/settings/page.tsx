@@ -545,21 +545,6 @@ function SettingsPage() {
     const run = async () => {
       setLoading(true);
 
-      const bypass = hasShopifyContextClient();
-      if (!bypass) {
-        const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
-        if (sessionErr) console.error(sessionErr);
-
-        const userId = sessionData.session?.user?.id;
-        if (!userId) {
-          if (!cancelled) {
-            setLoading(false);
-            router.replace("/login");
-          }
-          return;
-        }
-      }
-
       const params = new URLSearchParams(window.location.search);
       const overrideClientId = params.get("client_id") || "";
 
@@ -675,13 +660,8 @@ function SettingsPage() {
 
     run();
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) router.replace("/login");
-    });
-
     return () => {
       cancelled = true;
-      sub?.subscription?.unsubscribe();
     };
   }, [router]);
 

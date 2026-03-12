@@ -1,22 +1,15 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { format, subDays } from "date-fns";
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-} from "recharts";
 import DashboardLayout from "@/components/DashboardLayout";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
+import * as DashboardPageClient from "@/app/page.client";
 
 export const dynamic = "force-dynamic";
+
+const MultiSeriesEventfulLineChart = (DashboardPageClient as any).MultiSeriesEventfulLineChart as React.ComponentType<any>;
 
 type PresetKey =
   | "today"
@@ -45,6 +38,12 @@ type ChannelRow = {
 
 type SeriesKey = "organic" | "direct" | "paid" | "unknown";
 
+type ChannelChartPoint = {
+  date: string;
+  adSpend: number;
+  revenue: number;
+};
+
 function last30DaysRange() {
   const endISO = format(new Date(), "yyyy-MM-dd");
   const startISO = format(subDays(new Date(), 29), "yyyy-MM-dd");
@@ -70,54 +69,6 @@ function buildRollingAvgSeries<T extends { date: string }>(
   });
 }
 
-function SafeResponsiveContainer({
-  height,
-  className,
-  children,
-}: {
-  height: number | string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [ready, setReady] = useState(false);
-  const h = typeof height === "number" ? `${height}px` : height;
-
-  useEffect(() => {
-    if (!ref.current) return;
-    let raf = 0;
-    const ro = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (!rect) return;
-      if (rect.width > 0 && rect.height > 0) {
-        cancelAnimationFrame(raf);
-        raf = requestAnimationFrame(() => {
-          requestAnimationFrame(() => setReady(true));
-        });
-      } else {
-        setReady(false);
-      }
-    });
-    ro.observe(ref.current);
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-    };
-  }, []);
-
-  return (
-    <div ref={ref} className={className} style={{ height: h, minHeight: h }}>
-      {ready ? (
-        <ResponsiveContainer width="100%" height="100%">
-          {children}
-        </ResponsiveContainer>
-      ) : (
-        <div className="flex h-full w-full items-center justify-center text-sm text-slate-500">Loading chart…</div>
-      )}
-    </div>
-  );
-}
-
 function ChannelChart({
   title,
   data,
@@ -129,53 +80,101 @@ function ChannelChart({
   channelKey: SeriesKey;
   channelColor: string;
 }) {
+  const [rollingEnabled, setRollingEnabled] = useState(false);
+  const [rollingWindowDays, setRollingWindowDays] = useState<number>(7);
+  const [showAdSpend, setShowAdSpend] = useState(true);
+  const [showRevenue, setShowRevenue] = useState(true);
+
+  const mappedData = useMemo(() => {
+    return data.map((row) => ({
+      date: row.date,
+      adSpend: Number(row.ad_spend || 0),
+      revenue: Number(row[channelKey] || 0),
+    })) as ChannelChartPoint[];
+  }, [data, channelKey]);
+
+  const chartData = useMemo(() => {
+    if (!rollingEnabled) return mappedData;
+    const adSpendSmoothed = buildRollingAvgSeries(mappedData, "adSpend", rollingWindowDays);
+    return buildRollingAvgSeries(adSpendSmoothed, "revenue", rollingWindowDays);
+  }, [mappedData, rollingEnabled, rollingWindowDays]);
+
+  const chartSeries = useMemo(() => {
+    const series: Array<{ key: string; name: string; color: string; strokeWidth?: number }> = [];
+    if (showAdSpend) {
+      series.push({ key: "adSpend", name: "Ad Spend", color: "#3b82f6", strokeWidth: 2.6 });
+    }
+    if (showRevenue) {
+      series.push({ key: "revenue", name: title.replace(" vs Ad Spend", ""), color: channelColor, strokeWidth: 2.6 });
+    }
+    return series;
+  }, [showAdSpend, showRevenue, title, channelColor]);
+
   return (
     <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 min-w-0">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+          <p className="text-sm text-slate-600">
+            Daily trend ({rollingEnabled ? `rolling ${rollingWindowDays}d` : "daily"})
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer transition-colors text-xs font-medium">
+            <input
+              type="checkbox"
+              checked={rollingEnabled}
+              onChange={(e) => setRollingEnabled(e.target.checked)}
+              className="w-3 h-3 text-slate-600 bg-slate-100 border-slate-300 rounded focus:ring-slate-500 focus:ring-2"
+            />
+            <span className="text-slate-700">Rolling</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <span className="text-slate-500 text-xs">Window</span>
+            <select
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
+              value={rollingWindowDays}
+              onChange={(e) => setRollingWindowDays(Number(e.target.value))}
+              disabled={!rollingEnabled}
+            >
+              <option value={3}>3d</option>
+              <option value={7}>7d</option>
+              <option value={14}>14d</option>
+              <option value={30}>30d</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer transition-colors text-xs font-medium">
+            <input
+              type="checkbox"
+              checked={showAdSpend}
+              onChange={(e) => setShowAdSpend(e.target.checked)}
+              className="w-3 h-3 text-blue-600 bg-slate-100 border-slate-300 rounded focus:ring-blue-500 focus:ring-2"
+            />
+            <span className="text-slate-700">Ad Spend</span>
+          </label>
+          <label className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer transition-colors text-xs font-medium">
+            <input
+              type="checkbox"
+              checked={showRevenue}
+              onChange={(e) => setShowRevenue(e.target.checked)}
+              className="w-3 h-3 bg-slate-100 border-slate-300 rounded focus:ring-2"
+              style={{ accentColor: channelColor }}
+            />
+            <span className="text-slate-700">{title.replace(" vs Ad Spend", "")}</span>
+          </label>
+        </div>
       </div>
-      <SafeResponsiveContainer height={300} className="h-[300px] w-full">
-        <LineChart data={data} margin={{ top: 6, right: 16, left: 6, bottom: 4 }}>
-          <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-          <XAxis
-            dataKey="ts"
-            type="number"
-            scale="time"
-            domain={["dataMin", "dataMax"]}
-            tick={{ fontSize: 12, fill: "#64748b" }}
-            tickFormatter={(value) => format(new Date(Number(value)), "MMM d")}
-          />
-          <YAxis tick={{ fontSize: 12, fill: "#64748b" }} tickFormatter={(v) => `$${Number(v || 0).toLocaleString()}`} />
-          <Tooltip
-            formatter={(value: any, name: any) => [formatCurrency(Number(value || 0)), name]}
-            labelFormatter={(label) => format(new Date(Number(label)), "MMM d, yyyy")}
-            contentStyle={{
-              backgroundColor: "rgba(255,255,255,0.96)",
-              border: "1px solid #e2e8f0",
-              borderRadius: "10px",
-            }}
-          />
-          <Legend />
-          <Line
-            type="monotone"
-            dataKey={channelKey}
-            name="Revenue"
-            stroke={channelColor}
-            strokeWidth={2.5}
-            dot={false}
-            isAnimationActive={false}
-          />
-          <Line
-            type="monotone"
-            dataKey="ad_spend"
-            name="Ad Spend"
-            stroke="#2563eb"
-            strokeWidth={2.25}
-            dot={false}
-            isAnimationActive={false}
-          />
-        </LineChart>
-      </SafeResponsiveContainer>
+      <MultiSeriesEventfulLineChart
+        data={chartData}
+        showComparison={false}
+        series={chartSeries}
+        yTooltipFormatter={formatCurrency}
+        markers={[] as any}
+        showMarkers={false}
+        compareLabel=""
+        height={300}
+        hideAreaLegend
+      />
     </section>
   );
 }
@@ -190,9 +189,6 @@ export default function ChannelPerformancePage() {
   const [rows, setRows] = useState<ChannelRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
-  const [rollingEnabled, setRollingEnabled] = useState(false);
-  const [rollingWindowDays, setRollingWindowDays] = useState<number>(7);
 
   useEffect(() => {
     let cancelled = false;
@@ -240,16 +236,6 @@ export default function ChannelPerformancePage() {
     };
   }, [rangeValue]);
 
-  const displayRows = useMemo(() => {
-    if (!rollingEnabled) return rows;
-
-    const organicSmoothed = buildRollingAvgSeries(rows, "organic", rollingWindowDays);
-    const directSmoothed = buildRollingAvgSeries(organicSmoothed, "direct", rollingWindowDays);
-    const paidSmoothed = buildRollingAvgSeries(directSmoothed, "paid", rollingWindowDays);
-    const unknownSmoothed = buildRollingAvgSeries(paidSmoothed, "unknown", rollingWindowDays);
-    return buildRollingAvgSeries(unknownSmoothed, "ad_spend", rollingWindowDays);
-  }, [rows, rollingEnabled, rollingWindowDays]);
-
   return (
     <DashboardLayout>
       <div className="p-6 md:p-8 min-w-0">
@@ -259,29 +245,6 @@ export default function ChannelPerformancePage() {
             <p className="mt-1 text-slate-600">Shopify revenue by traffic source compared to ad spend.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer transition-colors text-xs font-medium">
-              <input
-                type="checkbox"
-                checked={rollingEnabled}
-                onChange={(e) => setRollingEnabled(e.target.checked)}
-                className="w-3 h-3 text-slate-600 bg-slate-100 border-slate-300 rounded focus:ring-slate-500 focus:ring-2"
-              />
-              <span className="text-slate-700">Rolling</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <span className="text-slate-500 text-xs">Window</span>
-              <select
-                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
-                value={rollingWindowDays}
-                onChange={(e) => setRollingWindowDays(Number(e.target.value))}
-                disabled={!rollingEnabled}
-              >
-                <option value={3}>3d</option>
-                <option value={7}>7d</option>
-                <option value={14}>14d</option>
-                <option value={30}>30d</option>
-              </select>
-            </label>
             <DateRangePicker
               value={rangeValue}
               onChange={setRangeValue}
@@ -300,25 +263,25 @@ export default function ChannelPerformancePage() {
         <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
           <ChannelChart
             title="Organic Revenue vs Ad Spend"
-            data={displayRows}
+            data={rows}
             channelKey="organic"
             channelColor="#16a34a"
           />
           <ChannelChart
             title="Direct Revenue vs Ad Spend"
-            data={displayRows}
+            data={rows}
             channelKey="direct"
             channelColor="#64748b"
           />
           <ChannelChart
             title="Paid Revenue vs Ad Spend"
-            data={displayRows}
+            data={rows}
             channelKey="paid"
             channelColor="#f59e0b"
           />
           <ChannelChart
             title="Unknown Revenue vs Ad Spend"
-            data={displayRows}
+            data={rows}
             channelKey="unknown"
             channelColor="#a855f7"
           />

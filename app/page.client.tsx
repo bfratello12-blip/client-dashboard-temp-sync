@@ -904,7 +904,7 @@ function EventfulLineChart({
   );
 }
 
-function MultiSeriesEventfulLineChart({
+export function MultiSeriesEventfulLineChart({
   data,
   compareData,
   showComparison,

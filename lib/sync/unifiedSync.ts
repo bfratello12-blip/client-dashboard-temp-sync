@@ -34,6 +34,8 @@ function pickCounts(body: any) {
   if (Number.isFinite(daysWritten)) return { daysWritten };
   const rowsWritten = Number(body?.rowsWritten);
   if (Number.isFinite(rowsWritten)) return { rowsWritten };
+  const rowsSynced = Number(body?.rows_synced);
+  if (Number.isFinite(rowsSynced)) return { rowsWritten: rowsSynced };
   return {};
 }
 
@@ -73,6 +75,17 @@ export async function runUnifiedSync(args: {
   const secret = String(args.token || "").trim();
   const authHeader = secret ? { Authorization: `Bearer ${secret}` } : undefined;
 
+  async function syncShopifyChannelMetrics(client_id: string, start: string, end: string) {
+    const params = new URLSearchParams({
+      client_id,
+      start,
+      end,
+    });
+    if (secret) params.set("token", secret);
+    const url = `${args.origin}/api/shopify/channel-sync?${params.toString()}`;
+    return runStep({ step: "shopify_channel_sync", url, headers: authHeader, method: "GET" });
+  }
+
   const steps: StepSummary[] = [];
 
   const shopifyParams = new URLSearchParams({
@@ -85,9 +98,9 @@ export async function runUnifiedSync(args: {
   const shopifyUrl = `${args.origin}/api/shopify/sync?${shopifyParams.toString()}`;
   const shopify = await runStep({ step: "shopify_sync", url: shopifyUrl, headers: authHeader });
   steps.push(shopify.summary);
-  if (!shopify.summary.ok) {
-    return { ok: false, client_id: args.clientId, steps, status: shopify.summary.status || 500 };
-  }
+
+  const channelSync = await syncShopifyChannelMetrics(args.clientId, window.start, window.end);
+  steps.push(channelSync.summary);
 
   const googleParams = new URLSearchParams({
     client_id: args.clientId,
@@ -99,9 +112,6 @@ export async function runUnifiedSync(args: {
   const googleUrl = `${args.origin}/api/googleads/sync?${googleParams.toString()}`;
   const google = await runStep({ step: "googleads_sync", url: googleUrl, headers: authHeader, method: "GET" });
   steps.push(google.summary);
-  if (!google.summary.ok) {
-    return { ok: false, client_id: args.clientId, steps, status: google.summary.status || 500 };
-  }
 
   const metaParams = new URLSearchParams({
     client_id: args.clientId,
@@ -113,9 +123,6 @@ export async function runUnifiedSync(args: {
   const metaUrl = `${args.origin}/api/meta/sync?${metaParams.toString()}`;
   const meta = await runStep({ step: "meta_sync", url: metaUrl, headers: authHeader, method: "GET" });
   steps.push(meta.summary);
-  if (!meta.summary.ok) {
-    return { ok: false, client_id: args.clientId, steps, status: meta.summary.status || 500 };
-  }
 
   const lineItemsParams = new URLSearchParams({
     client_id: args.clientId,
@@ -126,9 +133,6 @@ export async function runUnifiedSync(args: {
   const lineItemsUrl = `${args.origin}/api/shopify/daily-line-items-sync?${lineItemsParams.toString()}`;
   const lineItems = await runStep({ step: "shopify_daily_line_items", url: lineItemsUrl, headers: authHeader });
   steps.push(lineItems.summary);
-  if (!lineItems.summary.ok) {
-    return { ok: false, client_id: args.clientId, steps, status: lineItems.summary.status || 500 };
-  }
 
   const recomputeParams = new URLSearchParams({
     client_id: args.clientId,
@@ -139,9 +143,6 @@ export async function runUnifiedSync(args: {
   const recomputeUrl = `${args.origin}/api/shopify/recompute?${recomputeParams.toString()}`;
   const recompute = await runStep({ step: "shopify_recompute", url: recomputeUrl, headers: authHeader });
   steps.push(recompute.summary);
-  if (!recompute.summary.ok) {
-    return { ok: false, client_id: args.clientId, steps, status: recompute.summary.status || 500 };
-  }
 
   const rollingParams = new URLSearchParams({
     client_id: args.clientId,
@@ -153,8 +154,15 @@ export async function runUnifiedSync(args: {
   const rollingUrl = `${args.origin}/api/cron/rolling-30?${rollingParams.toString()}`;
   const rolling = await runStep({ step: "rolling_30", url: rollingUrl, headers: authHeader });
   steps.push(rolling.summary);
-  if (!rolling.summary.ok) {
-    return { ok: false, client_id: args.clientId, steps, status: rolling.summary.status || 500 };
+
+  const firstFailed = steps.find((s) => !s.ok);
+  if (firstFailed) {
+    return {
+      ok: false,
+      client_id: args.clientId,
+      steps,
+      status: firstFailed.status || 500,
+    };
   }
 
   return { ok: true, client_id: args.clientId, steps };

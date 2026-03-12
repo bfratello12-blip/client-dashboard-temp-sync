@@ -81,6 +81,11 @@ export default function Sidebar({
           active={pathname?.startsWith("/product-performance")}
           label="Product Performance"
         />
+        <NavItem
+          href="/channel-performance"
+          active={pathname?.startsWith("/channel-performance")}
+          label="Channel Revenue vs Ad Spend"
+        />
         <NavItem href="/settings" active={pathname?.startsWith("/settings")} label="Settings" />
       </nav>
 

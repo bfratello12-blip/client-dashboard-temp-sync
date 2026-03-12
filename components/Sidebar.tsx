@@ -44,10 +44,10 @@ function NavItem({
     <Link
       href={href}
       className={[
-        "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+        "flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm transition-colors border-l-[3px]",
         active
-          ? "bg-blue-50 text-blue-700 ring-1 ring-blue-200"
-          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
+          ? "border-l-blue-500 bg-slate-50 text-slate-900 font-medium"
+          : "border-l-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-normal",
       ].join(" ")}
     >
       <span className="shrink-0">{icon}</span>
@@ -75,32 +75,39 @@ export default function Sidebar({
 
   return (
     <aside className="hidden md:flex w-64 flex-col border-r border-slate-200 bg-white p-5">
-      <div className="flex items-center gap-3">
+      <div className="mb-5 flex items-center gap-3">
         {/* Brand mark (place ScaleAble_Logo1.svg in /public) */}
         <img
           src="/ScaleAble_Logo1.svg"
           alt="ScaleAble"
-          className="h-10-auto max-w-[220px] object-contain"
+          className="h-9 max-w-[200px] object-contain"
         />
         <div className="sr-only text-xl font-semibold text-slate-900">ScaleAble</div>
       </div>
-      <div className="mt-1 text-s text-slate-500">Client Portal</div>
+      <div className="text-s text-slate-500">Client Portal</div>
 
-      <nav className="mt-8 space-y-1">
-        <NavItem href="/" active={pathname === "/"} label="Dashboard" icon={<LayoutDashboard size={18} />} />
-        <NavItem
-          href="/product-performance"
-          active={pathname?.startsWith("/product-performance")}
-          label="Product Performance"
-          icon={<Package size={18} />}
-        />
-        <NavItem
-          href="/channel-performance"
-          active={pathname?.startsWith("/channel-performance")}
-          label="Channel Revenue vs Ad Spend"
-          icon={<TrendingUp size={18} />}
-        />
-        <NavItem href="/settings" active={pathname?.startsWith("/settings")} label="Settings" icon={<Settings size={18} />} />
+      <nav className="mt-6">
+        <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">Analytics</div>
+        <div className="space-y-1.5">
+          <NavItem href="/" active={pathname === "/"} label="Dashboard" icon={<LayoutDashboard size={18} />} />
+          <NavItem
+            href="/product-performance"
+            active={pathname?.startsWith("/product-performance")}
+            label="Product Performance"
+            icon={<Package size={18} />}
+          />
+          <NavItem
+            href="/channel-performance"
+            active={pathname?.startsWith("/channel-performance")}
+            label="Channel Revenue vs Ad Spend"
+            icon={<TrendingUp size={18} />}
+          />
+        </div>
+
+        <div className="mb-1 mt-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">System</div>
+        <div className="space-y-1.5">
+          <NavItem href="/settings" active={pathname?.startsWith("/settings")} label="Settings" icon={<Settings size={18} />} />
+        </div>
       </nav>
 
       {/* Data health panel */}

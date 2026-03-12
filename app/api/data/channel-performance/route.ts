@@ -13,8 +13,7 @@ type ChannelPerfRow = {
   direct: number;
   paid: number;
   unknown: number;
-  ad_spend: number;
-  ts: number;
+  adSpend: number;
 };
 
 function normalizeShopDomain(shop: string) {
@@ -80,11 +79,21 @@ function ensureDate(map: Map<string, ChannelPerfRow>, date: string): ChannelPerf
     direct: 0,
     paid: 0,
     unknown: 0,
-    ad_spend: 0,
-    ts: new Date(`${date}T00:00:00Z`).getTime(),
+    adSpend: 0,
   };
   map.set(date, row);
   return row;
+}
+
+function dateRange(start: string, end: string): string[] {
+  const out: string[] = [];
+  const cur = new Date(`${start}T00:00:00Z`);
+  const endDate = new Date(`${end}T00:00:00Z`);
+  while (cur <= endDate) {
+    out.push(cur.toISOString().slice(0, 10));
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return out;
 }
 
 export async function GET(req: NextRequest) {
@@ -150,6 +159,10 @@ export async function GET(req: NextRequest) {
 
     const merged = new Map<string, ChannelPerfRow>();
 
+    for (const d of dateRange(start, end)) {
+      ensureDate(merged, d);
+    }
+
     for (const row of channelRows || []) {
       const date = String((row as any)?.date || "");
       if (!isIsoDate(date)) continue;
@@ -167,7 +180,7 @@ export async function GET(req: NextRequest) {
 
       const spend = Number((row as any)?.spend || 0) || 0;
       const out = ensureDate(merged, date);
-      out.ad_spend += spend;
+      out.adSpend += spend;
     }
 
     const rows = Array.from(merged.values()).sort((a, b) => a.date.localeCompare(b.date));

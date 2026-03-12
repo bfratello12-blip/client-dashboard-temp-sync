@@ -217,7 +217,11 @@ export default function ChannelPerformancePage() {
             direct: Number(r?.direct || 0),
             paid: Number(r?.paid || 0),
             unknown: Number(r?.unknown || 0),
-            ad_spend: Number(r?.ad_spend || 0),
+            ad_spend: Number(r?.adSpend ?? r?.ad_spend ?? 0),
+          }))
+          .map((r: ChannelRow) => ({
+            ...r,
+            ts: Number.isFinite(r.ts) && r.ts > 0 ? r.ts : new Date(`${r.date}T00:00:00Z`).getTime(),
           }))
           .filter((r: ChannelRow) => !!r.date && Number.isFinite(r.ts));
 

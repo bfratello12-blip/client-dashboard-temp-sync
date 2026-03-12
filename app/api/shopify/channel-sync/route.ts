@@ -29,6 +29,34 @@ function asNumber(value: any) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function normalizeTrafficSource(sourceRaw: string): "organic" | "direct" | "paid" | "unknown" {
+  const source = String(sourceRaw || "").trim().toLowerCase();
+  if (!source) return "unknown";
+
+  if (source.includes("direct")) return "direct";
+
+  if (
+    source.includes("paid") ||
+    source.includes("cpc") ||
+    source.includes("ppc") ||
+    source.includes("ad") ||
+    source.includes("google") ||
+    source.includes("meta") ||
+    source.includes("facebook") ||
+    source.includes("instagram") ||
+    source.includes("bing") ||
+    source.includes("tiktok")
+  ) {
+    return "paid";
+  }
+
+  if (source.includes("organic") || source.includes("seo") || source.includes("search")) {
+    return "organic";
+  }
+
+  return "unknown";
+}
+
 async function shopifyGraphQL(args: {
   shopDomain: string;
   accessToken: string;
@@ -126,7 +154,7 @@ async function resolveInstallForClient(clientId: string): Promise<InstallResolut
   };
 }
 
-function parseShopifyQLRows(payload: AnyObj): Array<{ date: string; total_sales: number }> {
+function parseShopifyQLRows(payload: AnyObj): Array<{ date: string; traffic_source: string; total_sales: number }> {
   const q = payload?.shopifyqlQuery;
   if (!q) return [];
 
@@ -152,12 +180,17 @@ function parseShopifyQLRows(payload: AnyObj): Array<{ date: string; total_sales:
     return i >= 0 ? i : 0;
   })();
 
+  const idxSource = (() => {
+    const i = colNames.findIndex((n) => n === "traffic_source" || n.includes("traffic source") || n.includes("source"));
+    return i >= 0 ? i : 1;
+  })();
+
   const idxSales = (() => {
     const i = colNames.findIndex((n) => n === "total_sales" || n.includes("total sales"));
     return i >= 0 ? i : 2;
   })();
 
-  const parsed: Array<{ date: string; total_sales: number }> = [];
+  const parsed: Array<{ date: string; traffic_source: string; total_sales: number }> = [];
 
   for (const row of rows) {
     if (Array.isArray(row)) {
@@ -165,6 +198,7 @@ function parseShopifyQLRows(payload: AnyObj): Array<{ date: string; total_sales:
       if (!isIsoDate(date)) continue;
       parsed.push({
         date,
+        traffic_source: String(row[idxSource] || ""),
         total_sales: asNumber(row[idxSales]),
       });
       continue;
@@ -174,9 +208,12 @@ function parseShopifyQLRows(payload: AnyObj): Array<{ date: string; total_sales:
       const date = String(row.day ?? row.date ?? "").slice(0, 10);
       if (!isIsoDate(date)) continue;
 
+      const traffic_source = String(
+        row.traffic_source ?? row["traffic_source"] ?? row["traffic source"] ?? row.source ?? ""
+      );
       const total_sales = asNumber(row.total_sales ?? row["total_sales"] ?? row["total sales"] ?? 0);
 
-      parsed.push({ date, total_sales });
+      parsed.push({ date, traffic_source, total_sales });
     }
   }
 
@@ -204,54 +241,58 @@ export async function GET(req: NextRequest) {
 
     const install = await resolveInstallForClient(clientId);
 
-    const channelTypes: Array<"organic" | "direct" | "paid" | "unknown"> = [
-      "organic",
-      "direct",
-      "paid",
-      "unknown",
-    ];
-
-    const upserts: Array<{ client_id: string; date: string; channel: "organic" | "direct" | "paid" | "unknown"; revenue: number }> = [];
-
-    for (const channel of channelTypes) {
-      const ql = `FROM sales
+    const ql = `FROM sales
 SHOW total_sales
-WHERE traffic_type = '${channel}'
+BY traffic_source
 TIMESERIES day
 SINCE ${start}
 UNTIL ${end}
 ORDER BY day ASC
 LIMIT 5000`;
 
-      const data = await shopifyGraphQL({
-        shopDomain: install.shopDomain,
-        accessToken: install.accessToken,
-        query: `
-          query ShopifyQLChannelSync($query: String!) {
-            shopifyqlQuery(query: $query) {
-              parseErrors
-              tableData {
-                columns { name dataType displayName }
-                rows
-              }
+    const data = await shopifyGraphQL({
+      shopDomain: install.shopDomain,
+      accessToken: install.accessToken,
+      query: `
+        query ShopifyQLChannelSync($query: String!) {
+          shopifyqlQuery(query: $query) {
+            parseErrors
+            tableData {
+              columns { name dataType displayName }
+              rows
             }
           }
-        `,
-        variables: { query: ql },
-      });
+        }
+      `,
+      variables: { query: ql },
+    });
 
-      console.log(`[shopify/channel-sync] raw ShopifyQL rows (${channel})`, data?.shopifyqlQuery?.tableData?.rows);
+    const parsedRows = parseShopifyQLRows(data);
 
-      const parsedRows = parseShopifyQLRows(data);
-      for (const row of parsedRows) {
-        upserts.push({
-          client_id: install.clientId,
-          date: row.date,
+    const byKey = new Map<string, { date: string; channel: "organic" | "direct" | "paid" | "unknown"; revenue: number }>();
+
+    for (const row of parsedRows) {
+      const channel = normalizeTrafficSource(row.traffic_source);
+      const date = row.date;
+      const key = `${date}::${channel}`;
+      const prev = byKey.get(key);
+      if (prev) {
+        prev.revenue += asNumber(row.total_sales);
+      } else {
+        byKey.set(key, {
+          date,
           channel,
           revenue: asNumber(row.total_sales),
         });
       }
     }
+
+    const upserts = Array.from(byKey.values()).map((r) => ({
+      client_id: install.clientId,
+      date: r.date,
+      channel: r.channel,
+      revenue: r.revenue,
+    }));
 
     if (upserts.length > 0) {
       const { error: upsertErr } = await supabaseAdmin()

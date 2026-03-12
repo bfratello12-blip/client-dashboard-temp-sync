@@ -904,7 +904,7 @@ function EventfulLineChart({
   );
 }
 
-export function MultiSeriesEventfulLineChart({
+function MultiSeriesEventfulLineChart({
   data,
   compareData,
   showComparison,
@@ -918,15 +918,11 @@ export function MultiSeriesEventfulLineChart({
   tooltipContent,
   yAxisLabel,
   hideAreaLegend = false,
-  xAxisDataKey = "ts",
-  dualYAxis = false,
-  leftYAxisLabel,
-  rightYAxisLabel,
 }: {
   data: { date: string; [k: string]: any }[];
   compareData?: { date: string; [k: string]: any }[];
   showComparison: boolean;
-  series: { key: string; name: string; color: string; strokeWidth?: number; yAxisId?: string }[];
+  series: { key: string; name: string; color: string; strokeWidth?: number }[];
   yTooltipFormatter: (v: number) => string;
   markers: EventMarker[];
   showMarkers: boolean;
@@ -936,10 +932,6 @@ export function MultiSeriesEventfulLineChart({
   tooltipContent?: (p: any) => React.ReactNode;
   yAxisLabel?: string;
   hideAreaLegend?: boolean;
-  xAxisDataKey?: "ts" | "date";
-  dualYAxis?: boolean;
-  leftYAxisLabel?: string;
-  rightYAxisLabel?: string;
 }) {
   type ChartPoint = { date: string; ts: number; [k: string]: any };
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -1014,39 +1006,6 @@ export function MultiSeriesEventfulLineChart({
     return [min - pad, max + pad] as [number, number];
   }, [chartData, compareChartData, series]);
 
-  const leftSeries = useMemo(() => series.filter((s) => (s.yAxisId || "revenue") !== "spend"), [series]);
-  const rightSeries = useMemo(() => series.filter((s) => (s.yAxisId || "revenue") === "spend"), [series]);
-
-  const leftYDomain = useMemo(() => {
-    const allVals: number[] = [];
-    for (const s of leftSeries) {
-      for (const d of chartData) allVals.push(Number(d?.[s.key] ?? 0));
-      for (const d of compareChartData) allVals.push(Number(d?.[s.key] ?? 0));
-    }
-    const filtered = allVals.filter((v) => Number.isFinite(v));
-    if (!filtered.length) return [0, 1] as [number, number];
-    const min = Math.min(0, ...filtered);
-    const max = Math.max(0, ...filtered);
-    const span = Math.max(1e-6, max - min);
-    const pad = Math.max(span * 0.08, max * 0.04);
-    return [min - pad, max + pad] as [number, number];
-  }, [chartData, compareChartData, leftSeries]);
-
-  const rightYDomain = useMemo(() => {
-    const allVals: number[] = [];
-    for (const s of rightSeries) {
-      for (const d of chartData) allVals.push(Number(d?.[s.key] ?? 0));
-      for (const d of compareChartData) allVals.push(Number(d?.[s.key] ?? 0));
-    }
-    const filtered = allVals.filter((v) => Number.isFinite(v));
-    if (!filtered.length) return [0, 1] as [number, number];
-    const min = Math.min(0, ...filtered);
-    const max = Math.max(0, ...filtered);
-    const span = Math.max(1e-6, max - min);
-    const pad = Math.max(span * 0.08, max * 0.04);
-    return [min - pad, max + pad] as [number, number];
-  }, [chartData, compareChartData, rightSeries]);
-
   const eventDotData = useMemo(() => {
     return (showMarkers ? inRangeMarkers : []).map((m) => ({
       ts: m.ts,
@@ -1056,8 +1015,6 @@ export function MultiSeriesEventfulLineChart({
   }, [showMarkers, inRangeMarkers, yTop]);
 
   const clearHover = useCallback(() => setHover(null), []);
-
-  const useTimeAxis = xAxisDataKey === "ts";
 
   const setHoverFromClientXY = useCallback((marker: EventMarker, clientX: number, clientY: number) => {
     const r = wrapRef.current?.getBoundingClientRect();
@@ -1112,98 +1069,36 @@ export function MultiSeriesEventfulLineChart({
             ))}
           </defs>
           <XAxis
-            dataKey={xAxisDataKey}
-            type={useTimeAxis ? "number" : "category"}
-            scale={useTimeAxis ? "time" : "auto"}
-            domain={useTimeAxis ? xDomain : undefined}
+            dataKey="ts"
+            type="number"
+            scale="time"
+            domain={xDomain}
             tick={{ fontSize: 11, fill: "#94a3b8" }}
-            tickFormatter={(v) =>
-              useTimeAxis
-                ? mmdd(new Date(Number(v)).toISOString().slice(0, 10))
-                : mmdd(toISO10(v))
-            }
+            tickFormatter={(v) => mmdd(new Date(Number(v)).toISOString().slice(0, 10))}
             interval="preserveStartEnd"
             minTickGap={28}
             tickLine={false}
             axisLine={{ stroke: "#e2e8f0", strokeOpacity: 0.35 }}
           />
-          {dualYAxis ? (
-            <>
-              <YAxis
-                yAxisId="revenue"
-                tick={{ fontSize: 11, fill: "#94a3b8" }}
-                domain={leftYDomain as any}
-                label={
-                  (leftYAxisLabel || yAxisLabel)
-                    ? {
-                        value: leftYAxisLabel || yAxisLabel,
-                        angle: -90,
-                        position: "insideLeft",
-                        fill: "#94a3b8",
-                        fontSize: 11,
-                      }
-                    : undefined
-                }
-                tickLine={false}
-                axisLine={{ stroke: "#e2e8f0", strokeOpacity: 0.35 }}
-                tickFormatter={(v) => {
-                  const n = Number(v);
-                  if (!isFinite(n)) return "";
-                  if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-                  if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
-                  if (Math.abs(n) < 10) return n.toFixed(1);
-                  return Math.round(n).toString();
-                }}
-              />
-              <YAxis
-                yAxisId="spend"
-                orientation="right"
-                tick={{ fontSize: 11, fill: "#94a3b8" }}
-                domain={rightYDomain as any}
-                label={
-                  rightYAxisLabel
-                    ? {
-                        value: rightYAxisLabel,
-                        angle: 90,
-                        position: "insideRight",
-                        fill: "#94a3b8",
-                        fontSize: 11,
-                      }
-                    : undefined
-                }
-                tickLine={false}
-                axisLine={{ stroke: "#e2e8f0", strokeOpacity: 0.35 }}
-                tickFormatter={(v) => {
-                  const n = Number(v);
-                  if (!isFinite(n)) return "";
-                  if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-                  if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
-                  if (Math.abs(n) < 10) return n.toFixed(1);
-                  return Math.round(n).toString();
-                }}
-              />
-            </>
-          ) : (
-            <YAxis
-              tick={{ fontSize: 11, fill: "#94a3b8" }}
-              domain={yDomain as any}
-              label={
-                yAxisLabel
-                  ? { value: yAxisLabel, angle: -90, position: "insideLeft", fill: "#94a3b8", fontSize: 11 }
-                  : undefined
-              }
-              tickLine={false}
-              axisLine={{ stroke: "#e2e8f0", strokeOpacity: 0.35 }}
-              tickFormatter={(v) => {
-                const n = Number(v);
-                if (!isFinite(n)) return "";
-                if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-                if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
-                if (Math.abs(n) < 10) return n.toFixed(1);
-                return Math.round(n).toString();
-              }}
-            />
-          )}
+          <YAxis 
+            tick={{ fontSize: 11, fill: "#94a3b8" }} 
+            domain={yDomain as any} 
+            label={
+              yAxisLabel
+                ? { value: yAxisLabel, angle: -90, position: "insideLeft", fill: "#94a3b8", fontSize: 11 }
+                : undefined
+            }
+            tickLine={false}
+            axisLine={{ stroke: "#e2e8f0", strokeOpacity: 0.35 }}
+            tickFormatter={(v) => {
+              const n = Number(v);
+              if (!isFinite(n)) return "";
+              if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+              if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
+              if (Math.abs(n) < 10) return n.toFixed(1);
+              return Math.round(n).toString();
+            }}
+          />
           <Tooltip
             content={
               tooltipContent
@@ -1288,7 +1183,6 @@ export function MultiSeriesEventfulLineChart({
               key={`compare-${s.key}`}
               type="linear"
               dataKey={s.key}
-              yAxisId={dualYAxis ? (s.yAxisId || "revenue") : undefined}
               data={compareChartData as any}
               name={`${s.name} (${compareLabel})`}
               stroke={`url(#${strokeIds[s.key]})`}
@@ -1305,7 +1199,6 @@ export function MultiSeriesEventfulLineChart({
               key={`area-${s.key}`}
               type="linear"
               dataKey={s.key}
-              yAxisId={dualYAxis ? (s.yAxisId || "revenue") : undefined}
               fill={`url(#${strokeIds[s.key]}-fill)`}
               isAnimationActive={false}
               stroke="none"
@@ -1320,7 +1213,6 @@ export function MultiSeriesEventfulLineChart({
               key={s.key}
               type="linear"
               dataKey={s.key}
-              yAxisId={dualYAxis ? (s.yAxisId || "revenue") : undefined}
               name={s.name}
               stroke={`url(#${strokeIds[s.key]})`}
               strokeWidth={s.strokeWidth ?? 2.6}

@@ -220,31 +220,43 @@ export default function ChannelPerformancePage() {
     };
   }, [rangeValue]);
 
-  const displayRows = useMemo(() => {
-    if (!rollingEnabled) return rows;
+  const filteredRows = useMemo(() => {
+    const startDate = new Date(`${rangeValue.startISO}T00:00:00Z`);
+    const endDate = new Date(`${rangeValue.endISO}T23:59:59.999Z`);
 
-    const organicSmoothed = buildRollingAvgSeries(rows, "organic", rollingWindowDays);
+    return [...rows]
+      .filter((row) => {
+        const d = new Date(`${row.date}T00:00:00Z`);
+        return d >= startDate && d <= endDate;
+      })
+      .sort((a, b) => new Date(`${a.date}T00:00:00Z`).getTime() - new Date(`${b.date}T00:00:00Z`).getTime());
+  }, [rows, rangeValue.startISO, rangeValue.endISO]);
+
+  const displayRows = useMemo(() => {
+    if (!rollingEnabled) return filteredRows;
+
+    const organicSmoothed = buildRollingAvgSeries(filteredRows, "organic", rollingWindowDays);
     const directSmoothed = buildRollingAvgSeries(organicSmoothed, "direct", rollingWindowDays);
     const paidSmoothed = buildRollingAvgSeries(directSmoothed, "paid", rollingWindowDays);
     const unknownSmoothed = buildRollingAvgSeries(paidSmoothed, "unknown", rollingWindowDays);
     return buildRollingAvgSeries(unknownSmoothed, "ad_spend", rollingWindowDays);
-  }, [rows, rollingEnabled, rollingWindowDays]);
+  }, [filteredRows, rollingEnabled, rollingWindowDays]);
 
   const organicScatterData = useMemo(
-    () => rows.map((row) => ({ date: row.date, adSpend: Number(row.ad_spend || 0), revenue: Number(row.organic || 0) })),
-    [rows]
+    () => filteredRows.map((row) => ({ date: row.date, adSpend: Number(row.ad_spend || 0), revenue: Number(row.organic || 0) })),
+    [filteredRows]
   );
   const directScatterData = useMemo(
-    () => rows.map((row) => ({ date: row.date, adSpend: Number(row.ad_spend || 0), revenue: Number(row.direct || 0) })),
-    [rows]
+    () => filteredRows.map((row) => ({ date: row.date, adSpend: Number(row.ad_spend || 0), revenue: Number(row.direct || 0) })),
+    [filteredRows]
   );
   const paidScatterData = useMemo(
-    () => rows.map((row) => ({ date: row.date, adSpend: Number(row.ad_spend || 0), revenue: Number(row.paid || 0) })),
-    [rows]
+    () => filteredRows.map((row) => ({ date: row.date, adSpend: Number(row.ad_spend || 0), revenue: Number(row.paid || 0) })),
+    [filteredRows]
   );
   const unknownScatterData = useMemo(
-    () => rows.map((row) => ({ date: row.date, adSpend: Number(row.ad_spend || 0), revenue: Number(row.unknown || 0) })),
-    [rows]
+    () => filteredRows.map((row) => ({ date: row.date, adSpend: Number(row.ad_spend || 0), revenue: Number(row.unknown || 0) })),
+    [filteredRows]
   );
 
   return (

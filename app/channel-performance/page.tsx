@@ -37,9 +37,14 @@ type ChannelRow = {
 };
 
 type SeriesKey = "organic" | "direct" | "paid" | "unknown";
+type ViewMode = "dollar" | "indexed";
 
 type ChannelChartPoint = {
   date: Date;
+  adSpendActual: number;
+  revenueActual: number;
+  adSpendIndexed: number;
+  revenueIndexed: number;
   adSpend: number;
   revenue: number;
 };
@@ -69,16 +74,30 @@ function buildRollingAvgSeries<T extends { date: any }>(
   });
 }
 
+function buildIndexedValues<T extends { [k: string]: any }>(rows: T[], key: keyof T): number[] {
+  if (!rows.length) return [];
+  const first = Number(rows[0]?.[key] ?? 0);
+  if (!Number.isFinite(first) || first === 0) {
+    return rows.map(() => 0);
+  }
+  return rows.map((r) => {
+    const n = Number(r?.[key] ?? 0);
+    return Number.isFinite(n) ? (n / first) * 100 : 0;
+  });
+}
+
 function ChannelChart({
   title,
   data,
   channelKey,
   channelColor,
+  viewMode,
 }: {
   title: string;
   data: ChannelRow[];
   channelKey: SeriesKey;
   channelColor: string;
+  viewMode: ViewMode;
 }) {
   const [rollingEnabled, setRollingEnabled] = useState(false);
   const [rollingWindowDays, setRollingWindowDays] = useState<number>(7);
@@ -88,27 +107,68 @@ function ChannelChart({
   const mappedData = useMemo(() => {
     return data.map((row) => ({
       date: new Date(`${row.date}T00:00:00Z`),
-      adSpend: Number(row.ad_spend || 0),
-      revenue: Number(row[channelKey] || 0),
+      adSpendActual: Number(row.ad_spend || 0),
+      revenueActual: Number(row[channelKey] || 0),
     })) as ChannelChartPoint[];
   }, [data, channelKey]);
 
   const chartData = useMemo(() => {
-    if (!rollingEnabled) return mappedData;
-    const adSpendSmoothed = buildRollingAvgSeries(mappedData, "adSpend", rollingWindowDays);
-    return buildRollingAvgSeries(adSpendSmoothed, "revenue", rollingWindowDays);
-  }, [mappedData, rollingEnabled, rollingWindowDays]);
+    const smoothed = rollingEnabled
+      ? buildRollingAvgSeries(buildRollingAvgSeries(mappedData, "adSpendActual", rollingWindowDays), "revenueActual", rollingWindowDays)
+      : mappedData;
+
+    const spendIndexedSeries = buildIndexedValues(smoothed, "adSpendActual");
+    const revenueIndexedSeries = buildIndexedValues(smoothed, "revenueActual");
+
+    return smoothed.map((row, idx) => {
+      const adSpendActual = Number((row as any).adSpendActual || 0);
+      const revenueActual = Number((row as any).revenueActual || 0);
+      const adSpendIndexed = Number(spendIndexedSeries[idx] || 0);
+      const revenueIndexed = Number(revenueIndexedSeries[idx] || 0);
+      return {
+        date: row.date,
+        adSpendActual,
+        revenueActual,
+        adSpendIndexed,
+        revenueIndexed,
+        adSpend: viewMode === "indexed" ? adSpendIndexed : adSpendActual,
+        revenue: viewMode === "indexed" ? revenueIndexed : revenueActual,
+      } as ChannelChartPoint;
+    });
+  }, [mappedData, rollingEnabled, rollingWindowDays, viewMode]);
+
+  const tooltipContent = (p: any) => {
+    if (!p?.active || !p?.payload?.length) return null;
+    const row = p.payload?.[0]?.payload as ChannelChartPoint | undefined;
+    if (!row) return null;
+    const d = row?.date instanceof Date ? row.date : new Date(row?.date as any);
+    return (
+      <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
+        <div className="text-xs font-semibold text-slate-700">{format(d, "MMM d, yyyy")}</div>
+        {showAdSpend ? (
+          <div className="mt-1 text-xs text-slate-600">
+            <span className="font-medium text-slate-700">Ad Spend:</span> {formatCurrency(row.adSpendActual)} • Index {row.adSpendIndexed.toFixed(1)}
+          </div>
+        ) : null}
+        {showRevenue ? (
+          <div className="mt-1 text-xs text-slate-600">
+            <span className="font-medium text-slate-700">{title.replace(" vs Ad Spend", "")}:</span> {formatCurrency(row.revenueActual)} • Index {row.revenueIndexed.toFixed(1)}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
 
   const chartSeries = useMemo(() => {
     const series: Array<{ key: string; name: string; color: string; strokeWidth?: number; yAxisId?: string }> = [];
     if (showAdSpend) {
-      series.push({ key: "adSpend", name: "Ad Spend", color: "#3b82f6", strokeWidth: 2.6, yAxisId: "spend" });
+      series.push({ key: "adSpend", name: "Ad Spend", color: "#3b82f6", strokeWidth: 2.6, yAxisId: viewMode === "indexed" ? undefined : "spend" });
     }
     if (showRevenue) {
-      series.push({ key: "revenue", name: title.replace(" vs Ad Spend", ""), color: channelColor, strokeWidth: 2.6, yAxisId: "revenue" });
+      series.push({ key: "revenue", name: title.replace(" vs Ad Spend", ""), color: channelColor, strokeWidth: 2.6, yAxisId: viewMode === "indexed" ? undefined : "revenue" });
     }
     return series;
-  }, [showAdSpend, showRevenue, title, channelColor]);
+  }, [showAdSpend, showRevenue, title, channelColor, viewMode]);
 
   return (
     <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 min-w-0">
@@ -168,16 +228,18 @@ function ChannelChart({
         data={chartData}
         showComparison={false}
         series={chartSeries}
-        yTooltipFormatter={formatCurrency}
+        yTooltipFormatter={viewMode === "indexed" ? (v: number) => `${Number(v || 0).toFixed(1)}` : formatCurrency}
         markers={[] as any}
         showMarkers={false}
         compareLabel=""
         height={300}
         hideAreaLegend
         xAxisDataKey="date"
-        dualYAxis
-        leftYAxisLabel="Revenue"
-        rightYAxisLabel="Ad Spend"
+        dualYAxis={viewMode === "dollar"}
+        yAxisLabel={viewMode === "indexed" ? "Index (Base = 100)" : undefined}
+        leftYAxisLabel={viewMode === "dollar" ? "Revenue" : undefined}
+        rightYAxisLabel={viewMode === "dollar" ? "Ad Spend" : undefined}
+        tooltipContent={tooltipContent}
       />
     </section>
   );
@@ -193,6 +255,7 @@ export default function ChannelPerformancePage() {
   const [rows, setRows] = useState<ChannelRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [viewMode, setViewMode] = useState<ViewMode>("dollar");
 
   useEffect(() => {
     let cancelled = false;
@@ -253,6 +316,29 @@ export default function ChannelPerformancePage() {
             <p className="mt-1 text-slate-600">Shopify revenue by traffic source compared to ad spend.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-1 text-xs font-medium">
+              <span className="px-2 text-slate-500">View Mode:</span>
+              <button
+                type="button"
+                onClick={() => setViewMode("dollar")}
+                className={[
+                  "rounded-md px-2.5 py-1 transition-colors",
+                  viewMode === "dollar" ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:bg-slate-50",
+                ].join(" ")}
+              >
+                Dollar
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("indexed")}
+                className={[
+                  "rounded-md px-2.5 py-1 transition-colors",
+                  viewMode === "indexed" ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:bg-slate-50",
+                ].join(" ")}
+              >
+                Indexed
+              </button>
+            </div>
             <DateRangePicker
               value={rangeValue}
               onChange={setRangeValue}
@@ -274,24 +360,28 @@ export default function ChannelPerformancePage() {
             data={rows}
             channelKey="organic"
             channelColor="#16a34a"
+            viewMode={viewMode}
           />
           <ChannelChart
             title="Direct Revenue vs Ad Spend"
             data={rows}
             channelKey="direct"
             channelColor="#64748b"
+            viewMode={viewMode}
           />
           <ChannelChart
             title="Paid Revenue vs Ad Spend"
             data={rows}
             channelKey="paid"
             channelColor="#f59e0b"
+            viewMode={viewMode}
           />
           <ChannelChart
             title="Unknown Revenue vs Ad Spend"
             data={rows}
             channelKey="unknown"
             channelColor="#a855f7"
+            viewMode={viewMode}
           />
         </div>
       </div>

@@ -921,6 +921,7 @@ export function MultiSeriesEventfulLineChart({
   dualYAxis = false,
   leftYAxisLabel,
   rightYAxisLabel,
+  xAxisDataKey = "ts",
 }: {
   data: { date: string; [k: string]: any }[];
   compareData?: { date: string; [k: string]: any }[];
@@ -938,6 +939,7 @@ export function MultiSeriesEventfulLineChart({
   dualYAxis?: boolean;
   leftYAxisLabel?: string;
   rightYAxisLabel?: string;
+  xAxisDataKey?: "ts" | "date";
 }) {
   type ChartPoint = { date: string; ts: number; [k: string]: any };
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -1035,6 +1037,7 @@ export function MultiSeriesEventfulLineChart({
 
   const leftYDomain = useMemo(() => buildDomainForSeries(leftSeries), [buildDomainForSeries, leftSeries]);
   const rightYDomain = useMemo(() => buildDomainForSeries(rightSeries), [buildDomainForSeries, rightSeries]);
+  const useDateAxis = xAxisDataKey === "date";
 
   const eventDotData = useMemo(() => {
     return (showMarkers ? inRangeMarkers : []).map((m) => ({
@@ -1099,14 +1102,14 @@ export function MultiSeriesEventfulLineChart({
             ))}
           </defs>
           <XAxis
-            dataKey="ts"
-            type="number"
-            scale="time"
-            domain={xDomain}
+            dataKey={xAxisDataKey}
+            type={useDateAxis ? "category" : "number"}
+            scale={useDateAxis ? "auto" : "time"}
+            domain={useDateAxis ? undefined : xDomain}
             tick={{ fontSize: 11, fill: "#94a3b8" }}
-            tickFormatter={(v) => mmdd(new Date(Number(v)).toISOString().slice(0, 10))}
+            tickFormatter={(v) => (useDateAxis ? mmdd(toISO10(v)) : mmdd(new Date(Number(v)).toISOString().slice(0, 10)))}
             interval="preserveStartEnd"
-            minTickGap={28}
+            minTickGap={20}
             tickLine={false}
             axisLine={{ stroke: "#e2e8f0", strokeOpacity: 0.35 }}
           />

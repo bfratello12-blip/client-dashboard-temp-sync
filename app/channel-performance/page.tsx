@@ -123,6 +123,7 @@ function ChannelChart({
         dualYAxis
         leftYAxisLabel="Revenue"
         rightYAxisLabel="Ad Spend"
+        xAxisDataKey="date"
       />
     </section>
   );

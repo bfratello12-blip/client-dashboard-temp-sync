@@ -243,7 +243,7 @@ export async function GET(req: NextRequest) {
 
     const ql = `FROM sales
 SHOW total_sales
-BY traffic_source
+  GROUP BY traffic_source
 TIMESERIES day
 SINCE ${start}
 UNTIL ${end}
@@ -266,6 +266,8 @@ LIMIT 5000`;
       `,
       variables: { query: ql },
     });
+
+    console.log("[shopify/channel-sync] raw ShopifyQL response", data);
 
     const parsedRows = parseShopifyQLRows(data);
 

@@ -33,27 +33,10 @@ function normalizeTrafficSource(sourceRaw: string): "organic" | "direct" | "paid
   const source = String(sourceRaw || "").trim().toLowerCase();
   if (!source) return "unknown";
 
-  if (source.includes("direct")) return "direct";
-
-  if (
-    source.includes("paid") ||
-    source.includes("cpc") ||
-    source.includes("ppc") ||
-    source.includes("ad") ||
-    source.includes("google") ||
-    source.includes("meta") ||
-    source.includes("facebook") ||
-    source.includes("instagram") ||
-    source.includes("bing") ||
-    source.includes("tiktok")
-  ) {
-    return "paid";
-  }
-
-  if (source.includes("organic") || source.includes("seo") || source.includes("search")) {
-    return "organic";
-  }
-
+  if (source === "direct") return "direct";
+  if (source === "search" || source === "social" || source === "email") return "organic";
+  if (source === "paid") return "paid";
+  if (source === "unknown" || source === "other") return "unknown";
   return "unknown";
 }
 
@@ -181,7 +164,9 @@ function parseShopifyQLRows(payload: AnyObj): Array<{ date: string; traffic_sour
   })();
 
   const idxSource = (() => {
-    const i = colNames.findIndex((n) => n === "traffic_source" || n.includes("traffic source") || n.includes("source"));
+    const i = colNames.findIndex(
+      (n) => n === "referrer_type" || n.includes("referrer type") || n.includes("referrer")
+    );
     return i >= 0 ? i : 1;
   })();
 
@@ -209,7 +194,7 @@ function parseShopifyQLRows(payload: AnyObj): Array<{ date: string; traffic_sour
       if (!isIsoDate(date)) continue;
 
       const traffic_source = String(
-        row.traffic_source ?? row["traffic_source"] ?? row["traffic source"] ?? row.source ?? ""
+        row.referrer_type ?? row["referrer_type"] ?? row["referrer type"] ?? row.source ?? ""
       );
       const total_sales = asNumber(row.total_sales ?? row["total_sales"] ?? row["total sales"] ?? 0);
 
@@ -243,7 +228,7 @@ export async function GET(req: NextRequest) {
 
     const ql = `FROM sales
 SHOW total_sales
-  GROUP BY traffic_source
+GROUP BY referrer_type
 TIMESERIES day
 SINCE ${start}
 UNTIL ${end}
@@ -268,6 +253,7 @@ LIMIT 5000`;
     });
 
     console.log("[shopify/channel-sync] raw ShopifyQL response", data);
+  console.log("[shopify/channel-sync] raw ShopifyQL rows", data?.shopifyqlQuery?.tableData?.rows);
 
     const parsedRows = parseShopifyQLRows(data);
 

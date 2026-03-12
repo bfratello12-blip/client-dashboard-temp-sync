@@ -23,10 +23,14 @@ export default function ScatterCorrelationChart({
 }: {
   data: ScatterCorrelationPoint[];
 }) {
-  const linePoints = useMemo(() => {
-    const points = (data || []).filter(
-      (p) => Number.isFinite(Number(p?.adSpend)) && Number.isFinite(Number(p?.revenue))
+  const filteredData = useMemo(() => {
+    return (data || []).filter(
+      (p) => Number.isFinite(Number(p?.adSpend)) && Number(p.adSpend) > 0 && Number.isFinite(Number(p?.revenue))
     );
+  }, [data]);
+
+  const linePoints = useMemo(() => {
+    const points = filteredData;
     const n = points.length;
     if (n < 2) return [] as Array<{ adSpend: number; revenue: number }>;
 
@@ -60,7 +64,16 @@ export default function ScatterCorrelationChart({
       { adSpend: minX, revenue: m * minX + b },
       { adSpend: maxX, revenue: m * maxX + b },
     ];
-  }, [data]);
+  }, [filteredData]);
+
+  const xDomain = useMemo(() => {
+    if (!filteredData.length) return undefined;
+    const spends = filteredData.map((d) => Number(d.adSpend || 0)).filter((v) => Number.isFinite(v));
+    if (!spends.length) return undefined;
+    const minSpend = Math.min(...spends);
+    const maxSpend = Math.max(...spends);
+    return [minSpend * 0.9, maxSpend * 1.1] as [number, number];
+  }, [filteredData]);
 
   return (
     <div className="h-[320px] w-full min-w-0">
@@ -71,6 +84,7 @@ export default function ScatterCorrelationChart({
           <XAxis
             type="number"
             dataKey="adSpend"
+            domain={xDomain}
             name="Ad Spend"
             label={{ value: "Ad Spend ($)", position: "insideBottom", offset: -6, fill: "#64748b", fontSize: 12 }}
             tick={{ fontSize: 11, fill: "#94a3b8" }}
@@ -108,7 +122,7 @@ export default function ScatterCorrelationChart({
             }}
           />
 
-          <Scatter data={data || []} fill="#3b82f6" />
+          <Scatter data={filteredData} fill="#3b82f6" />
           <Line
             data={linePoints}
             dataKey="revenue"

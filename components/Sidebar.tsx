@@ -3,6 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { LayoutDashboard, Package, TrendingUp, Settings } from "lucide-react";
 
 interface SidebarProps {
   clientName: string;
@@ -28,7 +29,17 @@ interface SidebarProps {
   loading: boolean;
 }
 
-function NavItem({ href, active, label }: { href: string; active: boolean; label: string }) {
+function NavItem({
+  href,
+  active,
+  label,
+  icon,
+}: {
+  href: string;
+  active: boolean;
+  label: string;
+  icon: React.ReactNode;
+}) {
   return (
     <Link
       href={href}
@@ -39,6 +50,7 @@ function NavItem({ href, active, label }: { href: string; active: boolean; label
           : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
       ].join(" ")}
     >
+      <span className="shrink-0">{icon}</span>
       {label}
     </Link>
   );
@@ -75,18 +87,20 @@ export default function Sidebar({
       <div className="mt-1 text-s text-slate-500">Client Portal</div>
 
       <nav className="mt-8 space-y-1">
-        <NavItem href="/" active={pathname === "/"} label="Dashboard" />
+        <NavItem href="/" active={pathname === "/"} label="Dashboard" icon={<LayoutDashboard size={18} />} />
         <NavItem
           href="/product-performance"
           active={pathname?.startsWith("/product-performance")}
           label="Product Performance"
+          icon={<Package size={18} />}
         />
         <NavItem
           href="/channel-performance"
           active={pathname?.startsWith("/channel-performance")}
           label="Channel Revenue vs Ad Spend"
+          icon={<TrendingUp size={18} />}
         />
-        <NavItem href="/settings" active={pathname?.startsWith("/settings")} label="Settings" />
+        <NavItem href="/settings" active={pathname?.startsWith("/settings")} label="Settings" icon={<Settings size={18} />} />
       </nav>
 
       {/* Data health panel */}

@@ -123,7 +123,12 @@ export default function ScatterCorrelationChart({
             }}
           />
 
-          <Scatter data={filteredData} fill="#3b82f6" />
+          <Scatter
+            data={filteredData}
+            fill="#3b82f6"
+            fillOpacity={0.45}
+            stroke="none"
+          />
           <Line
             data={linePoints}
             dataKey="revenue"

@@ -167,7 +167,9 @@ function ChannelChart({
 export default function ChannelPerformancePage() {
   const initialRange = useMemo(() => {
     const { startISO, endISO } = last30DaysRange();
-    return { mode: "preset", preset: "last30days", startISO, endISO } as RangeValue;
+    const endISO90 = format(new Date(), "yyyy-MM-dd");
+    const startISO90 = format(subDays(new Date(), 89), "yyyy-MM-dd");
+    return { mode: "preset", preset: "last90days", startISO: startISO90, endISO: endISO90 } as RangeValue;
   }, []);
 
   const [rangeValue, setRangeValue] = useState<RangeValue>(initialRange);
@@ -175,8 +177,8 @@ export default function ChannelPerformancePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const [rollingEnabled, setRollingEnabled] = useState(false);
-  const [rollingWindowDays, setRollingWindowDays] = useState<number>(7);
+  const [rollingEnabled, setRollingEnabled] = useState(true);
+  const [rollingWindowDays, setRollingWindowDays] = useState<number>(14);
 
   useEffect(() => {
     let cancelled = false;
@@ -396,26 +398,34 @@ export default function ChannelPerformancePage() {
 
           <div className="mt-4 grid grid-cols-1 gap-6 xl:grid-cols-2">
             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 min-w-0">
-              <div className="mb-1 text-xs font-medium text-slate-500">Correlation: {organicCorr.toFixed(2)}</div>
-              <div className="mb-3 text-lg font-semibold text-slate-900">Organic</div>
+              <div className="mb-3 text-lg font-semibold text-slate-900">
+                Organic <span className="mx-1 text-slate-400">|</span>
+                <span className="text-sm font-medium text-slate-500">Correlation: {organicCorr.toFixed(2)}</span>
+              </div>
               <ScatterCorrelationChart data={organicScatterData} />
             </section>
 
             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 min-w-0">
-              <div className="mb-1 text-xs font-medium text-slate-500">Correlation: {directCorr.toFixed(2)}</div>
-              <div className="mb-3 text-lg font-semibold text-slate-900">Direct</div>
+              <div className="mb-3 text-lg font-semibold text-slate-900">
+                Direct <span className="mx-1 text-slate-400">|</span>
+                <span className="text-sm font-medium text-slate-500">Correlation: {directCorr.toFixed(2)}</span>
+              </div>
               <ScatterCorrelationChart data={directScatterData} />
             </section>
 
             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 min-w-0">
-              <div className="mb-1 text-xs font-medium text-slate-500">Correlation: {paidCorr.toFixed(2)}</div>
-              <div className="mb-3 text-lg font-semibold text-slate-900">Paid</div>
+              <div className="mb-3 text-lg font-semibold text-slate-900">
+                Paid <span className="mx-1 text-slate-400">|</span>
+                <span className="text-sm font-medium text-slate-500">Correlation: {paidCorr.toFixed(2)}</span>
+              </div>
               <ScatterCorrelationChart data={paidScatterData} />
             </section>
 
             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 min-w-0">
-              <div className="mb-1 text-xs font-medium text-slate-500">Correlation: {unknownCorr.toFixed(2)}</div>
-              <div className="mb-3 text-lg font-semibold text-slate-900">Unknown</div>
+              <div className="mb-3 text-lg font-semibold text-slate-900">
+                Unknown <span className="mx-1 text-slate-400">|</span>
+                <span className="text-sm font-medium text-slate-500">Correlation: {unknownCorr.toFixed(2)}</span>
+              </div>
               <ScatterCorrelationChart data={unknownScatterData} />
             </section>
           </div>

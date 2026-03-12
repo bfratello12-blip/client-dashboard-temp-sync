@@ -100,12 +100,12 @@ function ChannelChart({
   }, [mappedData, rollingEnabled, rollingWindowDays]);
 
   const chartSeries = useMemo(() => {
-    const series: Array<{ key: string; name: string; color: string; strokeWidth?: number }> = [];
+    const series: Array<{ key: string; name: string; color: string; strokeWidth?: number; yAxisId?: string }> = [];
     if (showAdSpend) {
-      series.push({ key: "adSpend", name: "Ad Spend", color: "#3b82f6", strokeWidth: 2.6 });
+      series.push({ key: "adSpend", name: "Ad Spend", color: "#3b82f6", strokeWidth: 2.6, yAxisId: "spend" });
     }
     if (showRevenue) {
-      series.push({ key: "revenue", name: title.replace(" vs Ad Spend", ""), color: channelColor, strokeWidth: 2.6 });
+      series.push({ key: "revenue", name: title.replace(" vs Ad Spend", ""), color: channelColor, strokeWidth: 2.6, yAxisId: "revenue" });
     }
     return series;
   }, [showAdSpend, showRevenue, title, channelColor]);
@@ -175,6 +175,9 @@ function ChannelChart({
         height={300}
         hideAreaLegend
         xAxisDataKey="date"
+        dualYAxis
+        leftYAxisLabel="Revenue"
+        rightYAxisLabel="Ad Spend"
       />
     </section>
   );

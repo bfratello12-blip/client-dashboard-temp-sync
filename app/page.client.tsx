@@ -918,6 +918,7 @@ export function MultiSeriesEventfulLineChart({
   tooltipContent,
   yAxisLabel,
   hideAreaLegend = false,
+  xAxisDataKey = "ts",
 }: {
   data: { date: string; [k: string]: any }[];
   compareData?: { date: string; [k: string]: any }[];
@@ -932,6 +933,7 @@ export function MultiSeriesEventfulLineChart({
   tooltipContent?: (p: any) => React.ReactNode;
   yAxisLabel?: string;
   hideAreaLegend?: boolean;
+  xAxisDataKey?: "ts" | "date";
 }) {
   type ChartPoint = { date: string; ts: number; [k: string]: any };
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -1016,6 +1018,8 @@ export function MultiSeriesEventfulLineChart({
 
   const clearHover = useCallback(() => setHover(null), []);
 
+  const useTimeAxis = xAxisDataKey === "ts";
+
   const setHoverFromClientXY = useCallback((marker: EventMarker, clientX: number, clientY: number) => {
     const r = wrapRef.current?.getBoundingClientRect();
     if (!r) return;
@@ -1069,12 +1073,16 @@ export function MultiSeriesEventfulLineChart({
             ))}
           </defs>
           <XAxis
-            dataKey="ts"
-            type="number"
-            scale="time"
-            domain={xDomain}
+            dataKey={xAxisDataKey}
+            type={useTimeAxis ? "number" : "category"}
+            scale={useTimeAxis ? "time" : "auto"}
+            domain={useTimeAxis ? xDomain : undefined}
             tick={{ fontSize: 11, fill: "#94a3b8" }}
-            tickFormatter={(v) => mmdd(new Date(Number(v)).toISOString().slice(0, 10))}
+            tickFormatter={(v) =>
+              useTimeAxis
+                ? mmdd(new Date(Number(v)).toISOString().slice(0, 10))
+                : mmdd(toISO10(v))
+            }
             interval="preserveStartEnd"
             minTickGap={28}
             tickLine={false}

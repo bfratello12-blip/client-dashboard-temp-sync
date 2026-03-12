@@ -39,7 +39,7 @@ type ChannelRow = {
 type SeriesKey = "organic" | "direct" | "paid" | "unknown";
 
 type ChannelChartPoint = {
-  date: string;
+  date: Date;
   adSpend: number;
   revenue: number;
 };
@@ -54,7 +54,7 @@ function formatCurrency(n: number) {
   return Number(n || 0).toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }
 
-function buildRollingAvgSeries<T extends { date: string }>(
+function buildRollingAvgSeries<T extends { date: any }>(
   rows: T[],
   key: keyof T,
   windowDays: number
@@ -87,7 +87,7 @@ function ChannelChart({
 
   const mappedData = useMemo(() => {
     return data.map((row) => ({
-      date: row.date,
+      date: new Date(`${row.date}T00:00:00Z`),
       adSpend: Number(row.ad_spend || 0),
       revenue: Number(row[channelKey] || 0),
     })) as ChannelChartPoint[];
@@ -174,6 +174,7 @@ function ChannelChart({
         compareLabel=""
         height={300}
         hideAreaLegend
+        xAxisDataKey="date"
       />
     </section>
   );

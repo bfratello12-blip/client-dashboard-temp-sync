@@ -62,6 +62,22 @@ function buildRollingAvgSeries<T extends { date: string }>(
   });
 }
 
+function applyRollingScatterWindow(
+  data: Array<{ date: string; adSpend: number; revenue: number }>,
+  windowDays: number
+) {
+  return data.map((row, i) => {
+    const slice = data.slice(Math.max(0, i - windowDays + 1), i + 1);
+    const avgSpend = slice.reduce((a, b) => a + Number(b.adSpend || 0), 0) / Math.max(1, slice.length);
+    const avgRevenue = slice.reduce((a, b) => a + Number(b.revenue || 0), 0) / Math.max(1, slice.length);
+    return {
+      date: row.date,
+      adSpend: avgSpend,
+      revenue: avgRevenue,
+    };
+  });
+}
+
 function calculateCorrelation<T extends Record<string, any>>(data: T[], xKey: keyof T, yKey: keyof T): number {
   const rows = (data || []).filter(
     (r) => Number.isFinite(Number(r?.[xKey])) && Number.isFinite(Number(r?.[yKey]))
@@ -262,22 +278,38 @@ export default function ChannelPerformancePage() {
     return buildRollingAvgSeries(unknownSmoothed, "ad_spend", rollingWindowDays);
   }, [filteredRows, rollingEnabled, rollingWindowDays]);
 
-  const organicScatterData = useMemo(
-    () => filteredRows.map((row) => ({ date: row.date, adSpend: Number(row.ad_spend || 0), revenue: Number(row.organic || 0) })),
-    [filteredRows]
-  );
-  const directScatterData = useMemo(
-    () => filteredRows.map((row) => ({ date: row.date, adSpend: Number(row.ad_spend || 0), revenue: Number(row.direct || 0) })),
-    [filteredRows]
-  );
-  const paidScatterData = useMemo(
-    () => filteredRows.map((row) => ({ date: row.date, adSpend: Number(row.ad_spend || 0), revenue: Number(row.paid || 0) })),
-    [filteredRows]
-  );
-  const unknownScatterData = useMemo(
-    () => filteredRows.map((row) => ({ date: row.date, adSpend: Number(row.ad_spend || 0), revenue: Number(row.unknown || 0) })),
-    [filteredRows]
-  );
+  const organicScatterData = useMemo(() => {
+    const base = filteredRows.map((row) => ({
+      date: row.date,
+      adSpend: Number(row.ad_spend || 0),
+      revenue: Number(row.organic || 0),
+    }));
+    return rollingEnabled ? applyRollingScatterWindow(base, rollingWindowDays) : base;
+  }, [filteredRows, rollingEnabled, rollingWindowDays]);
+  const directScatterData = useMemo(() => {
+    const base = filteredRows.map((row) => ({
+      date: row.date,
+      adSpend: Number(row.ad_spend || 0),
+      revenue: Number(row.direct || 0),
+    }));
+    return rollingEnabled ? applyRollingScatterWindow(base, rollingWindowDays) : base;
+  }, [filteredRows, rollingEnabled, rollingWindowDays]);
+  const paidScatterData = useMemo(() => {
+    const base = filteredRows.map((row) => ({
+      date: row.date,
+      adSpend: Number(row.ad_spend || 0),
+      revenue: Number(row.paid || 0),
+    }));
+    return rollingEnabled ? applyRollingScatterWindow(base, rollingWindowDays) : base;
+  }, [filteredRows, rollingEnabled, rollingWindowDays]);
+  const unknownScatterData = useMemo(() => {
+    const base = filteredRows.map((row) => ({
+      date: row.date,
+      adSpend: Number(row.ad_spend || 0),
+      revenue: Number(row.unknown || 0),
+    }));
+    return rollingEnabled ? applyRollingScatterWindow(base, rollingWindowDays) : base;
+  }, [filteredRows, rollingEnabled, rollingWindowDays]);
 
   const organicCorr = useMemo(() => calculateCorrelation(organicScatterData, "adSpend", "revenue"), [organicScatterData]);
   const directCorr = useMemo(() => calculateCorrelation(directScatterData, "adSpend", "revenue"), [directScatterData]);

@@ -161,17 +161,49 @@ export default function ChannelPerformancePage() {
         }
 
         const data = Array.isArray(json) ? json : [];
-        const normalized = data
-          .map((r: any) => ({
-            date: String(r?.date || ""),
-            ts: Number(r?.ts || new Date(`${String(r?.date || "")}T00:00:00Z`).getTime() || 0),
-            organic: Number(r?.organic || 0),
-            direct: Number(r?.direct || 0),
-            paid: Number(r?.paid || 0),
-            unknown: Number(r?.unknown || 0),
-            ad_spend: Number(r?.ad_spend ?? r?.adSpend ?? 0),
-          }))
-          .filter((r: ChannelRow) => !!r.date && Number.isFinite(r.ts));
+        const byDate: Record<string, ChannelRow> = {};
+
+        for (const r of data) {
+          const date = String(r?.date || "").trim();
+          if (!date) continue;
+
+          const ts = Number(r?.ts || new Date(`${date}T00:00:00Z`).getTime() || 0);
+          if (!Number.isFinite(ts)) continue;
+
+          if (!byDate[date]) {
+            byDate[date] = {
+              date,
+              ts,
+              organic: 0,
+              direct: 0,
+              paid: 0,
+              unknown: 0,
+              ad_spend: 0,
+            };
+          }
+
+          const row = byDate[date];
+          const spend = Number(r?.ad_spend ?? r?.adSpend ?? 0) || 0;
+          row.ad_spend = Math.max(row.ad_spend, spend);
+
+          // Wide-format support
+          row.organic += Number(r?.organic ?? 0) || 0;
+          row.direct += Number(r?.direct ?? 0) || 0;
+          row.paid += Number(r?.paid ?? 0) || 0;
+          row.unknown += Number(r?.unknown ?? 0) || 0;
+
+          // Tall-format support: { traffic_type, revenue }
+          const trafficType = String(r?.traffic_type || r?.channel || "").trim().toLowerCase();
+          const revenue = Number(r?.revenue ?? 0) || 0;
+          if (trafficType === "organic") row.organic += revenue;
+          if (trafficType === "direct") row.direct += revenue;
+          if (trafficType === "paid") row.paid += revenue;
+          if (trafficType === "unknown") row.unknown += revenue;
+        }
+
+        const normalized = Object.values(byDate)
+          .sort((a, b) => a.ts - b.ts)
+          .filter((r) => !!r.date && Number.isFinite(r.ts));
 
         if (!cancelled) setRows(normalized);
       } catch (e: any) {

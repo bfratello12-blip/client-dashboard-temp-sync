@@ -86,6 +86,7 @@ export default function ScatterCorrelationChart({
             dataKey="adSpend"
             domain={xDomain}
             name="Ad Spend"
+            tickFormatter={(v) => `$${Math.round(Number(v || 0)).toLocaleString()}`}
             label={{ value: "Ad Spend ($)", position: "insideBottom", offset: -6, fill: "#64748b", fontSize: 12 }}
             tick={{ fontSize: 11, fill: "#94a3b8" }}
             tickLine={false}

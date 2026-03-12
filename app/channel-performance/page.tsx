@@ -62,6 +62,25 @@ function buildRollingAvgSeries<T extends { date: string }>(
   });
 }
 
+function calculateCorrelation<T extends Record<string, any>>(data: T[], xKey: keyof T, yKey: keyof T): number {
+  const rows = (data || []).filter(
+    (r) => Number.isFinite(Number(r?.[xKey])) && Number.isFinite(Number(r?.[yKey]))
+  );
+  const n = rows.length;
+  if (n < 2) return 0;
+
+  const sumX = rows.reduce((a, b) => a + Number(b[xKey] || 0), 0);
+  const sumY = rows.reduce((a, b) => a + Number(b[yKey] || 0), 0);
+  const sumXY = rows.reduce((a, b) => a + Number(b[xKey] || 0) * Number(b[yKey] || 0), 0);
+  const sumX2 = rows.reduce((a, b) => a + Number(b[xKey] || 0) ** 2, 0);
+  const sumY2 = rows.reduce((a, b) => a + Number(b[yKey] || 0) ** 2, 0);
+
+  const numerator = n * sumXY - sumX * sumY;
+  const denominator = Math.sqrt((n * sumX2 - sumX ** 2) * (n * sumY2 - sumY ** 2));
+  if (!Number.isFinite(denominator) || denominator === 0) return 0;
+  return numerator / denominator;
+}
+
 function ChannelChart({
   title,
   data,
@@ -260,6 +279,11 @@ export default function ChannelPerformancePage() {
     [filteredRows]
   );
 
+  const organicCorr = useMemo(() => calculateCorrelation(organicScatterData, "adSpend", "revenue"), [organicScatterData]);
+  const directCorr = useMemo(() => calculateCorrelation(directScatterData, "adSpend", "revenue"), [directScatterData]);
+  const paidCorr = useMemo(() => calculateCorrelation(paidScatterData, "adSpend", "revenue"), [paidScatterData]);
+  const unknownCorr = useMemo(() => calculateCorrelation(unknownScatterData, "adSpend", "revenue"), [unknownScatterData]);
+
   return (
     <DashboardLayout>
       <div className="p-6 md:p-8 min-w-0">
@@ -340,21 +364,25 @@ export default function ChannelPerformancePage() {
 
           <div className="mt-4 grid grid-cols-1 gap-6 xl:grid-cols-2">
             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 min-w-0">
+              <div className="mb-1 text-xs font-medium text-slate-500">Correlation: {organicCorr.toFixed(2)}</div>
               <div className="mb-3 text-lg font-semibold text-slate-900">Organic</div>
               <ScatterCorrelationChart data={organicScatterData} />
             </section>
 
             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 min-w-0">
+              <div className="mb-1 text-xs font-medium text-slate-500">Correlation: {directCorr.toFixed(2)}</div>
               <div className="mb-3 text-lg font-semibold text-slate-900">Direct</div>
               <ScatterCorrelationChart data={directScatterData} />
             </section>
 
             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 min-w-0">
+              <div className="mb-1 text-xs font-medium text-slate-500">Correlation: {paidCorr.toFixed(2)}</div>
               <div className="mb-3 text-lg font-semibold text-slate-900">Paid</div>
               <ScatterCorrelationChart data={paidScatterData} />
             </section>
 
             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 min-w-0">
+              <div className="mb-1 text-xs font-medium text-slate-500">Correlation: {unknownCorr.toFixed(2)}</div>
               <div className="mb-3 text-lg font-semibold text-slate-900">Unknown</div>
               <ScatterCorrelationChart data={unknownScatterData} />
             </section>

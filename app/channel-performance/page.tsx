@@ -1,21 +1,12 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { format, subDays } from "date-fns";
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-} from "recharts";
 import DashboardLayout from "@/components/DashboardLayout";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
 import ScatterCorrelationChart from "@/components/ScatterCorrelationChart";
+import { MultiSeriesEventfulLineChart } from "@/app/page.client";
 
 export const dynamic = "force-dynamic";
 
@@ -71,54 +62,6 @@ function buildRollingAvgSeries<T extends { date: string }>(
   });
 }
 
-function SafeResponsiveContainer({
-  height,
-  className,
-  children,
-}: {
-  height: number | string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [ready, setReady] = useState(false);
-  const h = typeof height === "number" ? `${height}px` : height;
-
-  useEffect(() => {
-    if (!ref.current) return;
-    let raf = 0;
-    const ro = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (!rect) return;
-      if (rect.width > 0 && rect.height > 0) {
-        cancelAnimationFrame(raf);
-        raf = requestAnimationFrame(() => {
-          requestAnimationFrame(() => setReady(true));
-        });
-      } else {
-        setReady(false);
-      }
-    });
-    ro.observe(ref.current);
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-    };
-  }, []);
-
-  return (
-    <div ref={ref} className={className} style={{ height: h, minHeight: h }}>
-      {ready ? (
-        <ResponsiveContainer width="100%" height="100%">
-          {children}
-        </ResponsiveContainer>
-      ) : (
-        <div className="flex h-full w-full items-center justify-center text-sm text-slate-500">Loading chart…</div>
-      )}
-    </div>
-  );
-}
-
 function ChannelChart({
   title,
   data,
@@ -130,53 +73,57 @@ function ChannelChart({
   channelKey: SeriesKey;
   channelColor: string;
 }) {
+  const revenueKey = `${channelKey}_revenue`;
+  const chartData = useMemo(
+    () =>
+      data.map((row) => ({
+        date: row.date,
+        ad_spend: Number(row.ad_spend || 0),
+        organic_revenue: Number(row.organic || 0),
+        direct_revenue: Number(row.direct || 0),
+        paid_revenue: Number(row.paid || 0),
+        unknown_revenue: Number(row.unknown || 0),
+      })),
+    [data]
+  );
+
+  const series = useMemo(
+    () => [
+      {
+        key: revenueKey,
+        name: title.replace(" vs Ad Spend", ""),
+        color: channelColor,
+        yAxisId: "left" as const,
+      },
+      {
+        key: "ad_spend",
+        name: "Ad Spend",
+        color: "#3b82f6",
+        yAxisId: "right" as const,
+      },
+    ],
+    [revenueKey, title, channelColor]
+  );
+
   return (
     <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 min-w-0">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
       </div>
-      <SafeResponsiveContainer height={300} className="h-[300px] w-full">
-        <LineChart data={data} margin={{ top: 6, right: 16, left: 6, bottom: 4 }}>
-          <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-          <XAxis
-            dataKey="ts"
-            type="number"
-            scale="time"
-            domain={["dataMin", "dataMax"]}
-            tick={{ fontSize: 12, fill: "#64748b" }}
-            tickFormatter={(value) => format(new Date(Number(value)), "MMM d")}
-          />
-          <YAxis tick={{ fontSize: 12, fill: "#64748b" }} tickFormatter={(v) => `$${Number(v || 0).toLocaleString()}`} />
-          <Tooltip
-            formatter={(value: any, name: any) => [formatCurrency(Number(value || 0)), name]}
-            labelFormatter={(label) => format(new Date(Number(label)), "MMM d, yyyy")}
-            contentStyle={{
-              backgroundColor: "rgba(255,255,255,0.96)",
-              border: "1px solid #e2e8f0",
-              borderRadius: "10px",
-            }}
-          />
-          <Legend />
-          <Line
-            type="monotone"
-            dataKey={channelKey}
-            name="Revenue"
-            stroke={channelColor}
-            strokeWidth={2.5}
-            dot={false}
-            isAnimationActive={false}
-          />
-          <Line
-            type="monotone"
-            dataKey="ad_spend"
-            name="Ad Spend"
-            stroke="#2563eb"
-            strokeWidth={2.25}
-            dot={false}
-            isAnimationActive={false}
-          />
-        </LineChart>
-      </SafeResponsiveContainer>
+      <MultiSeriesEventfulLineChart
+        data={chartData as any}
+        showComparison={false}
+        series={series as any}
+        yTooltipFormatter={formatCurrency}
+        markers={[]}
+        showMarkers={false}
+        compareLabel=""
+        height={300}
+        hideAreaLegend
+        dualYAxis
+        leftYAxisLabel="Revenue"
+        rightYAxisLabel="Ad Spend"
+      />
     </section>
   );
 }
@@ -217,12 +164,12 @@ export default function ChannelPerformancePage() {
         const normalized = data
           .map((r: any) => ({
             date: String(r?.date || ""),
-            ts: Number(r?.ts || 0),
+            ts: Number(r?.ts || new Date(`${String(r?.date || "")}T00:00:00Z`).getTime() || 0),
             organic: Number(r?.organic || 0),
             direct: Number(r?.direct || 0),
             paid: Number(r?.paid || 0),
             unknown: Number(r?.unknown || 0),
-            ad_spend: Number(r?.ad_spend || 0),
+            ad_spend: Number(r?.ad_spend ?? r?.adSpend ?? 0),
           }))
           .filter((r: ChannelRow) => !!r.date && Number.isFinite(r.ts));
 

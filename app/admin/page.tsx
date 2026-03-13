@@ -47,8 +47,7 @@ export default function AdminPage() {
       const { data, error: mapError } = await supabase
         .from("user_clients")
         .select("client_id, clients(id, name)")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: true });
+        .eq("user_id", userId);
 
       if (mapError) {
         if (!cancelled) {

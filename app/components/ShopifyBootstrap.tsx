@@ -84,14 +84,19 @@ export default function ShopifyBootstrap({ host }: ShopifyBootstrapProps) {
         const token = await getSessionToken(app);
         if (cancelled) return;
 
-        const res = await fetch("/api/shopify/whoami", {
+        const res = await fetch(`/api/shopify/whoami?shop=${encodeURIComponent(shopOrigin)}`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         });
-        const data = (await res.json()) as { ok: boolean; shop?: string };
-        console.log("[bootstrap] whoami response", { ok: data?.ok, shop: data?.shop });
-        if (!data?.ok || !data.shop) {
+        const data = (await res.json()) as { ok: boolean; shop?: string; shop_domain?: string; client_id?: string };
+        const resolvedShop = data?.shop_domain || data?.shop || "";
+        console.log("[bootstrap] whoami response", {
+          ok: data?.ok,
+          shop: resolvedShop,
+          clientId: data?.client_id || "",
+        });
+        if (!data?.ok || !resolvedShop) {
           setStatus("error");
           return;
         }
@@ -99,7 +104,7 @@ export default function ShopifyBootstrap({ host }: ShopifyBootstrapProps) {
         const params = new URLSearchParams();
         params.set("bootstrapped", "1");
         if (normalizedHost) params.set("host", normalizedHost);
-        if (data?.shop) params.set("shop", data.shop);
+        params.set("shop", resolvedShop);
         console.log("[bootstrap] redirecting to app root with shop+host");
         window.location.replace(`/?${params.toString()}`);
       } catch {

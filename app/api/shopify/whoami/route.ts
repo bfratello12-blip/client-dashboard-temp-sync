@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { decodeJwt, jwtVerify } from "jose";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 function normalizeShopDomain(shop: string) {
   const s = (shop || "").trim().toLowerCase();
@@ -7,60 +7,40 @@ function normalizeShopDomain(shop: string) {
   return s.endsWith(".myshopify.com") ? s : `${s}.myshopify.com`;
 }
 
-function shopFromDest(dest?: string) {
-  if (!dest) return "";
-  try {
-    const hostname = new URL(dest).hostname;
-    return normalizeShopDomain(hostname);
-  } catch {
-    return "";
-  }
-}
-
 export async function GET(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization") || "";
-    const match = authHeader.match(/^Bearer\s+(.+)$/i);
-    const token = match?.[1] || "";
-
-    if (!token) {
-      const error = "missing token";
-      console.error("[whoami] error", { error });
-      return NextResponse.json({ ok: false, error }, { status: 401 });
-    }
-
-    const secret = process.env.SHOPIFY_OAUTH_CLIENT_SECRET || "";
-    let payload: { dest?: string } | null = null;
-
-    if (secret) {
-      try {
-        const { payload: verified } = await jwtVerify(
-          token,
-          new TextEncoder().encode(secret)
-        );
-        payload = verified as { dest?: string };
-      } catch {
-        payload = null;
-      }
-    }
-
-    if (!payload) {
-      try {
-        payload = decodeJwt(token) as { dest?: string };
-      } catch {
-        payload = null;
-      }
-    }
-
-    const shop = shopFromDest(payload?.dest || "");
+    const shop = normalizeShopDomain(req.nextUrl.searchParams.get("shop") || "");
     if (!shop) {
-      const error = "shop not found";
+      const error = "missing shop parameter";
       console.error("[whoami] error", { error });
       return NextResponse.json({ ok: false, error }, { status: 400 });
     }
-    console.info("[whoami] ok", { shop });
-    const res = NextResponse.json({ ok: true, shop });
-    res.cookies.set("sa_shop", shop, {
+
+    const admin = supabaseAdmin();
+    const { data, error } = await admin
+      .from("shopify_app_installs")
+      .select("client_id, shop_domain")
+      .eq("shop_domain", shop)
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data?.client_id || !data?.shop_domain) {
+      console.error("[whoami] error", {
+        error: error?.message || "client not found for shop",
+        shop,
+      });
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const resolvedShop = normalizeShopDomain(String(data.shop_domain));
+    console.info("[whoami] ok", { shop: resolvedShop, client_id: data.client_id });
+    const res = NextResponse.json({
+      ok: true,
+      client_id: String(data.client_id),
+      shop_domain: resolvedShop,
+      shop: resolvedShop,
+    });
+    res.cookies.set("sa_shop", resolvedShop, {
       path: "/",
       httpOnly: true,
       secure: true,

@@ -585,7 +585,8 @@ function SettingsPage() {
 
       if (isEmbeddedShopifyContext && !shopDomain && !overrideClientId) {
         try {
-          const whoRes = await fetch("/api/shopify/whoami", { cache: "no-store" });
+          const shopQuery = encodeURIComponent((shopFromUrl || "").trim());
+          const whoRes = await fetch(`/api/shopify/whoami?shop=${shopQuery}`, { cache: "no-store" });
           if (!whoRes.ok) {
             if (!cancelled) {
               setShopifyAuthWarning("Not authenticated in Shopify context");
@@ -594,8 +595,8 @@ function SettingsPage() {
             return;
           }
           const whoJson = await whoRes.json().catch(() => ({}));
-          if (whoJson?.shop) {
-            shopDomain = String(whoJson.shop).trim();
+          if (whoJson?.shop_domain || whoJson?.shop) {
+            shopDomain = String(whoJson.shop_domain || whoJson.shop).trim();
           }
         } catch (e) {
           if (!cancelled) {

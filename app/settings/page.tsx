@@ -547,10 +547,14 @@ function SettingsPage() {
 
       const params = new URLSearchParams(window.location.search);
       const overrideClientId = params.get("client_id") || "";
+      const isEmbeddedShopifyContext = hasShopifyContextClient();
+
+      if (!cancelled) {
+        setShopifyAuthWarning(isEmbeddedShopifyContext ? "" : "Not authenticated in Shopify context");
+      }
 
       if (overrideClientId) {
         if (!cancelled) {
-          setShopifyAuthWarning("");
           setClientId(overrideClientId);
         }
       }

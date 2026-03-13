@@ -1,6 +1,7 @@
 // app/api/googleads/daily-summary/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,14 +16,11 @@ function isDay(v: string) {
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
-    const client_id = url.searchParams.get("client_id") ?? "";
+    const shopDomain = (url.searchParams.get("shop_domain") || "").trim();
     const day = url.searchParams.get("day") ?? "";
 
-    if (!client_id || !isUUID(client_id)) {
-      return NextResponse.json(
-        { ok: false, source: "google", error: "Invalid client_id (uuid required)" },
-        { status: 400 }
-      );
+    if (!shopDomain) {
+      return NextResponse.json({ ok: false, source: "google", error: "Missing shop_domain" }, { status: 400 });
     }
     if (!day || !isDay(day)) {
       return NextResponse.json(
@@ -32,6 +30,13 @@ export async function GET(req: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin();
+    const client_id = await resolveClientIdFromShopDomainParam(shopDomain);
+    if (!client_id || !isUUID(client_id)) {
+      return NextResponse.json(
+        { ok: false, source: "google", error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
 
     const { data, error } = await supabase
       .from("daily_metrics")

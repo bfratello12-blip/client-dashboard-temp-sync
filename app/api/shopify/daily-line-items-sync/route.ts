@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { bucketShopifyOrderDay } from "@/lib/dates";
 import { requireCronAuth } from "@/lib/cronAuth";
 import { loadShopifyChannelExclusions } from "@/lib/shopifyExclusions";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -198,15 +199,20 @@ export async function POST(req: NextRequest) {
     const supabase = getSupabaseAdmin();
     const url = req.nextUrl;
 
-    const clientId = url.searchParams.get("client_id")?.trim();
+    const shopDomainParam = url.searchParams.get("shop_domain")?.trim() || "";
     const start = url.searchParams.get("start")?.trim(); // YYYY-MM-DD
     const end = url.searchParams.get("end")?.trim();     // YYYY-MM-DD
     const shopOverride = url.searchParams.get("shop")?.trim();
     const throttleMs = Number(url.searchParams.get("throttleMs") || "200");
 
-    if (!clientId) {
-      return NextResponse.json({ ok: false, error: "Missing client_id" }, { status: 400 });
+    if (!shopDomainParam) {
+      return NextResponse.json({ ok: false, error: "Missing shop_domain" }, { status: 400 });
     }
+        const clientId = await resolveClientIdFromShopDomainParam(shopDomainParam);
+        if (!clientId) {
+          return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+        }
+
     if (!start || !end) {
       return NextResponse.json(
         { ok: false, error: "Missing start or end (YYYY-MM-DD)" },

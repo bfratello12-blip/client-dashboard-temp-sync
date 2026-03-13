@@ -142,6 +142,12 @@ export async function getInstallClientIdForShop(shop: string): Promise<string | 
   return String(data.client_id);
 }
 
+export async function resolveClientIdFromShopDomainParam(shopDomainRaw: string): Promise<string | null> {
+  const shop = normalizeShopDomain(String(shopDomainRaw || ""));
+  if (!shop) return null;
+  return getInstallClientIdForShop(shop);
+}
+
 export async function getShopFromRequest(req: Request): Promise<string> {
   const token = getBearerToken(req);
   if (!token) return "";

@@ -20,6 +20,7 @@ import { addDays, format, parseISO, differenceInCalendarDays, startOfDay, isBefo
 import { bucketShopifyOrderDay, bucketShopifyOrderDayInTZ } from "@/lib/dates";
 import { requireCronAuth } from "@/lib/cronAuth";
 import { loadShopifyChannelExclusions } from "@/lib/shopifyExclusions";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 type AnyObj = Record<string, any>;
 
@@ -801,7 +802,11 @@ export async function POST(req: NextRequest) {
     const end = searchParams.get("end");
     const fillZeros = searchParams.get("fillZeros") === "1";
     const debugScopes = searchParams.get("debugScopes") === "1";
-    const onlyClientId = (searchParams.get("client_id") || "").trim() || null;
+    const onlyShopDomain = (searchParams.get("shop_domain") || "").trim();
+    const onlyClientId = onlyShopDomain ? await resolveClientIdFromShopDomainParam(onlyShopDomain) : null;
+    if (onlyShopDomain && !onlyClientId) {
+      return NextResponse.json({ ok: false, error: "Shop not installed" }, { status: 401 });
+    }
 
     // Sync mode:
     // - shopifyql: force ShopifyQL (matches Shopify Analytics best); throw on failure

@@ -1,6 +1,7 @@
 // app/api/googleads/accounts/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,8 +93,11 @@ async function fetchCustomerName(args: {
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
-    const clientId = url.searchParams.get("client_id")?.trim();
-    if (!clientId) return NextResponse.json({ ok: false, error: "Missing client_id" }, { status: 400 });
+    const shopDomain = url.searchParams.get("shop_domain")?.trim() || "";
+    if (!shopDomain) return NextResponse.json({ ok: false, error: "Missing shop_domain" }, { status: 400 });
+
+    const clientId = await resolveClientIdFromShopDomainParam(shopDomain);
+    if (!clientId) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
     const supabase = supabaseAdmin();
     const { data: rows, error } = await supabase

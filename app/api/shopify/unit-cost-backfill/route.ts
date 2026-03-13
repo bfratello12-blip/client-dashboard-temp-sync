@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,14 +30,19 @@ export async function POST(req: NextRequest) {
 
     const url = req.nextUrl;
     const origin = url.origin;
-    const clientId = url.searchParams.get("client_id")?.trim() || "";
+    const shopDomain = url.searchParams.get("shop_domain")?.trim() || "";
     const start = url.searchParams.get("start")?.trim() || "";
     const end = url.searchParams.get("end")?.trim() || "";
     const throttleMs = url.searchParams.get("throttleMs")?.trim();
 
-    if (!clientId) {
-      return NextResponse.json({ ok: false, error: "Missing client_id" }, { status: 400 });
+    if (!shopDomain) {
+      return NextResponse.json({ ok: false, error: "Missing shop_domain" }, { status: 400 });
     }
+        const clientId = await resolveClientIdFromShopDomainParam(shopDomain);
+        if (!clientId) {
+          return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+        }
+
     if (!start || !end) {
       return NextResponse.json(
         { ok: false, error: "Missing start or end (YYYY-MM-DD)" },
@@ -48,11 +54,11 @@ export async function POST(req: NextRequest) {
     const tokenParam = secret ? `&token=${encodeURIComponent(secret)}` : "";
     const throttleParam = throttleMs ? `&throttleMs=${encodeURIComponent(throttleMs)}` : "";
 
-    const lineItemsUrl = `${origin}/api/shopify/daily-line-items-sync?client_id=${encodeURIComponent(
-      clientId
+    const lineItemsUrl = `${origin}/api/shopify/daily-line-items-sync?shop_domain=${encodeURIComponent(
+      shopDomain
     )}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}${throttleParam}`;
-    const rollingUrl = `${origin}/api/cron/rolling-30?client_id=${encodeURIComponent(
-      clientId
+    const rollingUrl = `${origin}/api/cron/rolling-30?shop_domain=${encodeURIComponent(
+      shopDomain
     )}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}${tokenParam}`;
 
     const authedHeaders = secret ? { authorization: `Bearer ${secret}` } : undefined;

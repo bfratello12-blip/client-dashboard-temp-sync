@@ -1,6 +1,7 @@
 // app/api/shopify/daily-summary/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,10 +26,12 @@ export async function GET(req: NextRequest) {
     }
 
     const url = new URL(req.url);
-    const client_id = url.searchParams.get("client_id") || "";
+    const shopDomain = (url.searchParams.get("shop_domain") || "").trim();
     const day = url.searchParams.get("day") || "";
 
-    if (!isUUID(client_id)) return NextResponse.json({ ok: false, error: "Invalid client_id" }, { status: 400 });
+    if (!shopDomain) return NextResponse.json({ ok: false, error: "Missing shop_domain" }, { status: 400 });
+    const client_id = await resolveClientIdFromShopDomainParam(shopDomain);
+    if (!client_id || !isUUID(client_id)) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     if (!isDay(day)) return NextResponse.json({ ok: false, error: "Invalid day" }, { status: 400 });
 
     const supabase = getSupabaseAdmin();

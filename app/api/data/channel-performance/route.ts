@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getShopFromRequest } from "@/lib/requestAuth";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,33 +49,19 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const start = (searchParams.get("start") || "").trim();
     const end = (searchParams.get("end") || "").trim();
-    const requestedClientId = (searchParams.get("client_id") || "").trim();
+    const shopDomain = (searchParams.get("shop_domain") || "").trim();
 
     if (!start || !end || !isIsoDate(start) || !isIsoDate(end)) {
       return NextResponse.json({ ok: false, error: "Invalid or missing start/end" }, { status: 400 });
     }
+    if (!shopDomain) {
+      return NextResponse.json({ ok: false, error: "Missing shop_domain" }, { status: 400 });
+    }
 
     const supabase = supabaseAdmin();
-    let clientId = "";
-
-    const shop = await getShopFromRequest(req);
-    if (shop) {
-      const { data: install, error: installErr } = await supabase
-        .from("shopify_app_installs")
-        .select("client_id")
-        .eq("shop_domain", shop)
-        .maybeSingle();
-
-      if (installErr || !install?.client_id) {
-        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-      }
-
-      clientId = String(install.client_id);
-    } else {
-      if (!requestedClientId) {
-        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-      }
-      clientId = requestedClientId;
+    const clientId = await resolveClientIdFromShopDomainParam(shopDomain);
+    if (!clientId) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
     const { data: channelRows, error: channelErr } = await supabase

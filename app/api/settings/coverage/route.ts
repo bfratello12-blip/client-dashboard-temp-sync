@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,9 +12,14 @@ function isoDateUTC(d: Date) {
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
-    const client_id = (url.searchParams.get("client_id") || "").trim();
+    const shopDomain = (url.searchParams.get("shop_domain") || "").trim();
+    if (!shopDomain) {
+      return NextResponse.json({ ok: false, error: "Missing shop_domain" }, { status: 400 });
+    }
+
+    const client_id = await resolveClientIdFromShopDomainParam(shopDomain);
     if (!client_id) {
-      return NextResponse.json({ ok: false, error: "Missing client_id" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
     const end = new Date();

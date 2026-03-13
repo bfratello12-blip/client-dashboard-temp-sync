@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -223,12 +224,17 @@ function parseShopifyQLRows(payload: AnyObj): Array<{ date: string; traffic_sour
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const clientId = String(searchParams.get("client_id") || "").trim();
+    const shopDomain = String(searchParams.get("shop_domain") || "").trim();
     const start = String(searchParams.get("start") || "").trim();
     const end = String(searchParams.get("end") || "").trim();
 
+    if (!shopDomain) {
+      return NextResponse.json({ success: false, error: "Missing shop_domain" }, { status: 400 });
+    }
+
+    const clientId = await resolveClientIdFromShopDomainParam(shopDomain);
     if (!clientId) {
-      return NextResponse.json({ success: false, error: "Missing client_id" }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
     if (!isIsoDate(start) || !isIsoDate(end)) {

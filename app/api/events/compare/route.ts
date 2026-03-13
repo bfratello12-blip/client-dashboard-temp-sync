@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { addDaysIsoUTC } from "@/lib/dates";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 function toNum(v: any): number {
   const n = Number(v ?? 0);
@@ -10,15 +11,20 @@ function toNum(v: any): number {
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const clientId = (searchParams.get("client_id") || "").trim();
+    const shopDomain = (searchParams.get("shop_domain") || "").trim();
     const eventDate = (searchParams.get("event_date") || "").trim();
     const windowDays = Math.max(1, Number(searchParams.get("window_days") || 7));
 
-    if (!clientId || !eventDate) {
+    if (!shopDomain || !eventDate) {
       return NextResponse.json(
-        { ok: false, error: "Missing client_id or event_date" },
+        { ok: false, error: "Missing shop_domain or event_date" },
         { status: 400 }
       );
+    }
+
+    const clientId = await resolveClientIdFromShopDomainParam(shopDomain);
+    if (!clientId) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) {
       return NextResponse.json(

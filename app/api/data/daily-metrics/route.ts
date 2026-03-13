@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getBearerToken, getShopFromRequest } from "@/lib/requestAuth";
+import { getBearerToken, resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,13 +14,12 @@ export async function GET(req: NextRequest) {
       Boolean(expectedCronSecret) && (bearer === expectedCronSecret || qpToken === expectedCronSecret);
 
     const url = req.nextUrl;
-    let clientId = url.searchParams.get("client_id")?.trim() || "";
+    const shopDomain = url.searchParams.get("shop_domain")?.trim() || "";
     const start = url.searchParams.get("start")?.trim() || "";
     const end = url.searchParams.get("end")?.trim() || "";
 
-    const shop = await getShopFromRequest(req);
-    if (!shop && !clientId) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    if (!shopDomain) {
+      return NextResponse.json({ ok: false, error: "Missing shop_domain" }, { status: 400 });
     }
     if (!start || !end) {
       return NextResponse.json({ ok: false, error: "Missing start/end (YYYY-MM-DD)" }, { status: 400 });
@@ -30,18 +29,9 @@ export async function GET(req: NextRequest) {
     }
 
     const supabase = supabaseAdmin();
-
-    if (!clientId && shop) {
-      const { data: install, error: installErr } = await supabase
-        .from("shopify_app_installs")
-        .select("client_id")
-        .eq("shop_domain", shop)
-        .maybeSingle();
-
-      if (installErr || !install?.client_id) {
-        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-      }
-      clientId = String(install.client_id);
+    const clientId = await resolveClientIdFromShopDomainParam(shopDomain);
+    if (!clientId) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
     if (!cronAuthorized && !clientId) {

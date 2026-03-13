@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 function mustGetEnv(name: string) {
   const v = process.env[name];
@@ -17,7 +18,9 @@ function normalizeShop(shop: string) {
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const shop = normalizeShop(url.searchParams.get("shop") || "");
-  const clientId = url.searchParams.get("client_id") || process.env.DEFAULT_CLIENT_ID || "";
+  const shopDomainParam = url.searchParams.get("shop_domain") || shop;
+  const resolvedClientId = await resolveClientIdFromShopDomainParam(shopDomainParam || "");
+  const clientId = resolvedClientId || process.env.DEFAULT_CLIENT_ID || "";
   const referer = req.headers.get("referer") || "";
   const origin = req.headers.get("origin") || "";
   const appBaseUrl = mustGetEnv("APP_BASE_URL").replace(/\/$/, "");

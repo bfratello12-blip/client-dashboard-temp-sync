@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 const CRON_SECRET = process.env.CRON_SECRET || process.env.CRON_TOKEN || "";
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -63,10 +64,13 @@ export async function GET(req: Request) {
     }
 
     const url = new URL(req.url);
-    const client_id = url.searchParams.get("client_id");
-    if (!client_id) {
-      return NextResponse.json({ ok: false, error: "missing client_id" }, { status: 400 });
+    const shop_domain = (url.searchParams.get("shop_domain") || "").trim();
+    if (!shop_domain) {
+      return NextResponse.json({ ok: false, error: "missing shop_domain" }, { status: 400 });
     }
+
+    const client_id = await resolveClientIdFromShopDomainParam(shop_domain);
+    if (!client_id) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE);
 

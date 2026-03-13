@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireCronAuth } from "@/lib/cronAuth";
 import { runUnifiedSync } from "@/lib/sync/unifiedSync";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,12 +13,13 @@ export async function GET(req: NextRequest) {
 
     const url = req.nextUrl;
     const origin = url.origin;
-    const clientIdParam = url.searchParams.get("client_id")?.trim() || "";
+    const shopDomain = url.searchParams.get("shop_domain")?.trim() || "";
+    const clientIdParam = shopDomain ? await resolveClientIdFromShopDomainParam(shopDomain) || "" : "";
     const fallbackClientId = process.env.DEFAULT_CLIENT_ID || "";
     const clientId = clientIdParam || fallbackClientId;
     if (!clientId) {
       return NextResponse.json(
-        { ok: false, error: "client_id required (provide ?client_id= or set DEFAULT_CLIENT_ID)" },
+        { ok: false, error: "shop_domain required (or set DEFAULT_CLIENT_ID)" },
         { status: 400 }
       );
     }

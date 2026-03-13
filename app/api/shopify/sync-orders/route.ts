@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 import { bucketShopifyOrderDay } from "@/lib/dates";
 
 function mustGetEnv(name: string) {
@@ -80,15 +81,18 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
 
-    const client_id = (url.searchParams.get("client_id") || "").trim();
+    const shop_domain = (url.searchParams.get("shop_domain") || "").trim();
     const start = (url.searchParams.get("start") || "").trim();
     const end = (url.searchParams.get("end") || "").trim();
     const fillZeros = url.searchParams.get("fillZeros") === "1";
     const shopParam = (url.searchParams.get("shop") || "").trim().toLowerCase();
     const timeZone = (url.searchParams.get("tz") || "America/Denver").trim();
 
-    if (!client_id) return NextResponse.json({ ok: false, error: "Missing client_id" }, { status: 400 });
+    if (!shop_domain) return NextResponse.json({ ok: false, error: "Missing shop_domain" }, { status: 400 });
     if (!start || !end) return NextResponse.json({ ok: false, error: "Missing start/end" }, { status: 400 });
+
+    const client_id = await resolveClientIdFromShopDomainParam(shop_domain);
+    if (!client_id) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
     parseISODate(start);
     parseISODate(end);

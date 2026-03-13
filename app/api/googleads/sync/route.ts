@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { isoDateUTC, dateRangeInclusiveUTC } from "@/lib/dates";
 import { ensureDailyMetricsRows, upsertDailyMetrics, type DailyMetricsRow } from "@/lib/dailyMetrics";
 import { requireCronAuth } from "@/lib/cronAuth";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -183,7 +184,11 @@ export async function GET(req: NextRequest) {
   if (auth) return auth;
 
   const { startDay, endDay, fillZeros } = parseWindow(req);
-  const clientIdFilter = req.nextUrl.searchParams.get("client_id")?.trim() ?? null;
+  const shopDomainFilter = req.nextUrl.searchParams.get("shop_domain")?.trim() ?? "";
+  const clientIdFilter = shopDomainFilter ? await resolveClientIdFromShopDomainParam(shopDomainFilter) : null;
+  if (shopDomainFilter && !clientIdFilter) {
+    return NextResponse.json({ ok: false, error: "Shop not installed" }, { status: 401 });
+  }
   const days = dateRangeInclusiveUTC(startDay, endDay);
 
   const supabase = getSupabaseAdmin();

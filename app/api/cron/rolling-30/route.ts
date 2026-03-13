@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isoDateUTC, dateRangeInclusiveUTC } from "@/lib/dates";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireCronAuth } from "@/lib/cronAuth";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -346,7 +347,8 @@ export async function POST(req: NextRequest) {
     const supabase = getSupabaseAdmin();
 
     const url = req.nextUrl;
-    const clientId = url.searchParams.get("client_id")?.trim() || "";
+    const shopDomain = url.searchParams.get("shop_domain")?.trim() || "";
+    const clientId = shopDomain ? await resolveClientIdFromShopDomainParam(shopDomain) || "" : "";
     const start = url.searchParams.get("start")?.trim() || "";
     const end = url.searchParams.get("end")?.trim() || "";
     const fillZeros = url.searchParams.get("fillZeros")?.trim() === "1";

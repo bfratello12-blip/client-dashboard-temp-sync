@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,14 +62,19 @@ export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
     const shopRaw = (url.searchParams.get("shop") || "").trim();
-    const clientIdParam = (url.searchParams.get("client_id") || "").trim();
+    const shopDomainParam = (url.searchParams.get("shop_domain") || "").trim();
     const limitProducts = Math.max(1, Number(url.searchParams.get("limit_products") || 50));
 
-    if (!clientIdParam) {
+    if (!shopDomainParam) {
       return NextResponse.json(
-        { ok: false, error: "Missing client_id" },
+        { ok: false, error: "Missing shop_domain" },
         { status: 400 }
       );
+    }
+
+    const clientIdParam = await resolveClientIdFromShopDomainParam(shopDomainParam);
+    if (!clientIdParam) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
     const shop = normalizeShop(shopRaw);

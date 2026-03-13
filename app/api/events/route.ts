@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 const ALLOWED_TYPES = ["budget_change", "promo", "price_change", "site_change", "feed_change", "other"] as const;
 type EventType = (typeof ALLOWED_TYPES)[number];
@@ -35,9 +36,14 @@ export async function GET(req: NextRequest) {
     const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(req.url);
 
-    const client_id = (searchParams.get("client_id") || "").trim();
+    const shopDomain = (searchParams.get("shop_domain") || "").trim();
+    if (!shopDomain) {
+      return NextResponse.json({ ok: false, error: "Missing shop_domain" }, { status: 400 });
+    }
+
+    const client_id = await resolveClientIdFromShopDomainParam(shopDomain);
     if (!client_id) {
-      return NextResponse.json({ ok: false, error: "Missing client_id" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
     const start = (searchParams.get("start") || "").trim();
@@ -121,10 +127,13 @@ export async function DELETE(req: NextRequest) {
     const { searchParams } = new URL(req.url);
 
     const id = (searchParams.get("id") || "").trim();
-    const client_id = (searchParams.get("client_id") || "").trim();
+    const shopDomain = (searchParams.get("shop_domain") || "").trim();
 
     if (!id) return NextResponse.json({ ok: false, error: "Missing id" }, { status: 400 });
-    if (!client_id) return NextResponse.json({ ok: false, error: "Missing client_id" }, { status: 400 });
+    if (!shopDomain) return NextResponse.json({ ok: false, error: "Missing shop_domain" }, { status: 400 });
+
+    const client_id = await resolveClientIdFromShopDomainParam(shopDomain);
+    if (!client_id) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
     const { error } = await supabase.from("events").delete().eq("id", id).eq("client_id", client_id);
     if (error) throw new Error(error.message);

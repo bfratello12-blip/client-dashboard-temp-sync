@@ -15,6 +15,7 @@ type IntegrationRow = {
 
 type BackfillInput = {
   client_id: string;
+  shop_domain: string;
   since: string;
   until: string;
 };
@@ -67,8 +68,13 @@ function parseBackfillInput(req: NextRequest, body: any | null): BackfillInput {
   const client_id =
     (body?.client_id as string) ||
     (body?.clientId as string) ||
-    url.searchParams.get("client_id") ||
-    url.searchParams.get("clientId") ||
+    "";
+
+  const shop_domain =
+    (body?.shop_domain as string) ||
+    (body?.shopDomain as string) ||
+    url.searchParams.get("shop_domain") ||
+    url.searchParams.get("shopDomain") ||
     "";
 
   const sinceRaw =
@@ -92,7 +98,7 @@ function parseBackfillInput(req: NextRequest, body: any | null): BackfillInput {
   const daysParam = (body?.days as number | string) ?? url.searchParams.get("days");
   const days = daysParam != null ? Number(daysParam) : NaN;
 
-  if (!client_id) throw new Error("Missing client_id");
+  if (!client_id && !shop_domain) throw new Error("Missing shop_domain");
 
   let since: string;
   let until: string;
@@ -120,7 +126,7 @@ function parseBackfillInput(req: NextRequest, body: any | null): BackfillInput {
   if (!Number.isFinite(daysRequested) || daysRequested <= 0) throw new Error("Invalid date range");
   if (daysRequested > maxDays) throw new Error(`Range too large (${daysRequested} days). Max ${maxDays}.`);
 
-  return { client_id, since, until };
+  return { client_id, shop_domain, since, until };
 }
 
 function pickActionValue(actionValues: any[] | null | undefined, keys: string[]): number {
@@ -255,16 +261,29 @@ async function handler(req: NextRequest): Promise<NextResponse> {
   if (authFail) return authFail;
 
   const body = req.method === "POST" ? await req.json().catch(() => null) : null;
-  const { client_id, since, until } = parseBackfillInput(req, body);
+  const { client_id, shop_domain, since, until } = parseBackfillInput(req, body);
 
   const supabaseUrl = requireEnv("SUPABASE_URL");
   const serviceRole = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
   const supabase = createClient(supabaseUrl, serviceRole, { auth: { persistSession: false } });
 
+  let resolvedClientId = String(client_id || "").trim();
+  if (!resolvedClientId) {
+    const { data: install } = await supabase
+      .from("shopify_app_installs")
+      .select("client_id")
+      .eq("shop_domain", String(shop_domain || "").trim())
+      .maybeSingle();
+    if (!install?.client_id) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+    resolvedClientId = String(install.client_id);
+  }
+
   const { data: integ, error: integErr } = await supabase
     .from("client_integrations")
     .select("client_id, provider, status, meta_ad_account_id, meta_access_token")
-    .eq("client_id", client_id)
+    .eq("client_id", resolvedClientId)
     .eq("provider", "meta")
     .maybeSingle<IntegrationRow>();
 
@@ -295,7 +314,7 @@ async function handler(req: NextRequest): Promise<NextResponse> {
 
       const payload: Record<string, any> = {
         date: day,
-        client_id,
+        client_id: resolvedClientId,
         source: "meta",
         spend,
         revenue,
@@ -319,7 +338,7 @@ async function handler(req: NextRequest): Promise<NextResponse> {
 
   return NextResponse.json({
     ok: true,
-    client_id,
+    client_id: resolvedClientId,
     since,
     until,
     okDays,

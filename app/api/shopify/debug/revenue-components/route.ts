@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 import { loadShopifyChannelExclusions } from "@/lib/shopifyExclusions";
 
 function buildSalesChannelWhere(excludedNames: string[]) {
@@ -59,14 +60,19 @@ async function runShopifyQL(shop: string, token: string, shopifyQL: string) {
 export async function GET(req: NextRequest) {
   try {
     const url = req.nextUrl;
-    const clientId = url.searchParams.get("client_id")?.trim() || "";
+    const shopDomain = url.searchParams.get("shop_domain")?.trim() || "";
     const start = url.searchParams.get("start")?.trim() || "";
     const end = url.searchParams.get("end")?.trim() || "";
     const mode = url.searchParams.get("mode")?.trim() || "shopifyql";
 
-    if (!clientId) {
-      return NextResponse.json({ ok: false, error: "Missing client_id" }, { status: 400 });
+    if (!shopDomain) {
+      return NextResponse.json({ ok: false, error: "Missing shop_domain" }, { status: 400 });
     }
+        const clientId = await resolveClientIdFromShopDomainParam(shopDomain);
+        if (!clientId) {
+          return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+        }
+
     if (!start || !end) {
       return NextResponse.json({ ok: false, error: "Missing start/end (YYYY-MM-DD)" }, { status: 400 });
     }

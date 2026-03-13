@@ -1,7 +1,7 @@
 // app/api/integrations/status/route.ts
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { isRequestAuthorizedForClient } from "@/lib/requestAuth";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 const hasNonEmpty = (v: any) => v != null && String(v).trim().length > 0;
 const isConnectedStatus = (status: any, isActive: any) => status === "connected" || isActive === true;
@@ -9,13 +9,13 @@ const isConnectedStatus = (status: any, isActive: any) => status === "connected"
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const clientId = searchParams.get("client_id")?.trim();
-    if (!clientId) {
-      return NextResponse.json({ ok: false, error: "Missing client_id" }, { status: 400 });
+    const shopDomain = (searchParams.get("shop_domain") || "").trim();
+    if (!shopDomain) {
+      return NextResponse.json({ ok: false, error: "Missing shop_domain" }, { status: 400 });
     }
 
-    const authorized = await isRequestAuthorizedForClient(req, clientId);
-    if (!authorized) {
+    const clientId = await resolveClientIdFromShopDomainParam(shopDomain);
+    if (!clientId) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 

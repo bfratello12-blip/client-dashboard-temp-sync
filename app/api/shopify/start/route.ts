@@ -7,9 +7,9 @@ export async function GET(req: NextRequest) {
 
   // forward query params if present
   const shop = url.searchParams.get("shop");
-  const client_id = url.searchParams.get("client_id");
+  const shop_domain = url.searchParams.get("shop_domain");
   if (shop) dest.searchParams.set("shop", shop);
-  if (client_id) dest.searchParams.set("client_id", client_id);
+  if (shop_domain) dest.searchParams.set("shop_domain", shop_domain);
 
   return NextResponse.redirect(dest.toString(), 302);
 }

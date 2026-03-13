@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -91,12 +92,17 @@ export async function POST(req: NextRequest) {
     const supabase = getSupabaseAdmin();
     const url = req.nextUrl;
 
-    const clientId = url.searchParams.get("client_id")?.trim();
+    const shopDomainParam = url.searchParams.get("shop_domain")?.trim() || "";
     const shop = url.searchParams.get("shop")?.trim(); // optional override
     const throttleMs = Number(url.searchParams.get("throttleMs") || "200");
 
+    if (!shopDomainParam) {
+      return NextResponse.json({ ok: false, error: "Missing shop_domain" }, { status: 400 });
+    }
+
+    const clientId = await resolveClientIdFromShopDomainParam(shopDomainParam);
     if (!clientId) {
-      return NextResponse.json({ ok: false, error: "Missing client_id" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
     // Get install/token

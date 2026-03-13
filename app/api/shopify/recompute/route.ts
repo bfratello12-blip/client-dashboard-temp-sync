@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { dateRangeInclusiveUTC } from "@/lib/dates";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireCronAuth } from "@/lib/cronAuth";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -192,7 +193,8 @@ export async function POST(req: NextRequest) {
 
     const start = req.nextUrl.searchParams.get("start")?.trim() || "";
     const end = req.nextUrl.searchParams.get("end")?.trim() || "";
-    const clientIdParam = req.nextUrl.searchParams.get("client_id")?.trim() || "";
+    const shopDomainParam = req.nextUrl.searchParams.get("shop_domain")?.trim() || "";
+    const clientIdParam = shopDomainParam ? await resolveClientIdFromShopDomainParam(shopDomainParam) || "" : "";
     if (!start || !end) {
       return NextResponse.json(
         { ok: false, error: "Missing start/end (YYYY-MM-DD)" },

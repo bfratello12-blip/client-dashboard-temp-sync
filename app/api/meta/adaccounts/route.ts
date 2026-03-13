@@ -2,15 +2,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { fetchMetaAdAccounts } from "@/lib/meta/adAccounts";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const clientId = req.nextUrl.searchParams.get("client_id")?.trim() || "";
+    const shopDomain = req.nextUrl.searchParams.get("shop_domain")?.trim() || "";
+    if (!shopDomain) {
+      return NextResponse.json({ ok: false, error: "Missing shop_domain" }, { status: 400 });
+    }
+    const clientId = await resolveClientIdFromShopDomainParam(shopDomain);
     if (!clientId) {
-      return NextResponse.json({ ok: false, error: "Missing client_id" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
     const supabase = supabaseAdmin();

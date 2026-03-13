@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { Suspense, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import { useClientId } from "@/app/hooks/useClientId";
 
@@ -9,9 +9,19 @@ interface DashboardLayoutProps {
   skipSupabaseAuth?: boolean;
 }
 
+function ClientIdWarningBanner() {
+  const clientId = useClientId();
+  if (clientId) return null;
+
+  return (
+    <div className="mx-6 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      Missing client_id in URL
+    </div>
+  );
+}
+
 export default function DashboardLayout({ children, skipSupabaseAuth }: DashboardLayoutProps) {
   void skipSupabaseAuth;
-  const clientId = useClientId();
   const [clientName] = useState<string>("");
   const [loading] = useState(false);
 
@@ -41,28 +51,28 @@ export default function DashboardLayout({ children, skipSupabaseAuth }: Dashboar
 
   return (
     <div className="flex min-h-screen bg-slate-50">
-      <Sidebar
-        clientName={clientName}
-        lastSalesDateISO={lastSalesDateISO}
-        dataHealth={dataHealth}
-        comparisonEnabled={comparisonEnabled}
-        comparisonAvailable={comparisonAvailable}
-        compareDisabledReason={compareDisabledReason}
-        conf={conf}
-        windowStartISO={windowStartISO}
-        windowEndISO={windowEndISO}
-        coverageLabel={coverageLabel}
-        compareCoverageLabel={compareCoverageLabel}
-        effectiveShowComparison={effectiveShowComparison}
-        loading={loading}
-      />
+      <Suspense fallback={<aside className="hidden md:flex w-64 border-r border-slate-200 bg-white" />}>
+        <Sidebar
+          clientName={clientName}
+          lastSalesDateISO={lastSalesDateISO}
+          dataHealth={dataHealth}
+          comparisonEnabled={comparisonEnabled}
+          comparisonAvailable={comparisonAvailable}
+          compareDisabledReason={compareDisabledReason}
+          conf={conf}
+          windowStartISO={windowStartISO}
+          windowEndISO={windowEndISO}
+          coverageLabel={coverageLabel}
+          compareCoverageLabel={compareCoverageLabel}
+          effectiveShowComparison={effectiveShowComparison}
+          loading={loading}
+        />
+      </Suspense>
 
       <main className="flex-1 min-w-0">
-        {!clientId ? (
-          <div className="mx-6 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            Missing client_id in URL
-          </div>
-        ) : null}
+        <Suspense fallback={null}>
+          <ClientIdWarningBanner />
+        </Suspense>
         {children}
       </main>
     </div>

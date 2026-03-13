@@ -567,7 +567,7 @@ function SettingsPage() {
         ?.slice(1)
         .join("=");
 
-      if (!shopDomain && !overrideClientId) {
+      if (isEmbeddedShopifyContext && !shopDomain && !overrideClientId) {
         try {
           const whoRes = await fetch("/api/shopify/whoami", { cache: "no-store" });
           if (!whoRes.ok) {

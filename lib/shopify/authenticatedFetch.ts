@@ -11,12 +11,7 @@ function getApiKey() {
 
 function getHost() {
   const params = new URLSearchParams(window.location.search);
-  const hostFromQuery = params.get("host") || "";
-  if (hostFromQuery) {
-    window.localStorage.setItem("shopify_host", hostFromQuery);
-    return hostFromQuery;
-  }
-  return window.localStorage.getItem("shopify_host") || "";
+  return params.get("host") || "";
 }
 
 function getShopOrigin() {

@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { requireCronAuth } from "@/lib/cronAuth";
+import { getBearerToken, isRequestAuthorizedForClient } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const auth = requireCronAuth(req);
-    if (auth) return auth;
+    const expectedCronSecret = String(process.env.CRON_SECRET || "").trim();
+    const bearer = getBearerToken(req);
+    const qpToken = req.nextUrl.searchParams.get("token")?.trim() || "";
+    const cronAuthorized =
+      Boolean(expectedCronSecret) && (bearer === expectedCronSecret || qpToken === expectedCronSecret);
 
     const url = req.nextUrl;
     const clientId = url.searchParams.get("client_id")?.trim() || "";
@@ -23,6 +26,13 @@ export async function GET(req: NextRequest) {
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
       return NextResponse.json({ ok: false, error: "Invalid start/end (YYYY-MM-DD)" }, { status: 400 });
+    }
+
+    if (!cronAuthorized) {
+      const authorized = await isRequestAuthorizedForClient(req, clientId);
+      if (!authorized) {
+        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      }
     }
 
     const supabase = supabaseAdmin();

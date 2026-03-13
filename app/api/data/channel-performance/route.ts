@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { decodeJwt, jwtVerify } from "jose";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  getFirstClientIdForSupabaseUser,
+  getShopFromRequest,
+  getSupabaseUserIdFromRequest,
+  supabaseUserHasClientAccess,
+} from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,49 +21,6 @@ type ChannelPerfRow = {
   ad_spend: number;
   ts: number;
 };
-
-function normalizeShopDomain(shop: string) {
-  const s = (shop || "").trim().toLowerCase();
-  if (!s) return "";
-  return s.endsWith(".myshopify.com") ? s : `${s}.myshopify.com`;
-}
-
-function shopFromDest(dest?: string) {
-  if (!dest) return "";
-  try {
-    const hostname = new URL(dest).hostname;
-    return normalizeShopDomain(hostname);
-  } catch {
-    return "";
-  }
-}
-
-async function shopFromSessionToken(token: string): Promise<string> {
-  const secret = process.env.SHOPIFY_OAUTH_CLIENT_SECRET || "";
-  let payload: { dest?: string } | null = null;
-
-  if (secret) {
-    try {
-      const { payload: verified } = await jwtVerify(
-        token,
-        new TextEncoder().encode(secret)
-      );
-      payload = verified as { dest?: string };
-    } catch {
-      payload = null;
-    }
-  }
-
-  if (!payload) {
-    try {
-      payload = decodeJwt(token) as { dest?: string };
-    } catch {
-      payload = null;
-    }
-  }
-
-  return shopFromDest(payload?.dest || "");
-}
 
 function isIsoDate(s: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s);
@@ -92,36 +54,46 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const start = (searchParams.get("start") || "").trim();
     const end = (searchParams.get("end") || "").trim();
+    const requestedClientId = (searchParams.get("client_id") || "").trim();
 
     if (!start || !end || !isIsoDate(start) || !isIsoDate(end)) {
       return NextResponse.json({ ok: false, error: "Invalid or missing start/end" }, { status: 400 });
     }
 
-    const authHeader = req.headers.get("authorization") || "";
-    const match = authHeader.match(/^Bearer\s+(.+)$/i);
-    const token = match?.[1] || "";
-    if (!token) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-
-    const shop = await shopFromSessionToken(token);
-    if (!shop) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-
     const supabase = supabaseAdmin();
+    let clientId = "";
 
-    const { data: install, error: installErr } = await supabase
-      .from("shopify_app_installs")
-      .select("client_id")
-      .eq("shop_domain", shop)
-      .maybeSingle();
+    const shop = await getShopFromRequest(req);
+    if (shop) {
+      const { data: install, error: installErr } = await supabase
+        .from("shopify_app_installs")
+        .select("client_id")
+        .eq("shop_domain", shop)
+        .maybeSingle();
 
-    if (installErr || !install?.client_id) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      if (installErr || !install?.client_id) {
+        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      }
+
+      clientId = String(install.client_id);
+    } else {
+      const userId = await getSupabaseUserIdFromRequest(req);
+      if (!userId) {
+        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      }
+
+      const targetClientId = requestedClientId || (await getFirstClientIdForSupabaseUser(userId)) || "";
+      if (!targetClientId) {
+        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      }
+
+      const allowed = await supabaseUserHasClientAccess(userId, targetClientId);
+      if (!allowed) {
+        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      }
+
+      clientId = targetClientId;
     }
-
-    const clientId = String(install.client_id);
 
     const { data: channelRows, error: channelErr } = await supabase
       .from("daily_shopify_channel_metrics")

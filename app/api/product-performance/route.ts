@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { decodeJwt, jwtVerify } from "jose";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  getFirstClientIdForSupabaseUser,
+  getShopFromRequest,
+  getSupabaseUserIdFromRequest,
+  supabaseUserHasClientAccess,
+} from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,49 +21,6 @@ type VariantMeta = {
 
 const VARIANT_META_TTL_MS = 6 * 60 * 60 * 1000;
 const variantMetaCache = new Map<string, { value: VariantMeta; expiresAt: number }>();
-
-function normalizeShopDomain(shop: string) {
-  const s = (shop || "").trim().toLowerCase();
-  if (!s) return "";
-  return s.endsWith(".myshopify.com") ? s : `${s}.myshopify.com`;
-}
-
-function shopFromDest(dest?: string) {
-  if (!dest) return "";
-  try {
-    const hostname = new URL(dest).hostname;
-    return normalizeShopDomain(hostname);
-  } catch {
-    return "";
-  }
-}
-
-async function shopFromSessionToken(token: string): Promise<string> {
-  const secret = process.env.SHOPIFY_OAUTH_CLIENT_SECRET || "";
-  let payload: { dest?: string } | null = null;
-
-  if (secret) {
-    try {
-      const { payload: verified } = await jwtVerify(
-        token,
-        new TextEncoder().encode(secret)
-      );
-      payload = verified as { dest?: string };
-    } catch {
-      payload = null;
-    }
-  }
-
-  if (!payload) {
-    try {
-      payload = decodeJwt(token) as { dest?: string };
-    } catch {
-      payload = null;
-    }
-  }
-
-  return shopFromDest(payload?.dest || "");
-}
 
 function isIsoDate(s: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s);
@@ -149,6 +111,7 @@ export async function GET(req: NextRequest) {
     const sortKeyRaw = (searchParams.get("sortKey") || "").trim();
     const sortDirRaw = (searchParams.get("sortDir") || "").trim().toLowerCase();
     const search = (searchParams.get("search") || "").trim().toLowerCase();
+    const requestedClientId = (searchParams.get("client_id") || "").trim();
     const filterRaw = (searchParams.get("filter") || "all").trim().toLowerCase();
     const filter =
       filterRaw === "rising" ||
@@ -183,27 +146,54 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Invalid or missing start/end" }, { status: 400 });
     }
 
-    const authHeader = req.headers.get("authorization") || "";
-    const match = authHeader.match(/^Bearer\s+(.+)$/i);
-    const token = match?.[1] || "";
-    if (!token) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-
-    const shop = await shopFromSessionToken(token);
-    if (!shop) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-
     const supabase = supabaseAdmin();
-    const { data: install, error: installErr } = await supabase
-      .from("shopify_app_installs")
-      .select("client_id, shop_domain, access_token")
-      .eq("shop_domain", shop)
-      .maybeSingle();
+    let install: { client_id: string; shop_domain?: string | null; access_token?: string | null } | null = null;
 
-    if (installErr || !install?.client_id) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    const shop = await getShopFromRequest(req);
+    if (shop) {
+      const { data: shopInstall, error: installErr } = await supabase
+        .from("shopify_app_installs")
+        .select("client_id, shop_domain, access_token")
+        .eq("shop_domain", shop)
+        .maybeSingle();
+
+      if (installErr || !shopInstall?.client_id) {
+        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      }
+
+      install = {
+        client_id: String(shopInstall.client_id),
+        shop_domain: shopInstall.shop_domain,
+        access_token: shopInstall.access_token,
+      };
+    } else {
+      const userId = await getSupabaseUserIdFromRequest(req);
+      if (!userId) {
+        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      }
+
+      const targetClientId = requestedClientId || (await getFirstClientIdForSupabaseUser(userId)) || "";
+      if (!targetClientId) {
+        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      }
+
+      const allowed = await supabaseUserHasClientAccess(userId, targetClientId);
+      if (!allowed) {
+        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      }
+
+      const { data: clientInstall } = await supabase
+        .from("shopify_app_installs")
+        .select("client_id, shop_domain, access_token")
+        .eq("client_id", targetClientId)
+        .limit(1)
+        .maybeSingle();
+
+      install = {
+        client_id: targetClientId,
+        shop_domain: clientInstall?.shop_domain ?? null,
+        access_token: clientInstall?.access_token ?? null,
+      };
     }
 
     const { data: totalsData, error: totalsErr } = await supabase.rpc(

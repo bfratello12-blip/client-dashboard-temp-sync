@@ -2,6 +2,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import HomeClient from "@/app/page.client";
 import ShopifyBootstrap from "@/app/components/ShopifyBootstrap";
+import AdminClientAccessGate from "@/app/components/AdminClientAccessGate";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -54,10 +55,14 @@ export default async function Page({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
-  const hdrs = await headers();
-  const referer = hdrs.get("referer") || "";
-  const url = hdrs.get("x-url") || "";
-  const headerShop = normalizeShopDomain(hdrs.get("x-shopify-shop-domain") || "");
+  const clientIdParamRaw = sp?.client_id;
+  const clientIdParam =
+    typeof clientIdParamRaw === "string"
+      ? clientIdParamRaw
+      : Array.isArray(clientIdParamRaw)
+      ? clientIdParamRaw[0]
+      : "";
+  const adminClientId = String(clientIdParam || "").trim();
   const shopParamRaw = sp?.shop;
   const shopParam =
     typeof shopParamRaw === "string"
@@ -65,9 +70,6 @@ export default async function Page({
       : Array.isArray(shopParamRaw)
       ? shopParamRaw[0]
       : "";
-  const cookieStore = await cookies();
-  const cookieShopRaw = !shopParam ? cookieStore.get("sa_shop")?.value || "" : "";
-  const cookieShop = normalizeShopDomain(cookieShopRaw);
   const hostParamRaw = sp?.host;
   const hostParam =
     typeof hostParamRaw === "string"
@@ -82,13 +84,21 @@ export default async function Page({
       : Array.isArray(idTokenRaw)
       ? idTokenRaw[0]
       : "";
-  const clientIdParamRaw = sp?.client_id;
-  const clientIdParam =
-    typeof clientIdParamRaw === "string"
-      ? clientIdParamRaw
-      : Array.isArray(clientIdParamRaw)
-      ? clientIdParamRaw[0]
-      : "";
+
+  const hdrs = await headers();
+  const referer = hdrs.get("referer") || "";
+  const url = hdrs.get("x-url") || "";
+  const headerShop = normalizeShopDomain(hdrs.get("x-shopify-shop-domain") || "");
+  const cookieStore = await cookies();
+  const cookieShopRaw = !shopParam ? cookieStore.get("sa_shop")?.value || "" : "";
+  const cookieShop = normalizeShopDomain(cookieShopRaw);
+
+  // Admin access path: only when explicit client_id is present and request is not in Shopify embedded context.
+  const embeddedSignalsPresent = Boolean(shopParam || hostParam || idToken || headerShop);
+  if (adminClientId && !embeddedSignalsPresent) {
+    return <AdminClientAccessGate clientId={adminClientId} />;
+  }
+
   const shopFromToken = idToken ? shopFromIdToken(idToken) : "";
   const refererShop = shopFromReferer(referer);
   const shopGuess = normalizeShopDomain(

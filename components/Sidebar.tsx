@@ -3,7 +3,9 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, TrendingUp, Settings } from "lucide-react";
+import { LayoutDashboard, Package, TrendingUp, Settings, Shield } from "lucide-react";
+import { type User } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabaseClient";
 
 interface SidebarProps {
   clientName: string;
@@ -72,6 +74,21 @@ export default function Sidebar({
   loading,
 }: SidebarProps) {
   const pathname = usePathname();
+  const [supabaseUser, setSupabaseUser] = React.useState<User | null>(null);
+
+  React.useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
+      setSupabaseUser(data.session?.user ?? null);
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <aside className="hidden md:flex w-64 flex-col border-r border-slate-200 bg-white p-5">
@@ -101,6 +118,9 @@ export default function Sidebar({
           icon={<TrendingUp size={18} />}
         />
         <NavItem href="/settings" active={pathname?.startsWith("/settings")} label="Settings" icon={<Settings size={18} />} />
+        {supabaseUser ? (
+          <NavItem href="/admin" active={pathname?.startsWith("/admin")} label="Admin" icon={<Shield size={18} />} />
+        ) : null}
       </nav>
 
       {/* Data health panel */}

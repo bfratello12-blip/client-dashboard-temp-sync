@@ -1611,6 +1611,7 @@ export default function Home({
   const [compareDisabledReason, setCompareDisabledReason] = useState<string>("");
   /** UI state */
   const [loading, setLoading] = useState(true);
+  const [adminAccessError, setAdminAccessError] = useState<string>("");
   const [clientName, setClientName] = useState<string>("");
   const [clientId, setClientId] = useState<string>(initialClientId || "");
   const [metricDataCount, setMetricDataCount] = useState<number>(0);
@@ -2021,14 +2022,50 @@ export default function Home({
     let cancelled = false;
     const run = async () => {
       setLoading(true);
+      setAdminAccessError("");
       const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
       if (sessionErr) {
         console.error(sessionErr);
         if (!cancelled) setLoading(false);
         return;
       }
+      const bypass = Boolean(skipSupabaseAuth) || hasShopifyContextClient();
       const userId = sessionData.session?.user?.id;
       let cid = initialClientId || "";
+      if (cid && !bypass) {
+        if (!userId) {
+          if (!cancelled) {
+            setAdminAccessError("Unauthorized: sign in is required for this client.");
+            setLoading(false);
+          }
+          return;
+        }
+
+        const { data: accessRows, error: accessErr } = await supabase
+          .from("user_clients")
+          .select("client_id")
+          .eq("user_id", userId)
+          .eq("client_id", cid)
+          .limit(1);
+
+        if (accessErr) {
+          console.error(accessErr);
+          if (!cancelled) {
+            setAdminAccessError("Unauthorized: unable to validate client access.");
+            setLoading(false);
+          }
+          return;
+        }
+
+        if (!accessRows?.length) {
+          if (!cancelled) {
+            setAdminAccessError("Unauthorized: you do not have access to this client.");
+            setLoading(false);
+          }
+          return;
+        }
+      }
+
       if (!cid) {
         if (!userId) {
           if (!cancelled) setLoading(false);
@@ -2828,6 +2865,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     customEndISO,
     attribWindowDays,
     refreshNonce,
+    skipSupabaseAuth,
   ]);
   /** Monthly rollup table fetch */
   useEffect(() => {
@@ -3992,6 +4030,26 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       };
     });
   }, [attribSeries]);
+
+  if (adminAccessError) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
+        <div className="w-full max-w-lg rounded-xl border border-rose-200 bg-white p-6 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+          <h1 className="text-xl font-semibold text-slate-900">Unauthorized</h1>
+          <p className="mt-2 text-sm text-slate-600">{adminAccessError}</p>
+          <div className="mt-4">
+            <Link
+              href="/admin"
+              className="inline-flex items-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+            >
+              Back to Admin
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <DashboardLayout skipSupabaseAuth={Boolean(skipSupabaseAuth)}>
       <PrintStyles />

@@ -1,8 +1,9 @@
 "use client";
 
 import React, { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
-import { useClientId } from "@/app/hooks/useClientId";
+import useClientId from "@/hooks/useClientId";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -11,7 +12,9 @@ interface DashboardLayoutProps {
 
 function ClientIdWarningBanner() {
   const clientId = useClientId();
-  if (clientId) return null;
+  const params = useSearchParams();
+  const shop = (params.get("shop") || "").trim();
+  if (clientId || shop) return null;
 
   return (
     <div className="mx-6 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

@@ -7,7 +7,7 @@ import DateRangePicker from "@/app/components/DateRangePicker";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
 import ScatterCorrelationChart from "@/components/ScatterCorrelationChart";
 import { MultiSeriesEventfulLineChart } from "@/app/page.client";
-import { useClientId } from "@/app/hooks/useClientId";
+import useClientId from "@/hooks/useClientId";
 
 type PresetKey =
   | "today"

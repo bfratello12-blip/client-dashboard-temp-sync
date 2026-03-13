@@ -5,7 +5,7 @@ import { format, subDays } from "date-fns";
 import DashboardLayout from "@/components/DashboardLayout";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
-import { useClientId } from "@/app/hooks/useClientId";
+import useClientId from "@/hooks/useClientId";
 
 type ProductPerfRow = {
   variant_id: string;

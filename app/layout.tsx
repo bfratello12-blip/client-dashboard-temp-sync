@@ -1,6 +1,8 @@
 // app/layout.tsx
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
+import ShopifyProvider from "@/app/providers/ShopifyProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -28,22 +30,6 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              const params = new URLSearchParams(window.location.search);
-              const isShopifyEmbedded =
-                params.has("shop") || params.has("host") || params.has("embedded");
-
-              if (isShopifyEmbedded) {
-                const script = document.createElement("script");
-                script.src = "https://cdn.shopify.com/shopifycloud/app-bridge.js";
-                document.head.appendChild(script);
-              }
-            `,
-          }}
-        />
-
         {/* App Bridge reads this meta */}
         <meta name="shopify-api-key" content={apiKey} />
 
@@ -52,7 +38,9 @@ export default function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {children}
+        <Suspense fallback={null}>
+          <ShopifyProvider>{children}</ShopifyProvider>
+        </Suspense>
       </body>
     </html>
   );

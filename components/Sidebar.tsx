@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { LayoutDashboard, Package, TrendingUp, Settings, Shield } from "lucide-react";
 import { type User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
-import { useClientId } from "@/app/hooks/useClientId";
+import useClientId from "@/hooks/useClientId";
 
 interface SidebarProps {
   clientName: string;

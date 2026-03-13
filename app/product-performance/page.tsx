@@ -182,7 +182,18 @@ export default function ProductPerformancePage() {
       setLoading(true);
       setError("");
       try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const clientId = urlParams.get("client_id")?.trim() || "";
+        if (!clientId) {
+          console.error("[product-performance] Missing client_id in URL. Skipping API request.");
+          if (!isCancelled?.()) {
+            setError("Missing client_id in URL");
+          }
+          return;
+        }
+
         const params = new URLSearchParams({
+          client_id: clientId,
           start: range.startISO,
           end: range.endISO,
           limit: String(pageSize),
@@ -201,7 +212,7 @@ export default function ProductPerformancePage() {
           losing: "losing_products",
         };
         params.set("filter", filterMap[activeFilter] || "all");
-        const url = `/api/product-performance?${params.toString()}`;
+        const url = `/api/data/product-performance?${params.toString()}`;
         console.debug("[product-performance] fetch", { url });
         const res = await authenticatedFetch(url);
         const json = await res.json().catch(() => ({}));

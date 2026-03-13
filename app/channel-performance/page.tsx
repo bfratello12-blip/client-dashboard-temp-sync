@@ -187,7 +187,19 @@ export default function ChannelPerformancePage() {
       setLoading(true);
       setError("");
       try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const clientId = urlParams.get("client_id")?.trim() || "";
+        if (!clientId) {
+          console.error("[channel-performance] Missing client_id in URL. Skipping API request.");
+          if (!cancelled) {
+            setError("Missing client_id in URL");
+            setLoading(false);
+          }
+          return;
+        }
+
         const params = new URLSearchParams({
+          client_id: clientId,
           start: rangeValue.startISO,
           end: rangeValue.endISO,
         });

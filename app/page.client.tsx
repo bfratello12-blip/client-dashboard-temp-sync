@@ -1434,7 +1434,15 @@ export default function Home({
   const router = useRouter();
   // 🔑 Shopify embedded check: session token ping
   useEffect(() => {
-    authenticatedFetch("/api/shopify/session-check").catch(() => {});
+    const params = new URLSearchParams(window.location.search);
+    const isShopifyEmbedded =
+      params.has("shop") ||
+      params.has("host") ||
+      params.has("embedded");
+
+    if (isShopifyEmbedded) {
+      authenticatedFetch("/api/shopify/session-check").catch(() => {});
+    }
   }, []);
   /** Hydration-safe "generated at" timestamp (avoid Date() in render) */
   const [generatedAtISO, setGeneratedAtISO] = useState<string>("");
@@ -2249,8 +2257,17 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       let metricDataError: any = null;
       let metricData: DailyMetricRow[] = [];
       try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const clientIdFromUrl = urlParams.get("client_id")?.trim() || "";
+        const requestClientId = clientIdFromUrl || cid;
+        if (!requestClientId) {
+          console.error("[dashboard] Missing client_id for /api/data/daily-metrics. Skipping API request.");
+          if (!cancelled) setLoading(false);
+          return;
+        }
+
         const dmParams = new URLSearchParams({
-          client_id: cid,
+          client_id: requestClientId,
           start: fetchStartISO,
           end: fetchEndISO,
         });

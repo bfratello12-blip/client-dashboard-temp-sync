@@ -4228,7 +4228,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 </div>
               </div>
               <Link
-                href="/settings"
+                href={clientId ? `/settings?client_id=${encodeURIComponent(clientId)}` : "/settings"}
                 className="rounded-xl bg-gradient-to-b from-[#2B72D7] to-[#1f5fb8] px-4 py-2 text-sm font-semibold text-white hover:bg-gradient-to-b hover:from-[#1f5fb8] hover:to-[#1a4a9a]"
               >
                 Open Settings

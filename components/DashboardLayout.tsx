@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Sidebar from "@/components/Sidebar";
+import { useClientId } from "@/app/hooks/useClientId";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -10,6 +11,7 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children, skipSupabaseAuth }: DashboardLayoutProps) {
   void skipSupabaseAuth;
+  const clientId = useClientId();
   const [clientName] = useState<string>("");
   const [loading] = useState(false);
 
@@ -56,6 +58,11 @@ export default function DashboardLayout({ children, skipSupabaseAuth }: Dashboar
       />
 
       <main className="flex-1 min-w-0">
+        {!clientId ? (
+          <div className="mx-6 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Missing client_id in URL
+          </div>
+        ) : null}
         {children}
       </main>
     </div>

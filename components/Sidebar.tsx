@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { LayoutDashboard, Package, TrendingUp, Settings, Shield } from "lucide-react";
 import { type User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
+import { useClientId } from "@/app/hooks/useClientId";
 
 interface SidebarProps {
   clientName: string;
@@ -74,7 +75,17 @@ export default function Sidebar({
   loading,
 }: SidebarProps) {
   const pathname = usePathname();
+  const clientId = useClientId();
   const [supabaseUser, setSupabaseUser] = React.useState<User | null>(null);
+
+  const withClientId = React.useCallback(
+    (path: string) => {
+      if (!clientId) return path;
+      const qs = new URLSearchParams({ client_id: clientId });
+      return `${path}?${qs.toString()}`;
+    },
+    [clientId]
+  );
 
   React.useEffect(() => {
     let mounted = true;
@@ -104,22 +115,22 @@ export default function Sidebar({
       <div className="mt-1 text-s text-slate-500">Client Portal</div>
 
       <nav className="mt-8 space-y-1">
-        <NavItem href="/" active={pathname === "/"} label="Dashboard" icon={<LayoutDashboard size={18} />} />
+        <NavItem href={withClientId("/")} active={pathname === "/"} label="Dashboard" icon={<LayoutDashboard size={18} />} />
         <NavItem
-          href="/product-performance"
+          href={withClientId("/product-performance")}
           active={pathname?.startsWith("/product-performance")}
           label="Product Performance"
           icon={<Package size={18} />}
         />
         <NavItem
-          href="/channel-performance"
+          href={withClientId("/channel-performance")}
           active={pathname?.startsWith("/channel-performance")}
           label="Channel Revenue vs Ad Spend"
           icon={<TrendingUp size={18} />}
         />
-        <NavItem href="/settings" active={pathname?.startsWith("/settings")} label="Settings" icon={<Settings size={18} />} />
+        <NavItem href={withClientId("/settings")} active={pathname?.startsWith("/settings")} label="Settings" icon={<Settings size={18} />} />
         {supabaseUser ? (
-          <NavItem href="/admin" active={pathname?.startsWith("/admin")} label="Admin" icon={<Shield size={18} />} />
+          <NavItem href={withClientId("/admin")} active={pathname?.startsWith("/admin")} label="Admin" icon={<Shield size={18} />} />
         ) : null}
       </nav>
 

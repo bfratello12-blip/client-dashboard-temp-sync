@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { hasShopifyContextClient } from "@/lib/shopifyContext";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -106,6 +106,11 @@ function formatPct(v: number | null) {
 function SettingsPage() {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const shopDomainParam = useMemo(
+    () => (searchParams.get("shop") || searchParams.get("shop_domain") || "").trim().toLowerCase(),
+    [searchParams]
+  );
 
   const [loading, setLoading] = useState(true);
   const [clientId, setClientId] = useState("");
@@ -211,7 +216,7 @@ function SettingsPage() {
 
       const { startISO, endISO } = last30DaysRangeISO(TIMEZONE);
       const recomputeParams = new URLSearchParams({
-        client_id: clientId,
+        shop_domain: shopDomainParam,
         start: startISO,
         end: endISO,
       });
@@ -234,7 +239,7 @@ function SettingsPage() {
     } finally {
       setSaving(false);
     }
-  }, [clientId, costSettings, router]);
+  }, [clientId, costSettings, router, shopDomainParam]);
 
   const runRecompute = useCallback(async () => {
     try {
@@ -292,20 +297,20 @@ function SettingsPage() {
   }, []);
 
   const startMetaOAuth = useCallback(() => {
-    if (!clientId) return;
-    const connectUrl = `/api/meta/connect?client_id=${encodeURIComponent(clientId)}`;
+    if (!shopDomainParam) return;
+    const connectUrl = `/api/meta/connect?shop_domain=${encodeURIComponent(shopDomainParam)}`;
     if (window.top) {
       window.top.location.href = connectUrl;
     } else {
       window.location.href = connectUrl;
     }
-  }, [clientId]);
+  }, [shopDomainParam]);
 
   const startGoogleOAuth = useCallback(async () => {
-    if (!clientId) return;
+    if (!shopDomainParam) return;
 
     try {
-      const connectUrl = `/api/googleads/connect?client_id=${encodeURIComponent(clientId)}`;
+      const connectUrl = `/api/googleads/connect?shop_domain=${encodeURIComponent(shopDomainParam)}`;
       console.log("SETTINGS currentClientId", clientId);
       console.log("GOOGLE CONNECT url", connectUrl);
       const res = await fetch(connectUrl, {
@@ -325,7 +330,7 @@ function SettingsPage() {
       console.error(e);
       setIntegrationError(e?.message ?? "Failed to start Google OAuth");
     }
-  }, [clientId]);
+  }, [clientId, shopDomainParam]);
 
   const fetchGoogleIntegration = useCallback(async () => {
     if (!clientId) return;
@@ -360,17 +365,14 @@ function SettingsPage() {
   }, [clientId]);
 
   const fetchIntegrationStatus = useCallback(async () => {
-    if (!clientId) return;
+    if (!shopDomainParam) return;
 
     setIntegrationLoading(true);
     setIntegrationError("");
 
     try {
-      const params = new URLSearchParams(window.location.search);
-      const shopDomainParam = params.get("shop_domain") || params.get("shop") || "";
       const statusUrl = new URL("/api/integrations/status", window.location.origin);
-      statusUrl.searchParams.set("client_id", clientId);
-      if (shopDomainParam) statusUrl.searchParams.set("shop_domain", shopDomainParam);
+      statusUrl.searchParams.set("shop_domain", shopDomainParam);
 
       const res = await fetch(statusUrl.toString(), {
         cache: "no-store",
@@ -389,15 +391,15 @@ function SettingsPage() {
     } finally {
       setIntegrationLoading(false);
     }
-  }, [clientId]);
+  }, [shopDomainParam]);
 
   const fetchGoogleAccounts = useCallback(async () => {
-    if (!clientId) return;
+    if (!shopDomainParam) return;
     setGoogleAccountsLoading(true);
     setGoogleAccountsError("");
 
     try {
-      const res = await fetch(`/api/googleads/accounts?client_id=${encodeURIComponent(clientId)}`, {
+      const res = await fetch(`/api/googleads/accounts?shop_domain=${encodeURIComponent(shopDomainParam)}`, {
         method: "GET",
         cache: "no-store",
       });
@@ -415,15 +417,15 @@ function SettingsPage() {
     } finally {
       setGoogleAccountsLoading(false);
     }
-  }, [clientId, googleSelectedAccountId]);
+  }, [shopDomainParam, googleSelectedAccountId]);
 
   const fetchMetaAccounts = useCallback(async () => {
-    if (!clientId) return;
+    if (!shopDomainParam) return;
     setMetaAccountsLoading(true);
     setMetaAccountsError("");
 
     try {
-      const res = await fetch(`/api/meta/adaccounts?client_id=${encodeURIComponent(clientId)}`, {
+      const res = await fetch(`/api/meta/adaccounts?shop_domain=${encodeURIComponent(shopDomainParam)}`, {
         method: "GET",
         cache: "no-store",
       });
@@ -441,7 +443,7 @@ function SettingsPage() {
     } finally {
       setMetaAccountsLoading(false);
     }
-  }, [clientId, metaSelectedAccountId]);
+  }, [shopDomainParam, metaSelectedAccountId]);
 
   const saveGoogleAccount = useCallback(async () => {
     if (!clientId || !googleSelectedAccountId) return;

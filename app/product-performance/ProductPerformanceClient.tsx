@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { format, subDays } from "date-fns";
 import DashboardLayout from "@/components/DashboardLayout";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
-import useClientId from "@/hooks/useClientId";
 
 type ProductPerfRow = {
   variant_id: string;
@@ -120,9 +120,8 @@ function HeaderTooltip({ text, align = "center" }: { text: string; align?: "cent
 }
 
 export default function ProductPerformanceClient() {
-  const resolvedClientId = useClientId();
-  const clientId = (resolvedClientId || "").trim();
-  const isResolvingClientId = resolvedClientId == null;
+  const searchParams = useSearchParams();
+  const shopDomain = (searchParams.get("shop") || searchParams.get("shop_domain") || "").trim().toLowerCase();
 
   const initialRange = useMemo(() => {
     const { startISO, endISO } = last30DaysRange();
@@ -185,21 +184,16 @@ export default function ProductPerformanceClient() {
       setLoading(true);
       setError("");
       try {
-        if (isResolvingClientId) {
-          if (!isCancelled?.()) setLoading(false);
-          return;
-        }
-
-        if (!clientId) {
-          console.error("[product-performance] Missing client_id in URL. Skipping API request.");
+        if (!shopDomain) {
+          console.error("[product-performance] Missing shop domain in URL. Skipping API request.");
           if (!isCancelled?.()) {
-            setError("Missing client_id in URL");
+            setError("Missing shop domain in URL");
           }
           return;
         }
 
         const params = new URLSearchParams({
-          client_id: clientId,
+          shop_domain: shopDomain,
           start: range.startISO,
           end: range.endISO,
           limit: String(pageSize),
@@ -262,7 +256,7 @@ export default function ProductPerformanceClient() {
         if (!isCancelled?.()) setLoading(false);
       }
     },
-    [clientId, isResolvingClientId, page, pageSize, searchTerm, activeFilter, sortKey, sortDirection]
+    [shopDomain, page, pageSize, searchTerm, activeFilter, sortKey, sortDirection]
   );
 
   useEffect(() => {

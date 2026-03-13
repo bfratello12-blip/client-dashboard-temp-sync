@@ -1,13 +1,13 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { format, subDays } from "date-fns";
 import DashboardLayout from "@/components/DashboardLayout";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
 import ScatterCorrelationChart from "@/components/ScatterCorrelationChart";
 import { MultiSeriesEventfulLineChart } from "@/app/page.client";
-import useClientId from "@/hooks/useClientId";
 
 type PresetKey =
   | "today"
@@ -164,9 +164,8 @@ function ChannelChart({
 }
 
 export default function ChannelPerformanceClient() {
-  const resolvedClientId = useClientId();
-  const clientId = (resolvedClientId || "").trim();
-  const isResolvingClientId = resolvedClientId == null;
+  const searchParams = useSearchParams();
+  const shopDomain = (searchParams.get("shop") || searchParams.get("shop_domain") || "").trim().toLowerCase();
 
   const initialRange = useMemo(() => {
     const { startISO, endISO } = last30DaysRange();
@@ -190,22 +189,17 @@ export default function ChannelPerformanceClient() {
       setLoading(true);
       setError("");
       try {
-        if (isResolvingClientId) {
-          if (!cancelled) setLoading(false);
-          return;
-        }
-
-        if (!clientId) {
-          console.error("[channel-performance] Missing client_id in URL. Skipping API request.");
+        if (!shopDomain) {
+          console.error("[channel-performance] Missing shop domain in URL. Skipping API request.");
           if (!cancelled) {
-            setError("Missing client_id in URL");
+            setError("Missing shop domain in URL");
             setLoading(false);
           }
           return;
         }
 
         const params = new URLSearchParams({
-          client_id: clientId,
+          shop_domain: shopDomain,
           start: rangeValue.startISO,
           end: rangeValue.endISO,
         });
@@ -274,7 +268,7 @@ export default function ChannelPerformanceClient() {
     return () => {
       cancelled = true;
     };
-  }, [rangeValue, clientId, isResolvingClientId]);
+  }, [rangeValue, shopDomain]);
 
   const filteredRows = useMemo(() => {
     const startDate = new Date(`${rangeValue.startISO}T00:00:00Z`);

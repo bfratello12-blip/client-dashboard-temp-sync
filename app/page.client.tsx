@@ -1623,6 +1623,10 @@ export default function Home({
   const [adminAccessError, setAdminAccessError] = useState<string>("");
   const [clientName, setClientName] = useState<string>("");
   const [clientId, setClientId] = useState<string>(initialClientId || "");
+  const shopDomain = useMemo(
+    () => (searchParams.get("shop") || searchParams.get("shop_domain") || "").trim().toLowerCase(),
+    [searchParams]
+  );
   const settingsHref = useMemo(() => {
     const qs = new URLSearchParams();
     const shop = (searchParams.get("shop") || "").trim();
@@ -1903,11 +1907,11 @@ export default function Home({
   /** Delete an event */
   const deleteEvent = useCallback(
     async (id: string) => {
-      if (!clientId || !id) return;
+      if (!shopDomain || !id) return;
       setEventError("");
       setEventSaving(true);
       try {
-        const res = await fetch(`/api/events?id=${encodeURIComponent(id)}&client_id=${encodeURIComponent(clientId)}` , {
+        const res = await fetch(`/api/events?id=${encodeURIComponent(id)}&shop_domain=${encodeURIComponent(shopDomain)}` , {
           method: "DELETE",
         });
         const j = await res.json().catch(() => ({}));
@@ -1922,7 +1926,7 @@ export default function Home({
         setEventSaving(false);
       }
     },
-    [clientId]
+    [shopDomain]
   );
   /** Keep custom inputs in sync when clicking preset pills */
   useEffect(() => {
@@ -2272,17 +2276,14 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       let metricDataError: any = null;
       let metricData: DailyMetricRow[] = [];
       try {
-        const urlParams = new URLSearchParams(window.location.search);
-        const clientIdFromUrl = urlParams.get("client_id")?.trim() || "";
-        const requestClientId = clientIdFromUrl || cid;
-        if (!requestClientId) {
-          console.error("[dashboard] Missing client_id for /api/data/daily-metrics. Skipping API request.");
+        if (!shopDomain) {
+          console.error("[dashboard] Missing shop_domain for /api/data/daily-metrics. Skipping API request.");
           if (!cancelled) setLoading(false);
           return;
         }
 
         const dmParams = new URLSearchParams({
-          client_id: requestClientId,
+          shop_domain: shopDomain,
           start: fetchStartISO,
           end: fetchEndISO,
         });
@@ -3298,7 +3299,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     return { primary, compare, label: `${labelBase} • ${evStart}` };
   }, [liftFocusEventId, eventsPrimary, windows.primary.startISO, windows.primary.endISO, windows.compare, windows.primary, windows.compare, compareMode]);
   useEffect(() => {
-    if (!clientId || !liftFocusEventId) {
+    if (!shopDomain || !liftFocusEventId) {
       setEventCompare(null);
       setEventCompareError("");
       setEventCompareLoading(false);
@@ -3320,7 +3321,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       setEventCompareError("");
       try {
         const params = new URLSearchParams({
-          client_id: clientId,
+          shop_domain: shopDomain,
           event_date: eventDate,
           window_days: String(windowDays),
         });
@@ -3343,7 +3344,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     return () => {
       cancelled = true;
     };
-  }, [clientId, liftFocusEventId, eventsPrimary, events30]);
+  }, [shopDomain, liftFocusEventId, eventsPrimary, events30]);
   const lift = useMemo(() => {
     const scopePrimary = liftWindows.primary;
     const scopeCompare = liftWindows.compare;

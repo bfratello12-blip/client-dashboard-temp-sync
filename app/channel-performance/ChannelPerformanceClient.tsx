@@ -1,13 +1,13 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { format, subDays } from "date-fns";
 import DashboardLayout from "@/components/DashboardLayout";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
 import ScatterCorrelationChart from "@/components/ScatterCorrelationChart";
 import { MultiSeriesEventfulLineChart } from "@/app/page.client";
+import { useClientId } from "@/app/hooks/useClientId";
 
 type PresetKey =
   | "today"
@@ -164,8 +164,7 @@ function ChannelChart({
 }
 
 export default function ChannelPerformanceClient() {
-  const searchParams = useSearchParams();
-  const clientId = (searchParams.get("client_id") || "").trim();
+  const clientId = useClientId().trim();
 
   const initialRange = useMemo(() => {
     const { startISO, endISO } = last30DaysRange();

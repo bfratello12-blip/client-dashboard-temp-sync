@@ -5,6 +5,7 @@ import { format, subDays } from "date-fns";
 import DashboardLayout from "@/components/DashboardLayout";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
+import { useClientId } from "@/app/hooks/useClientId";
 
 type ProductPerfRow = {
   variant_id: string;
@@ -119,6 +120,8 @@ function HeaderTooltip({ text, align = "center" }: { text: string; align?: "cent
 }
 
 export default function ProductPerformanceClient() {
+  const clientId = useClientId().trim();
+
   const initialRange = useMemo(() => {
     const { startISO, endISO } = last30DaysRange();
     return { mode: "preset", preset: "last30days", startISO, endISO } as RangeValue;
@@ -180,8 +183,6 @@ export default function ProductPerformanceClient() {
       setLoading(true);
       setError("");
       try {
-        const urlParams = new URLSearchParams(window.location.search);
-        const clientId = urlParams.get("client_id")?.trim() || "";
         if (!clientId) {
           console.error("[product-performance] Missing client_id in URL. Skipping API request.");
           if (!isCancelled?.()) {
@@ -254,7 +255,7 @@ export default function ProductPerformanceClient() {
         if (!isCancelled?.()) setLoading(false);
       }
     },
-    [page, pageSize, searchTerm, activeFilter, sortKey, sortDirection]
+    [clientId, page, pageSize, searchTerm, activeFilter, sortKey, sortDirection]
   );
 
   useEffect(() => {

@@ -546,8 +546,24 @@ function SettingsPage() {
       setLoading(true);
 
       const params = new URLSearchParams(window.location.search);
-      const overrideClientId = params.get("client_id") || "";
+      let overrideClientId = (params.get("client_id") || "").trim();
+      const shopFromUrl = (params.get("shop") || "").trim().toLowerCase();
       const isEmbeddedShopifyContext = hasShopifyContextClient();
+
+      if (!overrideClientId && shopFromUrl) {
+        try {
+          const res = await fetch(`/api/client-by-shop?shop=${encodeURIComponent(shopFromUrl)}`, {
+            cache: "no-store",
+          });
+          const json = await res.json().catch(() => ({}));
+          const resolvedId = typeof json?.client_id === "string" ? json.client_id.trim() : "";
+          if (res.ok && json?.ok && resolvedId) {
+            overrideClientId = resolvedId;
+          }
+        } catch {
+          // no-op: continue with existing fallback flow below
+        }
+      }
 
       if (!cancelled) {
         setShopifyAuthWarning(isEmbeddedShopifyContext ? "" : "Not authenticated in Shopify context");

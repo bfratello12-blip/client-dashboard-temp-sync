@@ -4,5 +4,6 @@ export function hasShopifyContextClient(): boolean {
   const params = new URLSearchParams(window.location.search);
   const shop = params.get("shop") || "";
   const host = params.get("host") || "";
-  return Boolean(shop || host);
+  const embedded = params.get("embedded") || "";
+  return Boolean(shop || host || embedded);
 }

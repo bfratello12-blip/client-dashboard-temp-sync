@@ -12,24 +12,30 @@ export default function ShopifyBootstrap({ host }: ShopifyBootstrapProps) {
   const [status, setStatus] = useState<"idle" | "missing-host" | "loading" | "error">("idle");
   const apiKey = process.env.NEXT_PUBLIC_SHOPIFY_API_KEY || "";
 
+  const isShopifyEmbedded = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    const params = new URLSearchParams(window.location.search);
+    return params.has("shop") || params.has("host") || params.has("embedded");
+  }, []);
+
   const normalizedHost = useMemo(() => {
     const hostValue = host ? (Array.isArray(host) ? host[0] : host) : "";
     if (hostValue) return hostValue;
 
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      const hostFromQuery = params.get("host") || "";
-      if (hostFromQuery) {
-        window.localStorage.setItem("shopify_host", hostFromQuery);
-        return hostFromQuery;
-      }
-      return window.localStorage.getItem("shopify_host") || "";
+      return params.get("host") || "";
     }
 
     return "";
   }, [host]);
 
   useEffect(() => {
+    if (!isShopifyEmbedded) {
+      setStatus("missing-host");
+      return;
+    }
+
     const u = new URL(window.location.href);
     const already = u.searchParams.get("bootstrapped") === "1";
     const hasShop = Boolean(u.searchParams.get("shop"));
@@ -102,7 +108,7 @@ export default function ShopifyBootstrap({ host }: ShopifyBootstrapProps) {
     return () => {
       cancelled = true;
     };
-  }, [apiKey, normalizedHost]);
+  }, [apiKey, normalizedHost, isShopifyEmbedded]);
 
   if (status === "missing-host") {
     return (

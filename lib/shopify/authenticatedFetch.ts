@@ -14,6 +14,11 @@ function getHost() {
   return params.get("host") || "";
 }
 
+function isShopifyEmbedded() {
+  const params = new URLSearchParams(window.location.search);
+  return params.has("shop") || params.has("host") || params.has("embedded");
+}
+
 function getShopOrigin() {
   const params = new URLSearchParams(window.location.search);
   return params.get("shop") || "";
@@ -21,6 +26,10 @@ function getShopOrigin() {
 
 function getAppBridge() {
   if (app) return app;
+
+  if (!isShopifyEmbedded()) {
+    return null;
+  }
 
   const apiKey = getApiKey();
   const host = getHost();

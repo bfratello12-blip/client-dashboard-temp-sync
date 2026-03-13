@@ -15,7 +15,11 @@ export default function ShopifyBootstrap({ host }: ShopifyBootstrapProps) {
   const isShopifyEmbedded = useMemo(() => {
     if (typeof window === "undefined") return false;
     const params = new URLSearchParams(window.location.search);
-    return params.has("shop") || params.has("host") || params.has("embedded");
+    const isEmbedded =
+      params.has("shop") ||
+      params.has("host") ||
+      params.has("embedded");
+    return isEmbedded;
   }, []);
 
   const normalizedHost = useMemo(() => {

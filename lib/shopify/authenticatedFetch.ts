@@ -16,7 +16,11 @@ function getHost() {
 
 function isShopifyEmbedded() {
   const params = new URLSearchParams(window.location.search);
-  return params.has("shop") || params.has("host") || params.has("embedded");
+  const isEmbedded =
+    params.has("shop") ||
+    params.has("host") ||
+    params.has("embedded");
+  return isEmbedded;
 }
 
 function getShopOrigin() {

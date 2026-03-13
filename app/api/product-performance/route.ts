@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
-  getFirstClientIdForSupabaseUser,
   getShopFromRequest,
-  getSupabaseUserIdFromRequest,
-  supabaseUserHasClientAccess,
 } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
@@ -167,30 +164,19 @@ export async function GET(req: NextRequest) {
         access_token: shopInstall.access_token,
       };
     } else {
-      const userId = await getSupabaseUserIdFromRequest(req);
-      if (!userId) {
-        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-      }
-
-      const targetClientId = requestedClientId || (await getFirstClientIdForSupabaseUser(userId)) || "";
-      if (!targetClientId) {
-        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-      }
-
-      const allowed = await supabaseUserHasClientAccess(userId, targetClientId);
-      if (!allowed) {
+      if (!requestedClientId) {
         return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
       }
 
       const { data: clientInstall } = await supabase
         .from("shopify_app_installs")
         .select("client_id, shop_domain, access_token")
-        .eq("client_id", targetClientId)
+        .eq("client_id", requestedClientId)
         .limit(1)
         .maybeSingle();
 
       install = {
-        client_id: targetClientId,
+        client_id: requestedClientId,
         shop_domain: clientInstall?.shop_domain ?? null,
         access_token: clientInstall?.access_token ?? null,
       };

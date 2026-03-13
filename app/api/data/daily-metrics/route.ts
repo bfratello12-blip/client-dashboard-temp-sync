@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getBearerToken, isRequestAuthorizedForClient } from "@/lib/requestAuth";
+import { getBearerToken, getShopFromRequest } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,12 +14,13 @@ export async function GET(req: NextRequest) {
       Boolean(expectedCronSecret) && (bearer === expectedCronSecret || qpToken === expectedCronSecret);
 
     const url = req.nextUrl;
-    const clientId = url.searchParams.get("client_id")?.trim() || "";
+    let clientId = url.searchParams.get("client_id")?.trim() || "";
     const start = url.searchParams.get("start")?.trim() || "";
     const end = url.searchParams.get("end")?.trim() || "";
 
-    if (!clientId) {
-      return NextResponse.json({ ok: false, error: "Missing client_id" }, { status: 400 });
+    const shop = await getShopFromRequest(req);
+    if (!shop && !clientId) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
     if (!start || !end) {
       return NextResponse.json({ ok: false, error: "Missing start/end (YYYY-MM-DD)" }, { status: 400 });
@@ -28,14 +29,25 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Invalid start/end (YYYY-MM-DD)" }, { status: 400 });
     }
 
-    if (!cronAuthorized) {
-      const authorized = await isRequestAuthorizedForClient(req, clientId);
-      if (!authorized) {
+    const supabase = supabaseAdmin();
+
+    if (!clientId && shop) {
+      const { data: install, error: installErr } = await supabase
+        .from("shopify_app_installs")
+        .select("client_id")
+        .eq("shop_domain", shop)
+        .maybeSingle();
+
+      if (installErr || !install?.client_id) {
         return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
       }
+      clientId = String(install.client_id);
     }
 
-    const supabase = supabaseAdmin();
+    if (!cronAuthorized && !clientId) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+
     const { data, error } = await supabase
       .from("daily_metrics")
       .select("date, client_id, source, spend, revenue, units, clicks, impressions, conversions, orders")

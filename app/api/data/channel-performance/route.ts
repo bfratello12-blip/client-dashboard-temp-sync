@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import {
-  getFirstClientIdForSupabaseUser,
-  getShopFromRequest,
-  getSupabaseUserIdFromRequest,
-  supabaseUserHasClientAccess,
-} from "@/lib/requestAuth";
+import { getShopFromRequest } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -77,22 +72,10 @@ export async function GET(req: NextRequest) {
 
       clientId = String(install.client_id);
     } else {
-      const userId = await getSupabaseUserIdFromRequest(req);
-      if (!userId) {
+      if (!requestedClientId) {
         return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
       }
-
-      const targetClientId = requestedClientId || (await getFirstClientIdForSupabaseUser(userId)) || "";
-      if (!targetClientId) {
-        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-      }
-
-      const allowed = await supabaseUserHasClientAccess(userId, targetClientId);
-      if (!allowed) {
-        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-      }
-
-      clientId = targetClientId;
+      clientId = requestedClientId;
     }
 
     const { data: channelRows, error: channelErr } = await supabase

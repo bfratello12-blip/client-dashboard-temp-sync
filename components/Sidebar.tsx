@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { LayoutDashboard, Package, TrendingUp, Settings, Shield } from "lucide-react";
 import { type User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
@@ -75,16 +75,26 @@ export default function Sidebar({
   loading,
 }: SidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const clientId = useClientId();
   const [supabaseUser, setSupabaseUser] = React.useState<User | null>(null);
 
   const withClientId = React.useCallback(
     (path: string) => {
-      if (!clientId) return path;
-      const qs = new URLSearchParams({ client_id: clientId });
-      return `${path}?${qs.toString()}`;
+      const qs = new URLSearchParams();
+      const shop = (searchParams.get("shop") || "").trim();
+      const host = (searchParams.get("host") || "").trim();
+      const embedded = (searchParams.get("embedded") || "").trim();
+
+      if (shop) qs.set("shop", shop);
+      if (host) qs.set("host", host);
+      if (embedded) qs.set("embedded", embedded);
+      if (clientId) qs.set("client_id", clientId);
+
+      const query = qs.toString();
+      return query ? `${path}?${query}` : path;
     },
-    [clientId]
+    [clientId, searchParams]
   );
 
   React.useEffect(() => {

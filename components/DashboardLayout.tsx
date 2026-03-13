@@ -4,6 +4,7 @@ import React, { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import useClientId from "@/hooks/useClientId";
+import { hasShopifyContextClient } from "@/lib/shopifyContext";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -14,7 +15,7 @@ function ClientIdWarningBanner() {
   const clientId = useClientId();
   const params = useSearchParams();
   const shop = (params.get("shop") || "").trim();
-  if (clientId || shop) return null;
+  if (clientId || shop || hasShopifyContextClient()) return null;
 
   return (
     <div className="mx-6 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

@@ -1,6 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
@@ -1432,6 +1432,7 @@ export default function Home({
   skipSupabaseAuth?: boolean;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   // 🔑 Shopify embedded check: session token ping
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1622,6 +1623,20 @@ export default function Home({
   const [adminAccessError, setAdminAccessError] = useState<string>("");
   const [clientName, setClientName] = useState<string>("");
   const [clientId, setClientId] = useState<string>(initialClientId || "");
+  const settingsHref = useMemo(() => {
+    const qs = new URLSearchParams();
+    const shop = (searchParams.get("shop") || "").trim();
+    const host = (searchParams.get("host") || "").trim();
+    const embedded = (searchParams.get("embedded") || "").trim();
+
+    if (shop) qs.set("shop", shop);
+    if (host) qs.set("host", host);
+    if (embedded) qs.set("embedded", embedded);
+    if (clientId) qs.set("client_id", clientId);
+
+    const query = qs.toString();
+    return query ? `/settings?${query}` : "/settings";
+  }, [searchParams, clientId]);
   const [metricDataCount, setMetricDataCount] = useState<number>(0);
   /** Monthly rollup table */
   type MonthlyRow = {
@@ -4228,7 +4243,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 </div>
               </div>
               <Link
-                href={clientId ? `/settings?client_id=${encodeURIComponent(clientId)}` : "/settings"}
+                href={settingsHref}
                 className="rounded-xl bg-gradient-to-b from-[#2B72D7] to-[#1f5fb8] px-4 py-2 text-sm font-semibold text-white hover:bg-gradient-to-b hover:from-[#1f5fb8] hover:to-[#1a4a9a]"
               >
                 Open Settings

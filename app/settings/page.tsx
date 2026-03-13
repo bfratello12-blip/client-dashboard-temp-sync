@@ -552,7 +552,7 @@ function SettingsPage() {
 
       if (!overrideClientId && shopFromUrl) {
         try {
-          const res = await fetch(`/api/client-by-shop?shop=${encodeURIComponent(shopFromUrl)}`, {
+          const res = await fetch(`/api/client/resolve?shop=${encodeURIComponent(shopFromUrl)}`, {
             cache: "no-store",
           });
           const json = await res.json().catch(() => ({}));

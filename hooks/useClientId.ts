@@ -8,7 +8,7 @@ export default function useClientId() {
 
   const urlClientId = (params.get("client_id") || "").trim();
   const shop = (params.get("shop") || "").trim().toLowerCase();
-  const [clientId, setClientId] = useState<string>(urlClientId);
+  const [clientId, setClientId] = useState<string | null>(urlClientId || (shop ? null : ""));
 
   useEffect(() => {
     let cancelled = false;
@@ -25,7 +25,9 @@ export default function useClientId() {
       }
 
       try {
-        const res = await fetch(`/api/client-by-shop?shop=${encodeURIComponent(shop)}`, {
+        if (!cancelled) setClientId(null);
+
+        const res = await fetch(`/api/client/resolve?shop=${encodeURIComponent(shop)}`, {
           cache: "no-store",
         });
         const data = await res.json().catch(() => ({}));

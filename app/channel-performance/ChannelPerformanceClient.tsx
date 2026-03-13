@@ -164,7 +164,9 @@ function ChannelChart({
 }
 
 export default function ChannelPerformanceClient() {
-  const clientId = useClientId().trim();
+  const resolvedClientId = useClientId();
+  const clientId = (resolvedClientId || "").trim();
+  const isResolvingClientId = resolvedClientId == null;
 
   const initialRange = useMemo(() => {
     const { startISO, endISO } = last30DaysRange();
@@ -188,6 +190,11 @@ export default function ChannelPerformanceClient() {
       setLoading(true);
       setError("");
       try {
+        if (isResolvingClientId) {
+          if (!cancelled) setLoading(false);
+          return;
+        }
+
         if (!clientId) {
           console.error("[channel-performance] Missing client_id in URL. Skipping API request.");
           if (!cancelled) {
@@ -267,7 +274,7 @@ export default function ChannelPerformanceClient() {
     return () => {
       cancelled = true;
     };
-  }, [rangeValue, clientId]);
+  }, [rangeValue, clientId, isResolvingClientId]);
 
   const filteredRows = useMemo(() => {
     const startDate = new Date(`${rangeValue.startISO}T00:00:00Z`);

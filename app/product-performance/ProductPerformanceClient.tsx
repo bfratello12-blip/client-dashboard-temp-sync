@@ -120,7 +120,9 @@ function HeaderTooltip({ text, align = "center" }: { text: string; align?: "cent
 }
 
 export default function ProductPerformanceClient() {
-  const clientId = useClientId().trim();
+  const resolvedClientId = useClientId();
+  const clientId = (resolvedClientId || "").trim();
+  const isResolvingClientId = resolvedClientId == null;
 
   const initialRange = useMemo(() => {
     const { startISO, endISO } = last30DaysRange();
@@ -183,6 +185,11 @@ export default function ProductPerformanceClient() {
       setLoading(true);
       setError("");
       try {
+        if (isResolvingClientId) {
+          if (!isCancelled?.()) setLoading(false);
+          return;
+        }
+
         if (!clientId) {
           console.error("[product-performance] Missing client_id in URL. Skipping API request.");
           if (!isCancelled?.()) {
@@ -255,7 +262,7 @@ export default function ProductPerformanceClient() {
         if (!isCancelled?.()) setLoading(false);
       }
     },
-    [clientId, page, pageSize, searchTerm, activeFilter, sortKey, sortDirection]
+    [clientId, isResolvingClientId, page, pageSize, searchTerm, activeFilter, sortKey, sortDirection]
   );
 
   useEffect(() => {

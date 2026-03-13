@@ -1363,9 +1363,9 @@ function ChartReadyWrapper({
   return (
     <div ref={ref} className={className} style={{ height: h, minHeight: h }}>
       {ready ? (
-        <div className="h-full w-full">{children}</div>
+        <div className="h-full w-full rounded-lg bg-slate-50/60 p-3">{children}</div>
       ) : (
-        <div className="flex h-full w-full items-center justify-center text-sm text-slate-500">Loading chart…</div>
+        <div className="flex h-full w-full items-center justify-center rounded-lg bg-slate-50/60 p-3 text-sm text-slate-500">Loading chart…</div>
       )}
     </div>
   );
@@ -3995,7 +3995,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
   return (
     <DashboardLayout skipSupabaseAuth={Boolean(skipSupabaseAuth)}>
       <PrintStyles />
-      <div className="p-6 md:p-8 min-w-0">
+      <div className="min-w-0 w-full max-w-[1400px] mx-auto px-6 py-6 md:py-8">
         <header className="no-print flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">Media Dashboard</h1>
@@ -4824,10 +4824,10 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
           ) : null}
 {/* Spend + pie */}
           <section className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 min-w-0">
+            <div className="lg:col-span-2 min-w-0 rounded-xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900">Ad Spend Trend</h2>
+                  <h2 className="mb-2 text-[15px] font-semibold text-slate-900">Ad Spend Trend</h2>
                   <p className="text-sm text-slate-600">
                     Daily ad spend ({spendRollingEnabled ? `rolling ${spendRollingWindowDays}d` : "daily"} • {rangeDays} days)
                   </p>
@@ -4903,22 +4903,21 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 ) : null}
               </ChartReadyWrapper>
             </div>
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-white shadow-md min-w-0">
-              <div className="border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white px-5 py-4">
+            <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <div className="pb-4">
                 <div className="flex items-center gap-3">
-                  <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800 shadow-sm">
+                  <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
                     Channel Mix
                   </span>
                   <div>
-                    <h2 className="text-lg font-semibold text-slate-900">Spend by Channel</h2>
+                    <h2 className="mb-2 text-[15px] font-semibold text-slate-900">Spend by Channel</h2>
                     <p className="text-xs text-slate-600">Distribution • {rangeDays} days • Total: {formatCurrency(adTotals.spend)}</p>
                   </div>
                 </div>
               </div>
-              <div className="relative p-5">
-                <div className="absolute inset-0 opacity-30 mix-blend-multiply" style={{ background: "radial-gradient(circle at 50% 50%, rgba(59,130,246,0.08), transparent 60%)" }} />
-                <div className="relative w-full h-[320px] min-h-[320px]">
-                  <SafeResponsiveContainer height={320} className="h-full w-full">
+              <div className="rounded-lg bg-slate-50/60 p-3">
+                <div className="relative w-full h-[296px] min-h-[296px]">
+                  <SafeResponsiveContainer height={296} className="h-full w-full">
                     <PieChart>
                       <defs>
                         <filter id="pieGlow">
@@ -5206,10 +5205,10 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
             </div>
           </section>
           {/* Ad Attribution Over Time: ROAS vs True ROAS */}
-          <section className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <section className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Ad Attribution Over Time: ROAS vs True ROAS</h2>
+                <h2 className="mb-2 text-[15px] font-semibold text-slate-900">Ad Attribution Over Time: ROAS vs True ROAS</h2>
                 <p className="text-sm text-slate-600">
                   ROAS shows tracked conversions. True ROAS (MER) shows total business impact.
                 </p>
@@ -5229,10 +5228,10 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                 </div>
               </div>
             </div>
-            <div className="mt-5 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
-              <div className="text-sm font-semibold text-slate-900">Daily windowed lines</div>
+            <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div className="mb-2 text-[15px] font-semibold text-slate-900">Daily windowed lines</div>
               <div className="mt-1 text-sm text-slate-600">MER (True ROAS) (w) and ROAS(w) over time</div>
-              <div className="mt-3 w-full h-[320px] min-h-[320px]">
+              <div className="mt-3 w-full h-[296px] min-h-[296px]">
                 <MultiSeriesEventfulLineChart
                   data={attribIndexedSeries}
                   compareData={[]}
@@ -5246,7 +5245,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
                   showMarkers={showEventMarkers}
                   xDomain={xDomain}
                   compareLabel={compareLabel}
-                  height={320}
+                  height={296}
                   yAxisLabel="Index (Start = 100)"
                   tooltipContent={(p: any) => {
                     if (!p?.active || !p.payload?.length) return null;
@@ -5371,15 +5370,15 @@ function ChartCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 min-w-0">
+    <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+          <h2 className="mb-2 text-[15px] font-semibold text-slate-900">{title}</h2>
           <p className="text-sm text-slate-600">{subtitle}</p>
         </div>
         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{badge}</span>
       </div>
-      <div className="mt-4">{children}</div>
+      <div className="mt-3">{children}</div>
     </div>
   );
 }

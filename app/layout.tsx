@@ -23,16 +23,26 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // IMPORTANT:
-  // Shopify App Bridge (CDN) must be a parser-inserted script tag and the FIRST <script> in <head>.
-  // Putting it directly in the <head> here avoids Next/React adding async/defer.
   const apiKey = process.env.NEXT_PUBLIC_SHOPIFY_API_KEY || "";
 
   return (
     <html lang="en">
       <head>
-        {/* MUST be the first <script> tag */}
-        <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              const params = new URLSearchParams(window.location.search);
+              const isShopifyEmbedded =
+                params.has("shop") || params.has("host") || params.has("embedded");
+
+              if (isShopifyEmbedded) {
+                const script = document.createElement("script");
+                script.src = "https://cdn.shopify.com/shopifycloud/app-bridge.js";
+                document.head.appendChild(script);
+              }
+            `,
+          }}
+        />
 
         {/* App Bridge reads this meta */}
         <meta name="shopify-api-key" content={apiKey} />

@@ -155,7 +155,7 @@ async function resolveInstallForClient(clientId: string): Promise<InstallResolut
   };
 }
 
-function parseShopifyQLRows(payload: AnyObj): Array<{ date: string; channel: string; net_sales: number }> {
+function parseShopifyQLRows(payload: AnyObj): Array<{ date?: string; channel: string; net_sales: number }> {
   const q = payload?.shopifyqlQuery;
   if (!q) return [];
 
@@ -193,12 +193,12 @@ function parseShopifyQLRows(payload: AnyObj): Array<{ date: string; channel: str
     return i >= 0 ? i : 2;
   })();
 
-  const parsed: Array<{ date: string; channel: string; net_sales: number }> = [];
+  const parsed: Array<{ date?: string; channel: string; net_sales: number }> = [];
 
   for (const row of rows) {
     if (Array.isArray(row)) {
-      const date = String(row[idxDate] || "").slice(0, 10);
-      if (!isIsoDate(date)) continue;
+      const dateCandidate = String(row[idxDate] || "").slice(0, 10);
+      const date = isIsoDate(dateCandidate) ? dateCandidate : undefined;
       parsed.push({
         date,
         channel: String(row[idxChannel] || ""),
@@ -208,8 +208,8 @@ function parseShopifyQLRows(payload: AnyObj): Array<{ date: string; channel: str
     }
 
     if (row && typeof row === "object") {
-      const date = String(row.day ?? row.date ?? "").slice(0, 10);
-      if (!isIsoDate(date)) continue;
+      const dateCandidate = String(row.day ?? row.date ?? "").slice(0, 10);
+      const date = isIsoDate(dateCandidate) ? dateCandidate : undefined;
 
       const channel = String(
         row.channel ?? row["channel"] ?? row.sales_channel ?? row["sales_channel"] ?? row["sales channel"] ?? ""
@@ -250,12 +250,13 @@ export async function GET(req: NextRequest) {
     const install = await resolveInstallForClient(clientId);
 
     const ql = `FROM sales
-  SHOW day, channel, orders, net_sales
-  GROUP_BY day, channel
-  ORDER_BY day ASC
-  LIMIT 5000
-  SINCE ${start}
-  UNTIL ${end}`;
+SHOW
+  channel,
+  orders,
+  net_sales
+GROUP_BY channel
+ORDER_BY net_sales DESC
+SINCE -30d`;
 
     const data = await shopifyGraphQL({
       shopDomain: install.shopDomain,
@@ -280,7 +281,7 @@ export async function GET(req: NextRequest) {
 
     for (const row of parsedRows) {
       const channel = normalizeTrafficSource(row.channel);
-      const date = row.date;
+      const date = row.date || end;
       const key = `${date}::${channel}`;
       const prev = byKey.get(key);
       if (prev) {

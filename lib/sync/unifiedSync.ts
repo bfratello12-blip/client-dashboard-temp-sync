@@ -1,4 +1,5 @@
 import { isoDateUTC } from "@/lib/dates";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export type StepSummary = {
   step: string;
@@ -63,6 +64,23 @@ async function runStep(args: {
   return { res, body, summary };
 }
 
+async function resolveShopDomainFromClientId(clientId: string) {
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase
+    .from("shopify_app_installs")
+    .select("shop_domain")
+    .eq("client_id", clientId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to resolve shop_domain for client_id ${clientId}: ${error.message}`);
+  }
+
+  return String(data?.shop_domain || "").trim().toLowerCase();
+}
+
 export async function runUnifiedSync(args: {
   origin: string;
   clientId: string;
@@ -71,13 +89,30 @@ export async function runUnifiedSync(args: {
   token?: string;
 }): Promise<{ ok: boolean; client_id: string; steps: StepSummary[]; status?: number }> {
   const window = buildWindow(args.start, args.end);
+  const shopDomain = await resolveShopDomainFromClientId(args.clientId);
+
+  if (!shopDomain) {
+    return {
+      ok: false,
+      client_id: args.clientId,
+      status: 400,
+      steps: [
+        {
+          step: "resolve_shop_domain",
+          ok: false,
+          status: 400,
+          error: `No shop_domain found for client_id ${args.clientId}`,
+        },
+      ],
+    };
+  }
 
   const secret = String(args.token || "").trim();
   const authHeader = secret ? { Authorization: `Bearer ${secret}` } : undefined;
 
-  async function syncShopifyChannelMetrics(client_id: string, start: string, end: string) {
+  async function syncShopifyChannelMetrics(resolvedShopDomain: string, start: string, end: string) {
     const params = new URLSearchParams({
-      client_id,
+      shop_domain: resolvedShopDomain,
       start,
       end,
     });
@@ -89,7 +124,7 @@ export async function runUnifiedSync(args: {
   const steps: StepSummary[] = [];
 
   const shopifyParams = new URLSearchParams({
-    client_id: args.clientId,
+    shop_domain: shopDomain,
     start: window.start,
     end: window.end,
     force: "1",
@@ -99,11 +134,11 @@ export async function runUnifiedSync(args: {
   const shopify = await runStep({ step: "shopify_sync", url: shopifyUrl, headers: authHeader });
   steps.push(shopify.summary);
 
-  const channelSync = await syncShopifyChannelMetrics(args.clientId, window.start, window.end);
+  const channelSync = await syncShopifyChannelMetrics(shopDomain, window.start, window.end);
   steps.push(channelSync.summary);
 
   const googleParams = new URLSearchParams({
-    client_id: args.clientId,
+    shop_domain: shopDomain,
     start: window.start,
     end: window.end,
     fillZeros: "1",
@@ -114,7 +149,7 @@ export async function runUnifiedSync(args: {
   steps.push(google.summary);
 
   const metaParams = new URLSearchParams({
-    client_id: args.clientId,
+    shop_domain: shopDomain,
     start: window.start,
     end: window.end,
     fillZeros: "1",
@@ -125,7 +160,7 @@ export async function runUnifiedSync(args: {
   steps.push(meta.summary);
 
   const lineItemsParams = new URLSearchParams({
-    client_id: args.clientId,
+    shop_domain: shopDomain,
     start: window.start,
     end: window.end,
   });
@@ -135,22 +170,22 @@ export async function runUnifiedSync(args: {
   steps.push(lineItems.summary);
 
   const recomputeParams = new URLSearchParams({
-    client_id: args.clientId,
-    token: secret,
+    shop_domain: shopDomain,
     start: window.start,
     end: window.end,
   });
+  if (secret) recomputeParams.set("token", secret);
   const recomputeUrl = `${args.origin}/api/shopify/recompute?${recomputeParams.toString()}`;
   const recompute = await runStep({ step: "shopify_recompute", url: recomputeUrl, headers: authHeader });
   steps.push(recompute.summary);
 
   const rollingParams = new URLSearchParams({
-    client_id: args.clientId,
+    shop_domain: shopDomain,
     start: window.start,
     end: window.end,
-    token: secret,
     skipSyncs: "1",
   });
+  if (secret) rollingParams.set("token", secret);
   const rollingUrl = `${args.origin}/api/cron/rolling-30?${rollingParams.toString()}`;
   const rolling = await runStep({ step: "rolling_30", url: rollingUrl, headers: authHeader });
   steps.push(rolling.summary);

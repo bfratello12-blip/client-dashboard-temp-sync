@@ -248,13 +248,13 @@ export async function GET(req: NextRequest) {
     const install = await resolveInstallForClient(clientId);
 
     const ql = `FROM sales
-SHOW total_sales
-BY traffic_source
-TIMESERIES day
-SINCE ${start}
-UNTIL ${end}
-ORDER BY day ASC
-LIMIT 5000`;
+  SHOW total_sales
+  GROUP_BY traffic_source
+  TIMESERIES day
+  SINCE ${start}
+  UNTIL ${end}
+  ORDER_BY day ASC
+  LIMIT 5000`;
 
     const data = await shopifyGraphQL({
       shopDomain: install.shopDomain,

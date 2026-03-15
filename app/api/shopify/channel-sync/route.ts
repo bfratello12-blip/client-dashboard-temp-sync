@@ -155,7 +155,7 @@ async function resolveInstallForClient(clientId: string): Promise<InstallResolut
   };
 }
 
-function parseShopifyQLRows(payload: AnyObj): Array<{ date: string; traffic_source: string; total_sales: number }> {
+function parseShopifyQLRows(payload: AnyObj): Array<{ date: string; channel: string; net_sales: number }> {
   const q = payload?.shopifyqlQuery;
   if (!q) return [];
 
@@ -181,17 +181,19 @@ function parseShopifyQLRows(payload: AnyObj): Array<{ date: string; traffic_sour
     return i >= 0 ? i : 0;
   })();
 
-  const idxSource = (() => {
-    const i = colNames.findIndex((n) => n === "traffic_source" || n.includes("traffic source") || n.includes("source"));
+  const idxChannel = (() => {
+    const i = colNames.findIndex(
+      (n) => n === "channel" || n === "sales_channel" || n.includes("sales channel") || n.includes("channel")
+    );
     return i >= 0 ? i : 1;
   })();
 
-  const idxSales = (() => {
-    const i = colNames.findIndex((n) => n === "total_sales" || n.includes("total sales"));
+  const idxNetSales = (() => {
+    const i = colNames.findIndex((n) => n === "net_sales" || n.includes("net sales") || n === "total_sales");
     return i >= 0 ? i : 2;
   })();
 
-  const parsed: Array<{ date: string; traffic_source: string; total_sales: number }> = [];
+  const parsed: Array<{ date: string; channel: string; net_sales: number }> = [];
 
   for (const row of rows) {
     if (Array.isArray(row)) {
@@ -199,8 +201,8 @@ function parseShopifyQLRows(payload: AnyObj): Array<{ date: string; traffic_sour
       if (!isIsoDate(date)) continue;
       parsed.push({
         date,
-        traffic_source: String(row[idxSource] || ""),
-        total_sales: asNumber(row[idxSales]),
+        channel: String(row[idxChannel] || ""),
+        net_sales: asNumber(row[idxNetSales]),
       });
       continue;
     }
@@ -209,12 +211,12 @@ function parseShopifyQLRows(payload: AnyObj): Array<{ date: string; traffic_sour
       const date = String(row.day ?? row.date ?? "").slice(0, 10);
       if (!isIsoDate(date)) continue;
 
-      const traffic_source = String(
-        row.traffic_source ?? row["traffic_source"] ?? row["traffic source"] ?? row.source ?? ""
+      const channel = String(
+        row.channel ?? row["channel"] ?? row.sales_channel ?? row["sales_channel"] ?? row["sales channel"] ?? ""
       );
-      const total_sales = asNumber(row.total_sales ?? row["total_sales"] ?? row["total sales"] ?? 0);
+      const net_sales = asNumber(row.net_sales ?? row["net_sales"] ?? row["net sales"] ?? row.total_sales ?? 0);
 
-      parsed.push({ date, traffic_source, total_sales });
+      parsed.push({ date, channel, net_sales });
     }
   }
 
@@ -248,13 +250,12 @@ export async function GET(req: NextRequest) {
     const install = await resolveInstallForClient(clientId);
 
     const ql = `FROM sales
-  SHOW total_sales
-  GROUP_BY traffic_source
-  TIMESERIES day
-  SINCE ${start}
-  UNTIL ${end}
+  SHOW day, channel, orders, net_sales
+  GROUP_BY day, channel
   ORDER_BY day ASC
-  LIMIT 5000`;
+  LIMIT 5000
+  SINCE ${start}
+  UNTIL ${end}`;
 
     const data = await shopifyGraphQL({
       shopDomain: install.shopDomain,
@@ -278,17 +279,17 @@ export async function GET(req: NextRequest) {
     const byKey = new Map<string, { date: string; channel: "organic" | "direct" | "paid" | "unknown"; revenue: number }>();
 
     for (const row of parsedRows) {
-      const channel = normalizeTrafficSource(row.traffic_source);
+      const channel = normalizeTrafficSource(row.channel);
       const date = row.date;
       const key = `${date}::${channel}`;
       const prev = byKey.get(key);
       if (prev) {
-        prev.revenue += asNumber(row.total_sales);
+        prev.revenue += asNumber(row.net_sales);
       } else {
         byKey.set(key, {
           date,
           channel,
-          revenue: asNumber(row.total_sales),
+          revenue: asNumber(row.net_sales),
         });
       }
     }

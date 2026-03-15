@@ -81,31 +81,78 @@ async function resolveShopDomainFromClientId(clientId: string) {
   return String(data?.shop_domain || "").trim().toLowerCase();
 }
 
+async function resolveClientIdFromShopDomain(shopDomain: string) {
+  const supabase = supabaseAdmin();
+  const normalized = String(shopDomain || "").trim().toLowerCase();
+  const { data, error } = await supabase
+    .from("shopify_app_installs")
+    .select("client_id")
+    .eq("shop_domain", normalized)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to resolve client_id for shop_domain ${normalized}: ${error.message}`);
+  }
+
+  return String(data?.client_id || "").trim();
+}
+
 export async function runUnifiedSync(args: {
   origin: string;
-  clientId: string;
+  clientId?: string;
+  shopDomain?: string;
   start?: string;
   end?: string;
   token?: string;
 }): Promise<{ ok: boolean; client_id: string; steps: StepSummary[]; status?: number }> {
-  const window = buildWindow(args.start, args.end);
-  const shopDomain = await resolveShopDomainFromClientId(args.clientId);
+  const requestedClientId = String(args.clientId || "").trim();
+  const requestedShopDomain = String(args.shopDomain || "").trim().toLowerCase();
+  let clientId = requestedClientId;
+  let shopDomain = requestedShopDomain;
 
-  if (!shopDomain) {
+  if (!clientId && !shopDomain) {
     return {
       ok: false,
-      client_id: args.clientId,
+      client_id: "",
       status: 400,
       steps: [
         {
-          step: "resolve_shop_domain",
+          step: "resolve_identifiers",
           ok: false,
           status: 400,
-          error: `No shop_domain found for client_id ${args.clientId}`,
+          error: "Missing clientId/shopDomain",
         },
       ],
     };
   }
+
+  if (!clientId && shopDomain) {
+    clientId = await resolveClientIdFromShopDomain(shopDomain);
+  }
+
+  if (!shopDomain && clientId) {
+    shopDomain = await resolveShopDomainFromClientId(clientId);
+  }
+
+  if (!clientId || !shopDomain) {
+    return {
+      ok: false,
+      client_id: clientId,
+      status: 400,
+      steps: [
+        {
+          step: "resolve_identifiers",
+          ok: false,
+          status: 400,
+          error: `Could not resolve client_id/shop_domain from inputs (clientId=${requestedClientId || "n/a"}, shopDomain=${requestedShopDomain || "n/a"})`,
+        },
+      ],
+    };
+  }
+
+  const window = buildWindow(args.start, args.end);
 
   const secret = String(args.token || "").trim();
   const authHeader = secret ? { Authorization: `Bearer ${secret}` } : undefined;
@@ -194,11 +241,11 @@ export async function runUnifiedSync(args: {
   if (firstFailed) {
     return {
       ok: false,
-      client_id: args.clientId,
+      client_id: clientId,
       steps,
       status: firstFailed.status || 500,
     };
   }
 
-  return { ok: true, client_id: args.clientId, steps };
+  return { ok: true, client_id: clientId, steps };
 }

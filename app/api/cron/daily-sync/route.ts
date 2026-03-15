@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireCronAuth } from "@/lib/cronAuth";
 import { runUnifiedSync } from "@/lib/sync/unifiedSync";
-import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,37 +13,68 @@ export async function GET(req: NextRequest) {
 
     const url = req.nextUrl;
     const origin = url.origin;
-    const shopDomain = url.searchParams.get("shop_domain")?.trim() || "";
-    const clientIdParam = shopDomain ? await resolveClientIdFromShopDomainParam(shopDomain) || "" : "";
-    const fallbackClientId = process.env.DEFAULT_CLIENT_ID || "";
-    const clientId = clientIdParam || fallbackClientId;
-    if (!clientId) {
-      return NextResponse.json(
-        { ok: false, error: "shop_domain required (or set DEFAULT_CLIENT_ID)" },
-        { status: 400 }
-      );
-    }
-
     const providedStart = url.searchParams.get("start")?.trim() || undefined;
     const providedEnd = url.searchParams.get("end")?.trim() || undefined;
     const secret = String(process.env.CRON_SECRET || "").trim();
+    const supabase = supabaseAdmin();
 
-    const result = await runUnifiedSync({
-      origin,
-      clientId,
-      start: providedStart,
-      end: providedEnd,
-      token: secret,
-    });
+    const { data: installs, error: installsErr } = await supabase
+      .from("shopify_app_installs")
+      .select("shop_domain");
 
-    if (!result.ok) {
-      return NextResponse.json(
-        { ok: false, client_id: clientId, steps: result.steps },
-        { status: result.status || 500 }
-      );
+    if (installsErr) {
+      return NextResponse.json({ ok: false, error: installsErr.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, client_id: clientId, steps: result.steps });
+    const shopDomains = Array.from(
+      new Set(
+        (installs || [])
+          .map((r: any) => String(r?.shop_domain || "").trim().toLowerCase())
+          .filter(Boolean)
+      )
+    );
+
+    const results: Array<{ shop_domain: string; ok: boolean; client_id?: string; steps?: any; error?: string }> = [];
+    const failures: Array<{ shop_domain: string; client_id?: string; status?: number; error?: string; steps?: any }> = [];
+
+    for (const shopDomain of shopDomains) {
+      const result = await runUnifiedSync({
+        origin,
+        shopDomain,
+        start: providedStart,
+        end: providedEnd,
+        token: secret,
+      });
+
+      if (!result.ok) {
+        const failure = {
+          shop_domain: shopDomain,
+          client_id: result.client_id,
+          status: result.status || 500,
+          error: result.steps?.find((s: any) => !s.ok)?.error || "Sync failed",
+          steps: result.steps,
+        };
+        failures.push(failure);
+        results.push({ shop_domain: shopDomain, ok: false, client_id: result.client_id, error: failure.error });
+        continue;
+      }
+
+      results.push({
+        shop_domain: shopDomain,
+        ok: true,
+        client_id: result.client_id,
+        steps: result.steps,
+      });
+    }
+
+    return NextResponse.json({
+      ok: failures.length === 0,
+      processed: shopDomains.length,
+      succeeded: shopDomains.length - failures.length,
+      failed: failures.length,
+      results,
+      failures,
+    });
   } catch (e: any) {
     const msg = e?.message || String(e);
     const status = msg === "Unauthorized" ? 401 : 500;

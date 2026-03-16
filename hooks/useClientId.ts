@@ -2,18 +2,12 @@
 
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getContextValueClient } from "@/lib/shopifyContext";
 
 export default function useClientId() {
   const params = useSearchParams();
 
-  const urlClientId = getContextValueClient(params as any, "client_id");
-  const shop = (
-    getContextValueClient(params as any, "shop") ||
-    getContextValueClient(params as any, "shop_domain")
-  )
-    .trim()
-    .toLowerCase();
+  const urlClientId = (params.get("client_id") || "").trim();
+  const shop = (params.get("shop") || params.get("shop_domain") || "").trim().toLowerCase();
   const [clientId, setClientId] = useState<string | null>(urlClientId || (shop ? null : ""));
 
   useEffect(() => {

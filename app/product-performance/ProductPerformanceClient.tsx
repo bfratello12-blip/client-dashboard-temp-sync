@@ -6,7 +6,6 @@ import { format, subDays } from "date-fns";
 import DashboardLayout from "@/components/DashboardLayout";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
-import { getContextValueClient } from "@/lib/shopifyContext";
 
 type ProductPerfRow = {
   variant_id: string;
@@ -122,13 +121,7 @@ function HeaderTooltip({ text, align = "center" }: { text: string; align?: "cent
 
 export default function ProductPerformanceClient() {
   const searchParams = useSearchParams();
-  const shopDomain = (
-    getContextValueClient(searchParams as any, "shop") ||
-    getContextValueClient(searchParams as any, "shop_domain") ||
-    ""
-  )
-    .trim()
-    .toLowerCase();
+  const shopDomain = (searchParams.get("shop") || searchParams.get("shop_domain") || "").trim().toLowerCase();
 
   const initialRange = useMemo(() => {
     const { startISO, endISO } = last30DaysRange();

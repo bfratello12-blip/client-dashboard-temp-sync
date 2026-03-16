@@ -4,7 +4,11 @@ import React, { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import useClientId from "@/hooks/useClientId";
-import { hasShopifyContextClient } from "@/lib/shopifyContext";
+import {
+  hasShopifyContextClient,
+  persistAppContextClient,
+  persistAppContextFromSearchParamsClient,
+} from "@/lib/shopifyContext";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -22,6 +26,22 @@ function ClientIdWarningBanner() {
       Missing client_id in URL
     </div>
   );
+}
+
+function ContextPersistence() {
+  const params = useSearchParams();
+  const clientId = useClientId();
+
+  React.useEffect(() => {
+    persistAppContextFromSearchParamsClient(params as any);
+  }, [params]);
+
+  React.useEffect(() => {
+    if (!clientId) return;
+    persistAppContextClient({ client_id: clientId });
+  }, [clientId]);
+
+  return null;
 }
 
 export default function DashboardLayout({ children, skipSupabaseAuth }: DashboardLayoutProps) {
@@ -74,6 +94,9 @@ export default function DashboardLayout({ children, skipSupabaseAuth }: Dashboar
       </Suspense>
 
       <main className="flex-1 min-w-0">
+        <Suspense fallback={null}>
+          <ContextPersistence />
+        </Suspense>
         <Suspense fallback={null}>
           <ClientIdWarningBanner />
         </Suspense>

@@ -6,6 +6,7 @@ import { format, subDays } from "date-fns";
 import DashboardLayout from "@/components/DashboardLayout";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
+import { getContextValueClient } from "@/lib/shopifyContext";
 import ScatterCorrelationChart from "@/components/ScatterCorrelationChart";
 import { MultiSeriesEventfulLineChart } from "@/app/page.client";
 
@@ -165,7 +166,13 @@ function ChannelChart({
 
 export default function ChannelPerformanceClient() {
   const searchParams = useSearchParams();
-  const shopDomain = (searchParams.get("shop") || searchParams.get("shop_domain") || "").trim().toLowerCase();
+  const shopDomain = (
+    getContextValueClient(searchParams as any, "shop") ||
+    getContextValueClient(searchParams as any, "shop_domain") ||
+    ""
+  )
+    .trim()
+    .toLowerCase();
 
   const initialRange = useMemo(() => {
     const { startISO, endISO } = last30DaysRange();

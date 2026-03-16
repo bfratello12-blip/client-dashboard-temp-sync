@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { hasShopifyContextClient } from "@/lib/shopifyContext";
+import { hasShopifyContextClient, getContextValueClient } from "@/lib/shopifyContext";
 import DashboardLayout from "@/components/DashboardLayout";
 
 export const dynamic = "force-dynamic";
@@ -108,7 +108,14 @@ function SettingsPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const shopDomainParam = useMemo(
-    () => (searchParams.get("shop") || searchParams.get("shop_domain") || "").trim().toLowerCase(),
+    () =>
+      (
+        getContextValueClient(searchParams as any, "shop") ||
+        getContextValueClient(searchParams as any, "shop_domain") ||
+        ""
+      )
+        .trim()
+        .toLowerCase(),
     [searchParams]
   );
 

@@ -246,7 +246,10 @@ export async function GET(req: NextRequest) {
       const ql = `FROM sales
 SHOW orders, total_sales
 WHERE traffic_type = '${channel}'
-SINCE ${start} UNTIL ${end}`;
+TIMESERIES day WITH TOTALS
+SINCE ${start} UNTIL ${end}
+ORDER BY day ASC
+LIMIT 1000`;
 
       const data = await shopifyGraphQL({
         shopDomain: install.shopDomain,
@@ -267,7 +270,8 @@ SINCE ${start} UNTIL ${end}`;
 
       const parsedRows = parseShopifyQLRows(data);
       for (const row of parsedRows) {
-        const date = row.date || end;
+        if (!row.date || !isIsoDate(row.date)) continue;
+        const date = row.date;
         const key = `${date}::${channel}`;
         const prev = byKey.get(key);
         if (prev) {

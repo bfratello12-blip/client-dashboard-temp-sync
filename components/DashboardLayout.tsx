@@ -1,10 +1,11 @@
 "use client";
 
 import React, { Suspense, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import useClientId from "@/hooks/useClientId";
 import {
+  getContextValueClient,
   hasShopifyContextClient,
   persistAppContextClient,
   persistAppContextFromSearchParamsClient,
@@ -29,6 +30,8 @@ function ClientIdWarningBanner() {
 }
 
 function ContextPersistence() {
+  const router = useRouter();
+  const pathname = usePathname();
   const params = useSearchParams();
   const clientId = useClientId();
 
@@ -40,6 +43,19 @@ function ContextPersistence() {
     if (!clientId) return;
     persistAppContextClient({ client_id: clientId });
   }, [clientId]);
+
+  React.useEffect(() => {
+    const hasShopDomainInUrl = (params.get("shop_domain") || "").trim();
+    if (hasShopDomainInUrl) return;
+
+    const persistedShopDomain = getContextValueClient(params as any, "shop_domain").trim();
+    if (!persistedShopDomain) return;
+
+    const next = new URLSearchParams(params.toString());
+    next.set("shop_domain", persistedShopDomain);
+    const query = next.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname);
+  }, [params, pathname, router]);
 
   return null;
 }

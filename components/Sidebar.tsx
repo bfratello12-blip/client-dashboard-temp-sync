@@ -83,10 +83,23 @@ export default function Sidebar({
   const withClientId = React.useCallback(
     (path: string) => {
       const qs = new URLSearchParams();
-      const shop = getContextValueClient(searchParams as any, "shop").trim();
-      const shopDomain = getContextValueClient(searchParams as any, "shop_domain").trim();
-      const host = getContextValueClient(searchParams as any, "host").trim();
-      const embedded = getContextValueClient(searchParams as any, "embedded").trim();
+      const liveParams =
+        typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+
+      const shop =
+        (searchParams.get("shop") || liveParams?.get("shop") || getContextValueClient(searchParams as any, "shop") || "").trim();
+      const shopDomain =
+        (searchParams.get("shop_domain") ||
+          liveParams?.get("shop_domain") ||
+          getContextValueClient(searchParams as any, "shop_domain") ||
+          "").trim();
+      const host =
+        (searchParams.get("host") || liveParams?.get("host") || getContextValueClient(searchParams as any, "host") || "").trim();
+      const embedded =
+        (searchParams.get("embedded") ||
+          liveParams?.get("embedded") ||
+          getContextValueClient(searchParams as any, "embedded") ||
+          "").trim();
       const contextClientId = getContextValueClient(searchParams as any, "client_id").trim();
 
       if (shop) qs.set("shop", shop);

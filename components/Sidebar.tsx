@@ -7,6 +7,7 @@ import { LayoutDashboard, Package, TrendingUp, Settings, Shield } from "lucide-r
 import { type User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import useClientId from "@/hooks/useClientId";
+import { getContextValueClient } from "@/lib/shopifyContext";
 
 interface SidebarProps {
   clientName: string;
@@ -82,16 +83,17 @@ export default function Sidebar({
   const withClientId = React.useCallback(
     (path: string) => {
       const qs = new URLSearchParams();
-      const shop = (searchParams.get("shop") || "").trim();
-      const shopDomain = (searchParams.get("shop_domain") || "").trim();
-      const host = (searchParams.get("host") || "").trim();
-      const embedded = (searchParams.get("embedded") || "").trim();
+      const shop = getContextValueClient(searchParams as any, "shop").trim();
+      const shopDomain = getContextValueClient(searchParams as any, "shop_domain").trim();
+      const host = getContextValueClient(searchParams as any, "host").trim();
+      const embedded = getContextValueClient(searchParams as any, "embedded").trim();
+      const contextClientId = getContextValueClient(searchParams as any, "client_id").trim();
 
       if (shop) qs.set("shop", shop);
       if (shopDomain) qs.set("shop_domain", shopDomain);
       if (host) qs.set("host", host);
       if (embedded) qs.set("embedded", embedded);
-      if (clientId) qs.set("client_id", clientId);
+      if (clientId || contextClientId) qs.set("client_id", clientId || contextClientId);
 
       const query = qs.toString();
       return query ? `${path}?${query}` : path;

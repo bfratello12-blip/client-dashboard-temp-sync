@@ -246,7 +246,7 @@ export async function GET(req: NextRequest) {
       const ql = `FROM sales
 SHOW orders, total_sales
 WHERE traffic_type = '${channel}'
-SINCE startOfDay(-30d) UNTIL today`;
+SINCE ${start} UNTIL ${end}`;
 
       const data = await shopifyGraphQL({
         shopDomain: install.shopDomain,

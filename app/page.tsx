@@ -4,6 +4,7 @@ import HomeClient from "@/app/page.client";
 import ShopifyBootstrap from "@/app/components/ShopifyBootstrap";
 import AdminClientAccessGate from "@/app/components/AdminClientAccessGate";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getFirstClientIdForSupabaseUser, getSupabaseUserIdFromRequest } from "@/lib/requestAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +71,13 @@ export default async function Page({
       : Array.isArray(shopParamRaw)
       ? shopParamRaw[0]
       : "";
+  const shopDomainParamRaw = sp?.shop_domain;
+  const shopDomainParam =
+    typeof shopDomainParamRaw === "string"
+      ? shopDomainParamRaw
+      : Array.isArray(shopDomainParamRaw)
+      ? shopDomainParamRaw[0]
+      : "";
   const hostParamRaw = sp?.host;
   const hostParam =
     typeof hostParamRaw === "string"
@@ -101,11 +109,15 @@ export default async function Page({
 
   const shopFromToken = idToken ? shopFromIdToken(idToken) : "";
   const refererShop = shopFromReferer(referer);
+  const normalizedShopDomainParam = normalizeShopDomain(shopDomainParam);
   const shopGuess = normalizeShopDomain(
-    shopParam || shopFromToken || headerShop || refererShop || cookieShop
+    shopParam || normalizedShopDomainParam || shopFromToken || headerShop || refererShop || cookieShop
   );
   const hasShopifyContext = Boolean(
     shopParam || hostParam || idToken || headerShop || refererShop || cookieShop
+  );
+  const websiteShopDomainEntry = Boolean(
+    normalizedShopDomainParam && !shopParam && !hostParam && !idToken && !headerShop
   );
   const shopSource = shopParam
     ? "shop_param"
@@ -151,14 +163,45 @@ export default async function Page({
     if (hasShopifyContext) {
       return <ShopifyBootstrap host={hostParam} />;
     }
+    // Non-embedded website path:
+    // If a Supabase user session exists, route to that user's first mapped client shop_domain.
+    try {
+      const reqForAuth = new Request("http://local/page", {
+        headers: {
+          cookie: hdrs.get("cookie") || "",
+          authorization: hdrs.get("authorization") || "",
+        },
+      });
+      const userId = await getSupabaseUserIdFromRequest(reqForAuth);
+      if (userId) {
+        const userClientId = await getFirstClientIdForSupabaseUser(userId);
+        if (userClientId) {
+          const { data: installByClient } = await supabaseAdmin()
+            .from("shopify_app_installs")
+            .select("shop_domain")
+            .eq("client_id", userClientId)
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const userShopDomain = normalizeShopDomain(String(installByClient?.shop_domain || ""));
+          if (userShopDomain) {
+            const qs = new URLSearchParams({
+              shop_domain: userShopDomain,
+              client_id: userClientId,
+            });
+            redirect(`/?${qs.toString()}`);
+          }
+        }
+      }
+    } catch {
+      // Fall through to existing behavior.
+    }
+
     if (isDev) {
       return <HomeClient />;
     }
-    return (
-      <main className="min-h-screen flex items-center justify-center p-6">
-        <div className="text-sm text-slate-600">Open this app from Shopify Admin → Apps.</div>
-      </main>
-    );
+    return <HomeClient />;
   }
 
   const { data, error } = await supabaseAdmin()
@@ -195,5 +238,10 @@ export default async function Page({
     );
   }
 
-  return <HomeClient initialClientId={String(data.client_id)} skipSupabaseAuth />;
+  return (
+    <HomeClient
+      initialClientId={String(data.client_id)}
+      skipSupabaseAuth={!websiteShopDomainEntry}
+    />
+  );
 }

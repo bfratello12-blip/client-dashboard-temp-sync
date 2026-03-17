@@ -624,6 +624,7 @@ function SettingsPage() {
       }
 
       let shopDomain =
+        effectiveShopDomain ||
         shopDomainFromContext ||
         document.cookie
         .split(";")
@@ -632,6 +633,22 @@ function SettingsPage() {
         ?.split("=")
         ?.slice(1)
         .join("=");
+
+      if (overrideClientId && !shopDomain) {
+        try {
+          const res = await fetch(`/api/client/context?client_id=${encodeURIComponent(overrideClientId)}`, {
+            cache: "no-store",
+          });
+          const json = await res.json().catch(() => ({}));
+          const recovered = String(json?.shop_domain || "").trim().toLowerCase();
+          if (res.ok && json?.ok && recovered) {
+            shopDomain = recovered;
+            if (!cancelled) setResolvedShopDomain(recovered);
+          }
+        } catch {
+          // no-op; keep existing fallbacks
+        }
+      }
 
       if (isEmbeddedShopifyContext && !shopDomain && !overrideClientId) {
         try {
@@ -666,23 +683,23 @@ function SettingsPage() {
         return;
       }
 
-      if (overrideClientId) {
-        shopDomain = shopDomain || "";
+      let cid = overrideClientId || "";
+      if (!cid) {
+        const { data: installRows, error: installErr } = await supabase
+          .from("shopify_app_installs")
+          .select("client_id")
+          .eq("shop_domain", shopDomain)
+          .limit(1);
+
+        if (installErr) {
+          console.error(installErr);
+          if (!cancelled) setLoading(false);
+          return;
+        }
+
+        cid = (installRows?.[0]?.client_id as string | undefined) || "";
       }
 
-      const { data: installRows, error: installErr } = await supabase
-        .from("shopify_app_installs")
-        .select("client_id")
-        .eq("shop_domain", shopDomain)
-        .limit(1);
-
-      if (installErr) {
-        console.error(installErr);
-        if (!cancelled) setLoading(false);
-        return;
-      }
-
-      const cid = overrideClientId || (installRows?.[0]?.client_id as string | undefined) || "";
       if (!cancelled) setClientId(cid);
 
       if (!cid) {
@@ -734,7 +751,7 @@ function SettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router, effectiveShopDomain]);
 
   useEffect(() => {
     if (!clientId) return;

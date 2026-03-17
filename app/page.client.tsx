@@ -2195,21 +2195,19 @@ export default function Home({
         }
         return;
       }
-      }, [
-        skipSupabaseAuth,
-        initialClientId,
-        contextClientId,
-        clientId,
-        range,
-        customStartISO,
-        customEndISO,
-        compareMode,
-        attribWindowDays,
-        refreshNonce,
-        windows,
-        showEvents30,
-        shopDomain,
-      ]);
+
+      // Fetch cost settings (used for profitability + editable in Settings)
+      try {
+        const { data: csRow, error: csErr } = await supabase
+          .from("client_cost_settings")
+          .select(
+            "client_id, default_gross_margin_pct, avg_cogs_per_unit, processing_fee_pct, processing_fee_fixed, pick_pack_per_order, shipping_subsidy_per_order, materials_per_order, other_variable_pct_revenue, other_fixed_per_day, margin_after_costs_pct"
+          )
+          .eq("client_id", cid)
+          .limit(1);
+        if (!csErr) {
+          const row = (csRow?.[0] as any) || null;
+          if (!cancelled) {
             const settings: ClientCostSettings = {
               client_id: cid,
               default_gross_margin_pct: row?.default_gross_margin_pct != null ? Number(row.default_gross_margin_pct) : null,
@@ -2254,7 +2252,8 @@ export default function Home({
           setMarginAfterCostsPct(null);
         }
       }
-const { data: clientRow } = await supabase.from("clients").select("name").eq("id", cid).limit(1);
+
+      const { data: clientRow } = await supabase.from("clients").select("name").eq("id", cid).limit(1);
       if (!cancelled) setClientName(clientRow?.[0]?.name ?? "Client");
       const primary = windows.primary;
       const compare = windows.compare;
@@ -2919,6 +2918,8 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     };
   }, [
     initialClientId,
+    contextClientId,
+    clientId,
     range,
     rangeDays,
     windows,
@@ -2930,6 +2931,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
     attribWindowDays,
     refreshNonce,
     skipSupabaseAuth,
+    shopDomain,
   ]);
   /** Monthly rollup table fetch */
   useEffect(() => {

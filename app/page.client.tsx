@@ -1638,11 +1638,12 @@ export default function Home({
     const qs = new URLSearchParams();
     const shop = getContextValueClient(searchParams as any, "shop").trim();
     const shopDomain = getContextValueClient(searchParams as any, "shop_domain").trim();
+    const effectiveShopDomain = shopDomain || shop;
     const host = getContextValueClient(searchParams as any, "host").trim();
     const embedded = getContextValueClient(searchParams as any, "embedded").trim();
 
     if (shop) qs.set("shop", shop);
-    if (shopDomain) qs.set("shop_domain", shopDomain);
+    if (effectiveShopDomain) qs.set("shop_domain", effectiveShopDomain);
     if (host) qs.set("host", host);
     if (embedded) qs.set("embedded", embedded);
     if (clientId) qs.set("client_id", clientId);

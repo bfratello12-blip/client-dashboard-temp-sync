@@ -34,6 +34,7 @@ function ContextPersistence() {
   const pathname = usePathname();
   const params = useSearchParams();
   const clientId = useClientId();
+  const [rehydrating, setRehydrating] = React.useState(false);
 
   React.useEffect(() => {
     persistAppContextFromSearchParamsClient(params as any);
@@ -56,6 +57,46 @@ function ContextPersistence() {
     const query = next.toString();
     router.replace(query ? `${pathname}?${query}` : pathname);
   }, [params, pathname, router]);
+
+  React.useEffect(() => {
+    if (rehydrating) return;
+
+    const hasShopDomain = (params.get("shop_domain") || "").trim();
+    if (hasShopDomain) return;
+
+    const persistedShopDomain = getContextValueClient(params as any, "shop_domain").trim();
+    if (persistedShopDomain) return;
+
+    const cid = getContextValueClient(params as any, "client_id").trim();
+    if (!cid) return;
+
+    let cancelled = false;
+    const run = async () => {
+      setRehydrating(true);
+      try {
+        const res = await fetch(`/api/client/context?client_id=${encodeURIComponent(cid)}`, {
+          cache: "no-store",
+        });
+        const json = await res.json().catch(() => ({}));
+        const resolvedShop = String(json?.shop_domain || "").trim().toLowerCase();
+        if (!cancelled && res.ok && json?.ok && resolvedShop) {
+          persistAppContextClient({ client_id: cid, shop_domain: resolvedShop, shop: resolvedShop });
+          const next = new URLSearchParams(params.toString());
+          next.set("shop_domain", resolvedShop);
+          if (!next.get("client_id")) next.set("client_id", cid);
+          const query = next.toString();
+          router.replace(query ? `${pathname}?${query}` : pathname);
+        }
+      } finally {
+        if (!cancelled) setRehydrating(false);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [params, pathname, router, rehydrating]);
 
   return null;
 }

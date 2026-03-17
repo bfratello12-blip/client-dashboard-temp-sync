@@ -91,7 +91,19 @@ export function persistAppContextFromSearchParamsClient(params: QueryLike) {
 export function getContextValueClient(params: QueryLike, key: keyof AppClientContext): string {
   const direct = normalize(params.get(key) || "");
   if (direct) return key === "shop_domain" ? normalizeShopDomain(direct) : direct;
+
+  if (key === "shop_domain") {
+    const directShop = normalize(params.get("shop") || "");
+    if (directShop) return normalizeShopDomain(directShop);
+  }
+
   const persisted = getPersistedAppContextClient();
+  if (key === "shop_domain") {
+    const persistedShopDomain = normalize((persisted as any)?.shop_domain || "");
+    if (persistedShopDomain) return normalizeShopDomain(persistedShopDomain);
+    const persistedShop = normalize((persisted as any)?.shop || "");
+    if (persistedShop) return normalizeShopDomain(persistedShop);
+  }
   return normalize((persisted as any)?.[key] || "");
 }
 

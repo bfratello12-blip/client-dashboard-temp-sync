@@ -93,6 +93,7 @@ export default function Sidebar({
           liveParams?.get("shop_domain") ||
           getContextValueClient(searchParams as any, "shop_domain") ||
           "").trim();
+      const effectiveShopDomain = shopDomain || shop;
       const host =
         (searchParams.get("host") || liveParams?.get("host") || getContextValueClient(searchParams as any, "host") || "").trim();
       const embedded =
@@ -103,7 +104,7 @@ export default function Sidebar({
       const contextClientId = getContextValueClient(searchParams as any, "client_id").trim();
 
       if (shop) qs.set("shop", shop);
-      if (shopDomain) qs.set("shop_domain", shopDomain);
+      if (effectiveShopDomain) qs.set("shop_domain", effectiveShopDomain);
       if (host) qs.set("host", host);
       if (embedded) qs.set("embedded", embedded);
       if (clientId || contextClientId) qs.set("client_id", clientId || contextClientId);

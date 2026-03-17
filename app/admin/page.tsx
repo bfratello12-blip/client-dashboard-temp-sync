@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import AdminClientAccessGate from "@/app/components/AdminClientAccessGate";
 
 type ClientRow = {
   id: string;
@@ -17,9 +18,19 @@ type UserClientJoinRow = {
 
 export default function AdminPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const allowMultiClientAdmin =
+    String(process.env.NEXT_PUBLIC_ALLOW_MULTI_CLIENT_ADMIN || "")
+      .trim()
+      .toLowerCase() === "true";
+  const selectedClientId = (searchParams.get("client_id") || "").trim();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [clients, setClients] = useState<ClientRow[]>([]);
+
+  if (allowMultiClientAdmin && selectedClientId) {
+    return <AdminClientAccessGate clientId={selectedClientId} />;
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -104,7 +115,11 @@ export default function AdminPage() {
                   >
                     <div className="text-sm font-semibold text-slate-900">{client.name || "Unnamed Client"}</div>
                     <Link
-                      href={`/?client_id=${encodeURIComponent(client.id)}`}
+                      href={
+                        allowMultiClientAdmin
+                          ? `/admin?client_id=${encodeURIComponent(client.id)}`
+                          : `/?client_id=${encodeURIComponent(client.id)}`
+                      }
                       className="inline-flex items-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
                     >
                       Open Dashboard

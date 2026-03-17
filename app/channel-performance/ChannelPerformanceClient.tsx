@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { format, subDays } from "date-fns";
 import DashboardLayout from "@/components/DashboardLayout";
 import DateRangePicker from "@/app/components/DateRangePicker";
@@ -164,17 +165,17 @@ function ChannelChart({
 }
 
 export default function ChannelPerformanceClient() {
-  const shopDomain = resolveShopDomain().trim().toLowerCase();
+  const searchParams = useSearchParams();
   const contextClientId = getRuntimeContextValueClient("client_id").trim();
-  const [resolvedShopDomain, setResolvedShopDomain] = useState<string>(shopDomain);
+  const [resolvedShopDomain, setResolvedShopDomain] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!shopDomain) return;
-    setResolvedShopDomain(shopDomain);
-  }, [shopDomain]);
+    const resolved = resolveShopDomain(searchParams as any);
+    setResolvedShopDomain(resolved);
+  }, [searchParams]);
 
   useEffect(() => {
-    if (shopDomain || resolvedShopDomain || !contextClientId) return;
+    if (resolvedShopDomain || !contextClientId) return;
     let cancelled = false;
 
     (async () => {
@@ -195,7 +196,7 @@ export default function ChannelPerformanceClient() {
     return () => {
       cancelled = true;
     };
-  }, [shopDomain, resolvedShopDomain, contextClientId]);
+  }, [resolvedShopDomain, contextClientId]);
 
   const initialRange = useMemo(() => {
     const { startISO, endISO } = last30DaysRange();
@@ -219,7 +220,7 @@ export default function ChannelPerformanceClient() {
       setLoading(true);
       setError("");
       try {
-        const effectiveShopDomain = (resolvedShopDomain || shopDomain || "").trim().toLowerCase();
+        const effectiveShopDomain = (resolvedShopDomain || "").trim().toLowerCase();
         if (!effectiveShopDomain) {
           console.error("[channel-performance] Missing shop domain context. API request not sent.");
           if (!cancelled) {
@@ -299,7 +300,7 @@ export default function ChannelPerformanceClient() {
     return () => {
       cancelled = true;
     };
-  }, [rangeValue, shopDomain, resolvedShopDomain]);
+  }, [rangeValue, resolvedShopDomain]);
 
   const filteredRows = useMemo(() => {
     const startDate = new Date(`${rangeValue.startISO}T00:00:00Z`);

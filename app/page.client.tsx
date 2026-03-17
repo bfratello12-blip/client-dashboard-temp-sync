@@ -1,6 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
@@ -1432,6 +1432,12 @@ export default function Home({
   skipSupabaseAuth?: boolean;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [resolvedShopDomain, setResolvedShopDomain] = useState<string | null>(null);
+  useEffect(() => {
+    const resolved = resolveShopDomain(searchParams as any);
+    setResolvedShopDomain(resolved);
+  }, [searchParams]);
   // 🔑 Shopify embedded check: session token ping
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1622,11 +1628,11 @@ export default function Home({
   const [adminAccessError, setAdminAccessError] = useState<string>("");
   const [clientName, setClientName] = useState<string>("");
   const [clientId, setClientId] = useState<string>(initialClientId || "");
-  const shopDomain = useMemo(() => resolveShopDomain().trim().toLowerCase(), []);
+  const shopDomain = (resolvedShopDomain || "").trim().toLowerCase();
   const settingsHref = useMemo(() => {
     const qs = new URLSearchParams();
     const shop = getRuntimeContextValueClient("shop").trim();
-    const shopDomain = resolveShopDomain().trim();
+    const shopDomain = (resolvedShopDomain || "").trim();
     const effectiveShopDomain = shopDomain || shop;
     const host = getRuntimeContextValueClient("host").trim();
     const embedded = getRuntimeContextValueClient("embedded").trim();
@@ -1639,7 +1645,7 @@ export default function Home({
 
     const query = qs.toString();
     return query ? `/settings?${query}` : "/settings";
-  }, [clientId]);
+  }, [clientId, resolvedShopDomain]);
   const [metricDataCount, setMetricDataCount] = useState<number>(0);
   /** Monthly rollup table */
   type MonthlyRow = {

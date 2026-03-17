@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import useClientId from "@/hooks/useClientId";
@@ -20,7 +20,15 @@ interface DashboardLayoutProps {
 
 function ClientIdWarningBanner() {
   const clientId = useClientId();
-  const shop = (resolveShopDomain() || getRuntimeContextValueClient("shop") || "").trim();
+  const params = useSearchParams();
+  const [resolvedShopDomain, setResolvedShopDomain] = useState<string | null>(null);
+
+  useEffect(() => {
+    const resolved = resolveShopDomain(params as any);
+    setResolvedShopDomain(resolved);
+  }, [params]);
+
+  const shop = (resolvedShopDomain || getRuntimeContextValueClient("shop") || "").trim();
   if (clientId || shop || hasShopifyContextClient()) return null;
 
   return (
@@ -47,7 +55,7 @@ function ContextPersistence() {
   React.useEffect(() => {
     if (rehydrating) return;
 
-    const persistedShopDomain = resolveShopDomain().trim() || getStoredContextValueClient("shop_domain").trim();
+    const persistedShopDomain = (resolveShopDomain(params as any) || "").trim() || getStoredContextValueClient("shop_domain").trim();
     if (persistedShopDomain) return;
 
     const cid = getRuntimeContextValueClient("client_id").trim();
@@ -74,7 +82,7 @@ function ContextPersistence() {
     return () => {
       cancelled = true;
     };
-  }, [rehydrating]);
+  }, [params, rehydrating]);
 
   return null;
 }

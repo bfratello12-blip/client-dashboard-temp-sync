@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { format, subDays } from "date-fns";
 import DashboardLayout from "@/components/DashboardLayout";
 import DateRangePicker from "@/app/components/DateRangePicker";
@@ -120,17 +121,17 @@ function HeaderTooltip({ text, align = "center" }: { text: string; align?: "cent
 }
 
 export default function ProductPerformanceClient() {
-  const shopDomain = resolveShopDomain().trim().toLowerCase();
+  const searchParams = useSearchParams();
   const contextClientId = getRuntimeContextValueClient("client_id").trim();
-  const [resolvedShopDomain, setResolvedShopDomain] = useState<string>(shopDomain);
+  const [resolvedShopDomain, setResolvedShopDomain] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!shopDomain) return;
-    setResolvedShopDomain(shopDomain);
-  }, [shopDomain]);
+    const resolved = resolveShopDomain(searchParams as any);
+    setResolvedShopDomain(resolved);
+  }, [searchParams]);
 
   useEffect(() => {
-    if (shopDomain || resolvedShopDomain || !contextClientId) return;
+    if (resolvedShopDomain || !contextClientId) return;
     let cancelled = false;
 
     (async () => {
@@ -151,7 +152,7 @@ export default function ProductPerformanceClient() {
     return () => {
       cancelled = true;
     };
-  }, [shopDomain, resolvedShopDomain, contextClientId]);
+  }, [resolvedShopDomain, contextClientId]);
 
   const initialRange = useMemo(() => {
     const { startISO, endISO } = last30DaysRange();
@@ -214,7 +215,7 @@ export default function ProductPerformanceClient() {
       setLoading(true);
       setError("");
       try {
-        const effectiveShopDomain = (resolvedShopDomain || shopDomain || "").trim().toLowerCase();
+        const effectiveShopDomain = (resolvedShopDomain || "").trim().toLowerCase();
         if (!effectiveShopDomain) {
           console.error("[product-performance] Missing shop domain context. API request not sent.");
           if (!isCancelled?.()) {
@@ -287,7 +288,7 @@ export default function ProductPerformanceClient() {
         if (!isCancelled?.()) setLoading(false);
       }
     },
-    [shopDomain, resolvedShopDomain, page, pageSize, searchTerm, activeFilter, sortKey, sortDirection]
+    [resolvedShopDomain, page, pageSize, searchTerm, activeFilter, sortKey, sortDirection]
   );
 
   useEffect(() => {

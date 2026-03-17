@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { LayoutDashboard, Package, TrendingUp, Settings, Shield } from "lucide-react";
 import { type User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
@@ -76,14 +76,21 @@ export default function Sidebar({
   loading,
 }: SidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const clientId = useClientId();
+  const [resolvedShopDomain, setResolvedShopDomain] = React.useState<string | null>(null);
   const [supabaseUser, setSupabaseUser] = React.useState<User | null>(null);
+
+  React.useEffect(() => {
+    const resolved = resolveShopDomain(searchParams as any);
+    setResolvedShopDomain(resolved);
+  }, [searchParams]);
 
   const withClientId = React.useCallback(
     (path: string) => {
       const qs = new URLSearchParams();
       const shop = getRuntimeContextValueClient("shop").trim();
-      const shopDomain = resolveShopDomain().trim();
+      const shopDomain = (resolvedShopDomain || "").trim();
       const effectiveShopDomain = shopDomain || shop;
       const host = getRuntimeContextValueClient("host").trim();
       const embedded = getRuntimeContextValueClient("embedded").trim();
@@ -98,7 +105,7 @@ export default function Sidebar({
       const query = qs.toString();
       return query ? `${path}?${query}` : path;
     },
-    [clientId]
+    [clientId, resolvedShopDomain]
   );
 
   React.useEffect(() => {

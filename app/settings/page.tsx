@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import {
   getRuntimeContextValueClient,
@@ -111,22 +111,18 @@ function formatPct(v: number | null) {
 
 function SettingsPage() {
   const router = useRouter();
-  const pathname = usePathname();
-  const shopDomainParam = useMemo(
-    () => resolveShopDomain().trim().toLowerCase(),
-    []
-  );
+  const searchParams = useSearchParams();
   const contextClientId = getRuntimeContextValueClient("client_id").trim();
-  const [resolvedShopDomain, setResolvedShopDomain] = useState<string>(shopDomainParam);
-  const effectiveShopDomain = (shopDomainParam || resolvedShopDomain || "").trim().toLowerCase();
+  const [resolvedShopDomain, setResolvedShopDomain] = useState<string | null>(null);
+  const effectiveShopDomain = (resolvedShopDomain || "").trim().toLowerCase();
 
   useEffect(() => {
-    if (!shopDomainParam) return;
-    setResolvedShopDomain(shopDomainParam);
-  }, [shopDomainParam]);
+    const resolved = resolveShopDomain(searchParams as any);
+    setResolvedShopDomain(resolved);
+  }, [searchParams]);
 
   useEffect(() => {
-    if (shopDomainParam || resolvedShopDomain || !contextClientId) return;
+    if (resolvedShopDomain || !contextClientId) return;
     let cancelled = false;
 
     (async () => {
@@ -147,7 +143,7 @@ function SettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [shopDomainParam, resolvedShopDomain, contextClientId]);
+  }, [resolvedShopDomain, contextClientId]);
 
   const [loading, setLoading] = useState(true);
   const [clientId, setClientId] = useState("");

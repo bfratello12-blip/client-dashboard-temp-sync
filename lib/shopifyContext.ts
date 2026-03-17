@@ -13,6 +13,7 @@ export type AppClientContext = {
 const APP_CONTEXT_KEY = "sa_app_context";
 const APP_CONTEXT_CAPTURED_KEY = "sa_app_context_captured";
 const APP_CONTEXT_UPDATED_EVENT = "sa-app-context-updated";
+const SHOP_DOMAIN_STORAGE_KEY = "shop_domain";
 
 function normalize(v: string) {
   return String(v || "").trim();
@@ -39,11 +40,21 @@ export function getPersistedAppContextClient(): AppClientContext {
   if (typeof window === "undefined") return emptyContext();
   try {
     const raw = window.sessionStorage.getItem(APP_CONTEXT_KEY);
-    if (!raw) return emptyContext();
+    const directShopDomain = normalizeShopDomain(window.sessionStorage.getItem(SHOP_DOMAIN_STORAGE_KEY) || "");
+    if (!raw) {
+      if (!directShopDomain) return emptyContext();
+      return {
+        ...emptyContext(),
+        shop_domain: directShopDomain,
+        shop: directShopDomain,
+      };
+    }
     const parsed = JSON.parse(raw) as Partial<AppClientContext>;
+    const parsedShopDomain = normalizeShopDomain(parsed?.shop_domain || "");
+    const mergedShopDomain = parsedShopDomain || directShopDomain;
     return {
       shop: normalize(parsed?.shop || ""),
-      shop_domain: normalizeShopDomain(parsed?.shop_domain || ""),
+      shop_domain: mergedShopDomain,
       host: normalize(parsed?.host || ""),
       embedded: normalize(parsed?.embedded || ""),
       client_id: normalize(parsed?.client_id || ""),
@@ -72,6 +83,9 @@ export function persistAppContextClient(patch: Partial<AppClientContext>) {
   };
   try {
     window.sessionStorage.setItem(APP_CONTEXT_KEY, JSON.stringify(next));
+    if (next.shop_domain) {
+      window.sessionStorage.setItem(SHOP_DOMAIN_STORAGE_KEY, next.shop_domain);
+    }
     window.sessionStorage.setItem(APP_CONTEXT_CAPTURED_KEY, "1");
     window.dispatchEvent(new CustomEvent(APP_CONTEXT_UPDATED_EVENT, { detail: next }));
   } catch {}
@@ -137,7 +151,7 @@ export function getRuntimeContextValueClient(key: keyof AppClientContext): strin
   return getStoredContextValueClient(key);
 }
 
-export function resolveShopDomain(params?: QueryLike): string {
+export function resolveShopDomain(params?: QueryLike): string | null {
   const fromUrl = (() => {
     if (params) {
       const direct = normalize(params.get("shop_domain") || "");
@@ -156,11 +170,22 @@ export function resolveShopDomain(params?: QueryLike): string {
   })();
 
   if (fromUrl) {
+    if (typeof window !== "undefined") {
+      try {
+        window.sessionStorage.setItem(SHOP_DOMAIN_STORAGE_KEY, fromUrl);
+      } catch {}
+    }
     persistAppContextClient({ shop_domain: fromUrl, shop: fromUrl });
     return fromUrl;
   }
 
-  return getStoredContextValueClient("shop_domain");
+  if (typeof window !== "undefined") {
+    const stored = normalizeShopDomain(window.sessionStorage.getItem(SHOP_DOMAIN_STORAGE_KEY) || "");
+    if (stored) return stored;
+  }
+
+  const storedContextDomain = getStoredContextValueClient("shop_domain");
+  return storedContextDomain || null;
 }
 
 export function onAppContextUpdatedClient(listener: () => void) {

@@ -1622,7 +1622,11 @@ export default function Home({
   const [loading, setLoading] = useState(true);
   const [adminAccessError, setAdminAccessError] = useState<string>("");
   const [clientName, setClientName] = useState<string>("");
-  const [clientId, setClientId] = useState<string>(initialClientId || "");
+  const contextClientId = useMemo(
+    () => getContextValueClient(searchParams as any, "client_id").trim(),
+    [searchParams]
+  );
+  const [clientId, setClientId] = useState<string>((initialClientId || contextClientId || "").trim());
   useEffect(() => {
     if (!clientId) return;
     persistAppContextClient({ client_id: clientId });
@@ -1954,11 +1958,16 @@ export default function Home({
     const bypass = Boolean(skipSupabaseAuth) || hasShopifyContextClient();
     if (bypass) return;
     let unsub: (() => void) | null = null;
+    const loginRedirectPath =
+      typeof window !== "undefined"
+        ? `${window.location.pathname}${window.location.search}`
+        : "/";
+    const loginUrl = `/login?redirect=${encodeURIComponent(loginRedirectPath)}`;
     (async () => {
       const { data } = await supabase.auth.getSession();
-      if (!data.session) router.replace("/login");
+      if (!data.session) router.replace(loginUrl);
       const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-        if (!session) router.replace("/login");
+        if (!session) router.replace(loginUrl);
       });
       unsub = () => sub.subscription.unsubscribe();
     })();
@@ -2072,7 +2081,7 @@ export default function Home({
       }
       const bypass = Boolean(skipSupabaseAuth) || hasShopifyContextClient();
       const userId = sessionData.session?.user?.id;
-      let cid = initialClientId || "";
+      let cid = (initialClientId || contextClientId || clientId || "").trim();
       if (cid && !bypass) {
         if (!userId) {
           if (!cancelled) {
@@ -2122,7 +2131,7 @@ export default function Home({
           if (!cancelled) setLoading(false);
           return;
         }
-        cid = (mapping?.[0]?.client_id as string | undefined) || "";
+        cid = ((mapping?.[0]?.client_id as string | undefined) || "").trim();
       }
       if (!cancelled) setClientId(cid || "");
       if (!cid) {
@@ -2186,19 +2195,21 @@ export default function Home({
         }
         return;
       }
-      
-      // Fetch cost settings (used for profitability + editable in Settings)
-      try {
-        const { data: csRow, error: csErr } = await supabase
-          .from("client_cost_settings")
-          .select(
-            "client_id, default_gross_margin_pct, avg_cogs_per_unit, processing_fee_pct, processing_fee_fixed, pick_pack_per_order, shipping_subsidy_per_order, materials_per_order, other_variable_pct_revenue, other_fixed_per_day, margin_after_costs_pct"
-          )
-          .eq("client_id", cid)
-          .limit(1);
-        if (!csErr) {
-          const row = (csRow?.[0] as any) || null;
-          if (!cancelled) {
+      }, [
+        skipSupabaseAuth,
+        initialClientId,
+        contextClientId,
+        clientId,
+        range,
+        customStartISO,
+        customEndISO,
+        compareMode,
+        attribWindowDays,
+        refreshNonce,
+        windows,
+        showEvents30,
+        shopDomain,
+      ]);
             const settings: ClientCostSettings = {
               client_id: cid,
               default_gross_margin_pct: row?.default_gross_margin_pct != null ? Number(row.default_gross_margin_pct) : null,

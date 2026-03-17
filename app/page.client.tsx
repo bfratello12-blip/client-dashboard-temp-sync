@@ -2081,6 +2081,7 @@ export default function Home({
       }
       const bypass = Boolean(skipSupabaseAuth) || hasShopifyContextClient();
       const userId = sessionData.session?.user?.id;
+      const accessToken = sessionData.session?.access_token || "";
       let cid = (initialClientId || contextClientId || clientId || "").trim();
       if (cid && !bypass) {
         if (!userId) {
@@ -2091,25 +2092,33 @@ export default function Home({
           return;
         }
 
-        const { data: accessRows, error: accessErr } = await supabase
-          .from("user_clients")
-          .select("client_id")
-          .eq("user_id", userId)
-          .eq("client_id", cid)
-          .limit(1);
-
-        if (accessErr) {
-          console.error(accessErr);
+        if (!accessToken) {
           if (!cancelled) {
-            setAdminAccessError("Unauthorized: unable to validate client access.");
+            setAdminAccessError("Unauthorized: missing session token.");
             setLoading(false);
           }
           return;
         }
 
-        if (!accessRows?.length) {
+        try {
+          const accessRes = await fetch(`/api/admin/access?client_id=${encodeURIComponent(cid)}`, {
+            cache: "no-store",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          });
+          const accessJson = await accessRes.json().catch(() => ({}));
+          if (!accessRes.ok || !accessJson?.ok || !accessJson?.authorized) {
+            if (!cancelled) {
+              setAdminAccessError("Unauthorized: you do not have access to this client.");
+              setLoading(false);
+            }
+            return;
+          }
+        } catch (e) {
+          console.error(e);
           if (!cancelled) {
-            setAdminAccessError("Unauthorized: you do not have access to this client.");
+            setAdminAccessError("Unauthorized: unable to validate client access.");
             setLoading(false);
           }
           return;

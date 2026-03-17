@@ -27,6 +27,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [clients, setClients] = useState<ClientRow[]>([]);
+  const [projectClient, setProjectClient] = useState<ClientRow | null>(null);
 
   if (allowMultiClientAdmin && selectedClientId) {
     return <AdminClientAccessGate clientId={selectedClientId} />;
@@ -77,8 +78,31 @@ export default function AdminPage() {
         })
         .filter((row) => Boolean(row.id));
 
+      let projectDefaultClient: ClientRow | null = null;
+      if (allowMultiClientAdmin) {
+        try {
+          const projectRes = await fetch("/api/client/project-default", { cache: "no-store" });
+          const projectJson = await projectRes.json().catch(() => ({}));
+          const projectId = String(projectJson?.client?.id || "").trim();
+          if (projectRes.ok && projectJson?.ok && projectId) {
+            projectDefaultClient = {
+              id: projectId,
+              name: String(projectJson?.client?.name || "Project Default Client"),
+            };
+          }
+        } catch {
+          // no-op; admin list will fall back to assigned clients only
+        }
+      }
+
+      const merged = [...normalized];
+      if (projectDefaultClient && !merged.some((c) => c.id === projectDefaultClient?.id)) {
+        merged.unshift(projectDefaultClient);
+      }
+
       if (!cancelled) {
-        setClients(normalized);
+        setProjectClient(projectDefaultClient);
+        setClients(merged);
         setLoading(false);
       }
     };
@@ -113,7 +137,14 @@ export default function AdminPage() {
                     key={client.id}
                     className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3"
                   >
-                    <div className="text-sm font-semibold text-slate-900">{client.name || "Unnamed Client"}</div>
+                    <div className="text-sm font-semibold text-slate-900">
+                      {client.name || "Unnamed Client"}
+                      {projectClient?.id === client.id ? (
+                        <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-700">
+                          Project default
+                        </span>
+                      ) : null}
+                    </div>
                     <Link
                       href={
                         allowMultiClientAdmin

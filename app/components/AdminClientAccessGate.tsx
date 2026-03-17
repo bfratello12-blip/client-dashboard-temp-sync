@@ -13,6 +13,10 @@ export default function AdminClientAccessGate({ clientId }: AdminClientAccessGat
   const router = useRouter();
   const [status, setStatus] = useState<"checking" | "authorized" | "unauthorized">("checking");
   const [message, setMessage] = useState("");
+  const allowMultiClientAdmin =
+    String(process.env.NEXT_PUBLIC_ALLOW_MULTI_CLIENT_ADMIN || "")
+      .trim()
+      .toLowerCase() === "true";
 
   useEffect(() => {
     let cancelled = false;
@@ -43,6 +47,19 @@ export default function AdminClientAccessGate({ clientId }: AdminClientAccessGat
       }
 
       if (!accessRows?.length) {
+        if (allowMultiClientAdmin) {
+          try {
+            const projectRes = await fetch("/api/client/project-default", { cache: "no-store" });
+            const projectJson = await projectRes.json().catch(() => ({}));
+            const projectDefaultClientId = String(projectJson?.client?.id || "").trim();
+            if (projectRes.ok && projectJson?.ok && projectDefaultClientId === clientId) {
+              setStatus("authorized");
+              return;
+            }
+          } catch {
+            // no-op
+          }
+        }
         setStatus("unauthorized");
         setMessage("Unauthorized access");
         router.replace("/admin");
@@ -57,7 +74,7 @@ export default function AdminClientAccessGate({ clientId }: AdminClientAccessGat
     return () => {
       cancelled = true;
     };
-  }, [clientId, router]);
+  }, [clientId, router, allowMultiClientAdmin]);
 
   if (status === "authorized") {
     return <HomeClient initialClientId={clientId} />;

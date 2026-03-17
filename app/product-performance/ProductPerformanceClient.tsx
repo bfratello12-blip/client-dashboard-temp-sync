@@ -223,21 +223,26 @@ export default function ProductPerformanceClient() {
       setError("");
       try {
         const effectiveShopDomain = (resolvedShopDomain || shopDomain || "").trim().toLowerCase();
-        if (!effectiveShopDomain) {
-          console.error("[product-performance] Missing shop domain in URL/session context. Skipping API request.");
+        const effectiveClientId = (contextClientId || "").trim();
+        if (!effectiveShopDomain && !effectiveClientId) {
+          console.error("[product-performance] Missing shop domain/client_id in URL/session context. Skipping API request.");
           if (!isCancelled?.()) {
-            setError("Missing shop domain in URL or session context");
+            setError("Missing shop domain/client_id in URL or session context");
           }
           return;
         }
 
         const params = new URLSearchParams({
-          shop_domain: effectiveShopDomain,
           start: range.startISO,
           end: range.endISO,
           limit: String(pageSize),
           page: String(page),
         });
+        if (effectiveShopDomain) {
+          params.set("shop_domain", effectiveShopDomain);
+        } else {
+          params.set("client_id", effectiveClientId);
+        }
         params.set("sortKey", String(sortKey));
         params.set("sortDir", String(sortDirection));
         const search = searchTerm.trim();
@@ -295,7 +300,7 @@ export default function ProductPerformanceClient() {
         if (!isCancelled?.()) setLoading(false);
       }
     },
-    [shopDomain, resolvedShopDomain, page, pageSize, searchTerm, activeFilter, sortKey, sortDirection]
+    [shopDomain, resolvedShopDomain, contextClientId, page, pageSize, searchTerm, activeFilter, sortKey, sortDirection]
   );
 
   useEffect(() => {

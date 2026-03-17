@@ -228,20 +228,25 @@ export default function ChannelPerformanceClient() {
       setError("");
       try {
         const effectiveShopDomain = (resolvedShopDomain || shopDomain || "").trim().toLowerCase();
-        if (!effectiveShopDomain) {
-          console.error("[channel-performance] Missing shop domain in URL/session context. Skipping API request.");
+        const effectiveClientId = (contextClientId || "").trim();
+        if (!effectiveShopDomain && !effectiveClientId) {
+          console.error("[channel-performance] Missing shop domain/client_id in URL/session context. Skipping API request.");
           if (!cancelled) {
-            setError("Missing shop domain in URL or session context");
+            setError("Missing shop domain/client_id in URL or session context");
             setLoading(false);
           }
           return;
         }
 
         const params = new URLSearchParams({
-          shop_domain: effectiveShopDomain,
           start: rangeValue.startISO,
           end: rangeValue.endISO,
         });
+        if (effectiveShopDomain) {
+          params.set("shop_domain", effectiveShopDomain);
+        } else {
+          params.set("client_id", effectiveClientId);
+        }
         const res = await authenticatedFetch(`/api/data/channel-performance?${params.toString()}`);
         const json = await res.json().catch(() => null);
 
@@ -307,7 +312,7 @@ export default function ChannelPerformanceClient() {
     return () => {
       cancelled = true;
     };
-  }, [rangeValue, shopDomain, resolvedShopDomain]);
+  }, [rangeValue, shopDomain, resolvedShopDomain, contextClientId]);
 
   const filteredRows = useMemo(() => {
     const startDate = new Date(`${rangeValue.startISO}T00:00:00Z`);

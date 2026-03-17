@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
+import { isRequestAuthorizedForClient, resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,18 +50,29 @@ export async function GET(req: NextRequest) {
     const start = (searchParams.get("start") || "").trim();
     const end = (searchParams.get("end") || "").trim();
     const shopDomain = (searchParams.get("shop_domain") || "").trim();
+    const clientIdParam = (searchParams.get("client_id") || "").trim();
 
     if (!start || !end || !isIsoDate(start) || !isIsoDate(end)) {
       return NextResponse.json({ ok: false, error: "Invalid or missing start/end" }, { status: 400 });
     }
-    if (!shopDomain) {
-      return NextResponse.json({ ok: false, error: "Missing shop_domain" }, { status: 400 });
+    if (!shopDomain && !clientIdParam) {
+      return NextResponse.json({ ok: false, error: "Missing shop_domain or client_id" }, { status: 400 });
     }
 
     const supabase = supabaseAdmin();
-    const clientId = await resolveClientIdFromShopDomainParam(shopDomain);
-    if (!clientId) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    let clientId = "";
+    if (shopDomain) {
+      const resolvedClientId = await resolveClientIdFromShopDomainParam(shopDomain);
+      if (!resolvedClientId) {
+        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      }
+      clientId = resolvedClientId;
+    } else {
+      clientId = clientIdParam;
+      const allowed = await isRequestAuthorizedForClient(req, clientId);
+      if (!allowed) {
+        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      }
     }
 
     const { data: channelRows, error: channelErr } = await supabase

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
+import { isRequestAuthorizedForClient, resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -107,6 +107,7 @@ export async function GET(req: NextRequest) {
     const sortDirRaw = (searchParams.get("sortDir") || "").trim().toLowerCase();
     const search = (searchParams.get("search") || "").trim().toLowerCase();
     const requestedShopDomain = (searchParams.get("shop_domain") || "").trim();
+    const requestedClientId = (searchParams.get("client_id") || "").trim();
     const filterRaw = (searchParams.get("filter") || "all").trim().toLowerCase();
     const filter =
       filterRaw === "rising" ||
@@ -140,30 +141,51 @@ export async function GET(req: NextRequest) {
     if (!start || !end || !isIsoDate(start) || !isIsoDate(end)) {
       return NextResponse.json({ ok: false, error: "Invalid or missing start/end" }, { status: 400 });
     }
-    if (!requestedShopDomain) {
-      return NextResponse.json({ ok: false, error: "Missing shop_domain" }, { status: 400 });
+    if (!requestedShopDomain && !requestedClientId) {
+      return NextResponse.json({ ok: false, error: "Missing shop_domain or client_id" }, { status: 400 });
     }
 
     const supabase = supabaseAdmin();
     let install: { client_id: string; shop_domain?: string | null; access_token?: string | null } | null = null;
 
-    const resolvedClientId = await resolveClientIdFromShopDomainParam(requestedShopDomain);
-    if (!resolvedClientId) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    if (requestedShopDomain) {
+      const resolvedClientId = await resolveClientIdFromShopDomainParam(requestedShopDomain);
+      if (!resolvedClientId) {
+        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      }
+
+      const { data: clientInstall } = await supabase
+        .from("shopify_app_installs")
+        .select("client_id, shop_domain, access_token")
+        .eq("shop_domain", requestedShopDomain)
+        .limit(1)
+        .maybeSingle();
+
+      install = {
+        client_id: resolvedClientId,
+        shop_domain: clientInstall?.shop_domain ?? requestedShopDomain,
+        access_token: clientInstall?.access_token ?? null,
+      };
+    } else {
+      const allowed = await isRequestAuthorizedForClient(req, requestedClientId);
+      if (!allowed) {
+        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      }
+
+      const { data: clientInstall } = await supabase
+        .from("shopify_app_installs")
+        .select("client_id, shop_domain, access_token")
+        .eq("client_id", requestedClientId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      install = {
+        client_id: requestedClientId,
+        shop_domain: clientInstall?.shop_domain ?? null,
+        access_token: clientInstall?.access_token ?? null,
+      };
     }
-
-    const { data: clientInstall } = await supabase
-      .from("shopify_app_installs")
-      .select("client_id, shop_domain, access_token")
-      .eq("shop_domain", requestedShopDomain)
-      .limit(1)
-      .maybeSingle();
-
-    install = {
-      client_id: resolvedClientId,
-      shop_domain: clientInstall?.shop_domain ?? requestedShopDomain,
-      access_token: clientInstall?.access_token ?? null,
-    };
 
     const { data: totalsData, error: totalsErr } = await supabase.rpc(
       "get_product_performance_totals",

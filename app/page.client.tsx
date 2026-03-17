@@ -2286,17 +2286,23 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       let metricDataError: any = null;
       let metricData: DailyMetricRow[] = [];
       try {
-        if (!shopDomain) {
-          console.error("[dashboard] Missing shop_domain for /api/data/daily-metrics. Skipping API request.");
+        const effectiveShopDomain = (shopDomain || "").trim().toLowerCase();
+        const effectiveClientId = String(cid || "").trim();
+        if (!effectiveShopDomain && !effectiveClientId) {
+          console.error("[dashboard] Missing shop_domain/client_id for /api/data/daily-metrics. Skipping API request.");
           if (!cancelled) setLoading(false);
           return;
         }
 
         const dmParams = new URLSearchParams({
-          shop_domain: shopDomain,
           start: fetchStartISO,
           end: fetchEndISO,
         });
+        if (effectiveShopDomain) {
+          dmParams.set("shop_domain", effectiveShopDomain);
+        } else {
+          dmParams.set("client_id", effectiveClientId);
+        }
         const syncToken = process.env.NEXT_PUBLIC_SYNC_TOKEN || "";
         const dmRes = await fetch(`/api/data/daily-metrics?${dmParams.toString()}`, {
           headers: syncToken ? { Authorization: `Bearer ${syncToken}` } : undefined,

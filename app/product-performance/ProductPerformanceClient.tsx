@@ -129,6 +129,37 @@ export default function ProductPerformanceClient() {
   )
     .trim()
     .toLowerCase();
+  const contextClientId = getContextValueClient(searchParams as any, "client_id").trim();
+  const [resolvedShopDomain, setResolvedShopDomain] = useState<string>(shopDomain);
+
+  useEffect(() => {
+    if (!shopDomain) return;
+    setResolvedShopDomain(shopDomain);
+  }, [shopDomain]);
+
+  useEffect(() => {
+    if (shopDomain || resolvedShopDomain || !contextClientId) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/client/context?client_id=${encodeURIComponent(contextClientId)}`, {
+          cache: "no-store",
+        });
+        const json = await res.json().catch(() => ({}));
+        const recovered = String(json?.shop_domain || "").trim().toLowerCase();
+        if (!cancelled && res.ok && json?.ok && recovered) {
+          setResolvedShopDomain(recovered);
+        }
+      } catch {
+        // no-op; fetchRows will surface a user-facing message only if still unresolved.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shopDomain, resolvedShopDomain, contextClientId]);
 
   const initialRange = useMemo(() => {
     const { startISO, endISO } = last30DaysRange();
@@ -191,16 +222,17 @@ export default function ProductPerformanceClient() {
       setLoading(true);
       setError("");
       try {
-        if (!shopDomain) {
-          console.error("[product-performance] Missing shop domain in URL. Skipping API request.");
+        const effectiveShopDomain = (resolvedShopDomain || shopDomain || "").trim().toLowerCase();
+        if (!effectiveShopDomain) {
+          console.error("[product-performance] Missing shop domain in URL/session context. Skipping API request.");
           if (!isCancelled?.()) {
-            setError("Missing shop domain in URL");
+            setError("Missing shop domain in URL or session context");
           }
           return;
         }
 
         const params = new URLSearchParams({
-          shop_domain: shopDomain,
+          shop_domain: effectiveShopDomain,
           start: range.startISO,
           end: range.endISO,
           limit: String(pageSize),
@@ -263,7 +295,7 @@ export default function ProductPerformanceClient() {
         if (!isCancelled?.()) setLoading(false);
       }
     },
-    [shopDomain, page, pageSize, searchTerm, activeFilter, sortKey, sortDirection]
+    [shopDomain, resolvedShopDomain, page, pageSize, searchTerm, activeFilter, sortKey, sortDirection]
   );
 
   useEffect(() => {

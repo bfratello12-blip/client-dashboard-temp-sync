@@ -173,6 +173,37 @@ export default function ChannelPerformanceClient() {
   )
     .trim()
     .toLowerCase();
+  const contextClientId = getContextValueClient(searchParams as any, "client_id").trim();
+  const [resolvedShopDomain, setResolvedShopDomain] = useState<string>(shopDomain);
+
+  useEffect(() => {
+    if (!shopDomain) return;
+    setResolvedShopDomain(shopDomain);
+  }, [shopDomain]);
+
+  useEffect(() => {
+    if (shopDomain || resolvedShopDomain || !contextClientId) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/client/context?client_id=${encodeURIComponent(contextClientId)}`, {
+          cache: "no-store",
+        });
+        const json = await res.json().catch(() => ({}));
+        const recovered = String(json?.shop_domain || "").trim().toLowerCase();
+        if (!cancelled && res.ok && json?.ok && recovered) {
+          setResolvedShopDomain(recovered);
+        }
+      } catch {
+        // no-op
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shopDomain, resolvedShopDomain, contextClientId]);
 
   const initialRange = useMemo(() => {
     const { startISO, endISO } = last30DaysRange();
@@ -196,17 +227,18 @@ export default function ChannelPerformanceClient() {
       setLoading(true);
       setError("");
       try {
-        if (!shopDomain) {
-          console.error("[channel-performance] Missing shop domain in URL. Skipping API request.");
+        const effectiveShopDomain = (resolvedShopDomain || shopDomain || "").trim().toLowerCase();
+        if (!effectiveShopDomain) {
+          console.error("[channel-performance] Missing shop domain in URL/session context. Skipping API request.");
           if (!cancelled) {
-            setError("Missing shop domain in URL");
+            setError("Missing shop domain in URL or session context");
             setLoading(false);
           }
           return;
         }
 
         const params = new URLSearchParams({
-          shop_domain: shopDomain,
+          shop_domain: effectiveShopDomain,
           start: rangeValue.startISO,
           end: rangeValue.endISO,
         });
@@ -275,7 +307,7 @@ export default function ChannelPerformanceClient() {
     return () => {
       cancelled = true;
     };
-  }, [rangeValue, shopDomain]);
+  }, [rangeValue, shopDomain, resolvedShopDomain]);
 
   const filteredRows = useMemo(() => {
     const startDate = new Date(`${rangeValue.startISO}T00:00:00Z`);

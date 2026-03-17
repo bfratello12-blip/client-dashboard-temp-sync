@@ -122,6 +122,38 @@ function SettingsPage() {
         .toLowerCase(),
     [searchParams]
   );
+  const contextClientId = getContextValueClient(searchParams as any, "client_id").trim();
+  const [resolvedShopDomain, setResolvedShopDomain] = useState<string>(shopDomainParam);
+  const effectiveShopDomain = (shopDomainParam || resolvedShopDomain || "").trim().toLowerCase();
+
+  useEffect(() => {
+    if (!shopDomainParam) return;
+    setResolvedShopDomain(shopDomainParam);
+  }, [shopDomainParam]);
+
+  useEffect(() => {
+    if (shopDomainParam || resolvedShopDomain || !contextClientId) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/client/context?client_id=${encodeURIComponent(contextClientId)}`, {
+          cache: "no-store",
+        });
+        const json = await res.json().catch(() => ({}));
+        const recovered = String(json?.shop_domain || "").trim().toLowerCase();
+        if (!cancelled && res.ok && json?.ok && recovered) {
+          setResolvedShopDomain(recovered);
+        }
+      } catch {
+        // no-op
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shopDomainParam, resolvedShopDomain, contextClientId]);
 
   const [loading, setLoading] = useState(true);
   const [clientId, setClientId] = useState("");
@@ -227,7 +259,7 @@ function SettingsPage() {
 
       const { startISO, endISO } = last30DaysRangeISO(TIMEZONE);
       const recomputeParams = new URLSearchParams({
-        shop_domain: shopDomainParam,
+        shop_domain: effectiveShopDomain,
         start: startISO,
         end: endISO,
       });
@@ -250,7 +282,7 @@ function SettingsPage() {
     } finally {
       setSaving(false);
     }
-  }, [clientId, costSettings, router, shopDomainParam]);
+  }, [clientId, costSettings, router, effectiveShopDomain]);
 
   const runRecompute = useCallback(async () => {
     try {
@@ -308,20 +340,20 @@ function SettingsPage() {
   }, []);
 
   const startMetaOAuth = useCallback(() => {
-    if (!shopDomainParam) return;
-    const connectUrl = `/api/meta/connect?shop_domain=${encodeURIComponent(shopDomainParam)}`;
+    if (!effectiveShopDomain) return;
+    const connectUrl = `/api/meta/connect?shop_domain=${encodeURIComponent(effectiveShopDomain)}`;
     if (window.top) {
       window.top.location.href = connectUrl;
     } else {
       window.location.href = connectUrl;
     }
-  }, [shopDomainParam]);
+  }, [effectiveShopDomain]);
 
   const startGoogleOAuth = useCallback(async () => {
-    if (!shopDomainParam) return;
+    if (!effectiveShopDomain) return;
 
     try {
-      const connectUrl = `/api/googleads/connect?shop_domain=${encodeURIComponent(shopDomainParam)}`;
+      const connectUrl = `/api/googleads/connect?shop_domain=${encodeURIComponent(effectiveShopDomain)}`;
       console.log("SETTINGS currentClientId", clientId);
       console.log("GOOGLE CONNECT url", connectUrl);
       const res = await fetch(connectUrl, {
@@ -341,7 +373,7 @@ function SettingsPage() {
       console.error(e);
       setIntegrationError(e?.message ?? "Failed to start Google OAuth");
     }
-  }, [clientId, shopDomainParam]);
+  }, [clientId, effectiveShopDomain]);
 
   const fetchGoogleIntegration = useCallback(async () => {
     if (!clientId) return;
@@ -376,14 +408,14 @@ function SettingsPage() {
   }, [clientId]);
 
   const fetchIntegrationStatus = useCallback(async () => {
-    if (!shopDomainParam) return;
+    if (!effectiveShopDomain) return;
 
     setIntegrationLoading(true);
     setIntegrationError("");
 
     try {
       const statusUrl = new URL("/api/integrations/status", window.location.origin);
-      statusUrl.searchParams.set("shop_domain", shopDomainParam);
+      statusUrl.searchParams.set("shop_domain", effectiveShopDomain);
 
       const res = await fetch(statusUrl.toString(), {
         cache: "no-store",
@@ -402,15 +434,15 @@ function SettingsPage() {
     } finally {
       setIntegrationLoading(false);
     }
-  }, [shopDomainParam]);
+  }, [effectiveShopDomain]);
 
   const fetchGoogleAccounts = useCallback(async () => {
-    if (!shopDomainParam) return;
+    if (!effectiveShopDomain) return;
     setGoogleAccountsLoading(true);
     setGoogleAccountsError("");
 
     try {
-      const res = await fetch(`/api/googleads/accounts?shop_domain=${encodeURIComponent(shopDomainParam)}`, {
+      const res = await fetch(`/api/googleads/accounts?shop_domain=${encodeURIComponent(effectiveShopDomain)}`, {
         method: "GET",
         cache: "no-store",
       });
@@ -428,15 +460,15 @@ function SettingsPage() {
     } finally {
       setGoogleAccountsLoading(false);
     }
-  }, [shopDomainParam, googleSelectedAccountId]);
+  }, [effectiveShopDomain, googleSelectedAccountId]);
 
   const fetchMetaAccounts = useCallback(async () => {
-    if (!shopDomainParam) return;
+    if (!effectiveShopDomain) return;
     setMetaAccountsLoading(true);
     setMetaAccountsError("");
 
     try {
-      const res = await fetch(`/api/meta/adaccounts?shop_domain=${encodeURIComponent(shopDomainParam)}`, {
+      const res = await fetch(`/api/meta/adaccounts?shop_domain=${encodeURIComponent(effectiveShopDomain)}`, {
         method: "GET",
         cache: "no-store",
       });
@@ -454,7 +486,7 @@ function SettingsPage() {
     } finally {
       setMetaAccountsLoading(false);
     }
-  }, [shopDomainParam, metaSelectedAccountId]);
+  }, [effectiveShopDomain, metaSelectedAccountId]);
 
   const saveGoogleAccount = useCallback(async () => {
     if (!clientId || !googleSelectedAccountId) return;

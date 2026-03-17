@@ -2,11 +2,11 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import {
+  getStoredContextValueClient,
   hasShopifyContextClient,
-  getContextValueClient,
   getPersistedAppContextClient,
 } from "@/lib/shopifyContext";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -110,19 +110,18 @@ function formatPct(v: number | null) {
 function SettingsPage() {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const shopDomainParam = useMemo(
     () =>
       (
-        getContextValueClient(searchParams as any, "shop") ||
-        getContextValueClient(searchParams as any, "shop_domain") ||
+        getStoredContextValueClient("shop") ||
+        getStoredContextValueClient("shop_domain") ||
         ""
       )
         .trim()
         .toLowerCase(),
-    [searchParams]
+    []
   );
-  const contextClientId = getContextValueClient(searchParams as any, "client_id").trim();
+  const contextClientId = getStoredContextValueClient("client_id").trim();
   const [resolvedShopDomain, setResolvedShopDomain] = useState<string>(shopDomainParam);
   const effectiveShopDomain = (shopDomainParam || resolvedShopDomain || "").trim().toLowerCase();
 
@@ -590,17 +589,17 @@ function SettingsPage() {
     const run = async () => {
       setLoading(true);
 
-      const params = new URLSearchParams(window.location.search);
       const persisted = getPersistedAppContextClient();
-      let overrideClientId = (getContextValueClient(params as any, "client_id") || persisted.client_id || "").trim();
-      const shopFromUrl = (getContextValueClient(params as any, "shop") || "").trim().toLowerCase();
-      const shopDomainFromContext =
-        (getContextValueClient(params as any, "shop_domain") || persisted.shop_domain || "").trim().toLowerCase();
+      let overrideClientId = (getStoredContextValueClient("client_id") || persisted.client_id || "").trim();
+      const shopFromContext = (getStoredContextValueClient("shop") || persisted.shop || "").trim().toLowerCase();
+      const shopDomainFromContext = (getStoredContextValueClient("shop_domain") || persisted.shop_domain || "")
+        .trim()
+        .toLowerCase();
       const isEmbeddedShopifyContext = hasShopifyContextClient();
 
-      if (!overrideClientId && shopFromUrl) {
+      if (!overrideClientId && shopFromContext) {
         try {
-          const res = await fetch(`/api/client/resolve?shop=${encodeURIComponent(shopFromUrl)}`, {
+          const res = await fetch(`/api/client/resolve?shop=${encodeURIComponent(shopFromContext)}`, {
             cache: "no-store",
           });
           const json = await res.json().catch(() => ({}));
@@ -635,7 +634,7 @@ function SettingsPage() {
 
       if (isEmbeddedShopifyContext && !shopDomain && !overrideClientId) {
         try {
-          const shopQuery = encodeURIComponent((shopFromUrl || "").trim());
+          const shopQuery = encodeURIComponent((shopFromContext || "").trim());
           const whoRes = await fetch(`/api/shopify/whoami?shop=${shopQuery}`, { cache: "no-store" });
           if (!whoRes.ok) {
             if (!cancelled) {

@@ -1,12 +1,11 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { format, subDays } from "date-fns";
 import DashboardLayout from "@/components/DashboardLayout";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
-import { getContextValueClient } from "@/lib/shopifyContext";
+import { getStoredContextValueClient } from "@/lib/shopifyContext";
 
 type ProductPerfRow = {
   variant_id: string;
@@ -121,15 +120,14 @@ function HeaderTooltip({ text, align = "center" }: { text: string; align?: "cent
 }
 
 export default function ProductPerformanceClient() {
-  const searchParams = useSearchParams();
   const shopDomain = (
-    getContextValueClient(searchParams as any, "shop") ||
-    getContextValueClient(searchParams as any, "shop_domain") ||
+    getStoredContextValueClient("shop") ||
+    getStoredContextValueClient("shop_domain") ||
     ""
   )
     .trim()
     .toLowerCase();
-  const contextClientId = getContextValueClient(searchParams as any, "client_id").trim();
+  const contextClientId = getStoredContextValueClient("client_id").trim();
   const [resolvedShopDomain, setResolvedShopDomain] = useState<string>(shopDomain);
 
   useEffect(() => {

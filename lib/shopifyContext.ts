@@ -11,6 +11,8 @@ export type AppClientContext = {
 };
 
 const APP_CONTEXT_KEY = "sa_app_context";
+const APP_CONTEXT_CAPTURED_KEY = "sa_app_context_captured";
+const APP_CONTEXT_UPDATED_EVENT = "sa-app-context-updated";
 
 function normalize(v: string) {
   return String(v || "").trim();
@@ -70,6 +72,8 @@ export function persistAppContextClient(patch: Partial<AppClientContext>) {
   };
   try {
     window.sessionStorage.setItem(APP_CONTEXT_KEY, JSON.stringify(next));
+    window.sessionStorage.setItem(APP_CONTEXT_CAPTURED_KEY, "1");
+    window.dispatchEvent(new CustomEvent(APP_CONTEXT_UPDATED_EVENT, { detail: next }));
   } catch {}
 }
 
@@ -88,15 +92,14 @@ export function persistAppContextFromSearchParamsClient(params: QueryLike) {
   persistAppContextClient(patch);
 }
 
-export function getContextValueClient(params: QueryLike, key: keyof AppClientContext): string {
-  const direct = normalize(params.get(key) || "");
-  if (direct) return key === "shop_domain" ? normalizeShopDomain(direct) : direct;
+export function captureAppContextFromSearchParamsClient(params: QueryLike) {
+  if (typeof window === "undefined") return;
+  const alreadyCaptured = window.sessionStorage.getItem(APP_CONTEXT_CAPTURED_KEY) === "1";
+  if (alreadyCaptured) return;
+  persistAppContextFromSearchParamsClient(params);
+}
 
-  if (key === "shop_domain") {
-    const directShop = normalize(params.get("shop") || "");
-    if (directShop) return normalizeShopDomain(directShop);
-  }
-
+export function getStoredContextValueClient(key: keyof AppClientContext): string {
   const persisted = getPersistedAppContextClient();
   if (key === "shop_domain") {
     const persistedShopDomain = normalize((persisted as any)?.shop_domain || "");
@@ -105,6 +108,41 @@ export function getContextValueClient(params: QueryLike, key: keyof AppClientCon
     if (persistedShop) return normalizeShopDomain(persistedShop);
   }
   return normalize((persisted as any)?.[key] || "");
+}
+
+export function onAppContextUpdatedClient(listener: () => void) {
+  if (typeof window === "undefined") return () => {};
+  const wrapped = () => listener();
+  window.addEventListener(APP_CONTEXT_UPDATED_EVENT, wrapped as EventListener);
+  return () => {
+    window.removeEventListener(APP_CONTEXT_UPDATED_EVENT, wrapped as EventListener);
+  };
+}
+
+export function getContextValueClient(params: QueryLike, key: keyof AppClientContext): string {
+  const stored = getStoredContextValueClient(key);
+  if (stored) return stored;
+
+  const direct = normalize(params.get(key) || "");
+  if (direct) {
+    if (key === "shop_domain") {
+      const normalized = normalizeShopDomain(direct);
+      persistAppContextClient({ shop_domain: normalized, shop: normalized });
+      return normalized;
+    }
+    persistAppContextClient({ [key]: direct } as Partial<AppClientContext>);
+    return direct;
+  }
+
+  if (key === "shop_domain") {
+    const directShop = normalize(params.get("shop") || "");
+    if (directShop) {
+      const normalized = normalizeShopDomain(directShop);
+      persistAppContextClient({ shop: directShop, shop_domain: normalized });
+      return normalized;
+    }
+  }
+  return "";
 }
 
 export function hasShopifyContextClient(): boolean {

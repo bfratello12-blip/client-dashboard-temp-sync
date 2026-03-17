@@ -1,10 +1,10 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
-import { hasShopifyContextClient, getContextValueClient } from "@/lib/shopifyContext";
+import { getStoredContextValueClient, hasShopifyContextClient } from "@/lib/shopifyContext";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import {
   ResponsiveContainer,
@@ -1432,7 +1432,6 @@ export default function Home({
   skipSupabaseAuth?: boolean;
 }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   // 🔑 Shopify embedded check: session token ping
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1626,21 +1625,21 @@ export default function Home({
   const shopDomain = useMemo(
     () =>
       (
-        getContextValueClient(searchParams as any, "shop") ||
-        getContextValueClient(searchParams as any, "shop_domain") ||
+        getStoredContextValueClient("shop") ||
+        getStoredContextValueClient("shop_domain") ||
         ""
       )
         .trim()
         .toLowerCase(),
-    [searchParams]
+    []
   );
   const settingsHref = useMemo(() => {
     const qs = new URLSearchParams();
-    const shop = getContextValueClient(searchParams as any, "shop").trim();
-    const shopDomain = getContextValueClient(searchParams as any, "shop_domain").trim();
+    const shop = getStoredContextValueClient("shop").trim();
+    const shopDomain = getStoredContextValueClient("shop_domain").trim();
     const effectiveShopDomain = shopDomain || shop;
-    const host = getContextValueClient(searchParams as any, "host").trim();
-    const embedded = getContextValueClient(searchParams as any, "embedded").trim();
+    const host = getStoredContextValueClient("host").trim();
+    const embedded = getStoredContextValueClient("embedded").trim();
 
     if (shop) qs.set("shop", shop);
     if (effectiveShopDomain) qs.set("shop_domain", effectiveShopDomain);
@@ -1650,7 +1649,7 @@ export default function Home({
 
     const query = qs.toString();
     return query ? `/settings?${query}` : "/settings";
-  }, [searchParams, clientId]);
+  }, [clientId]);
   const [metricDataCount, setMetricDataCount] = useState<number>(0);
   /** Monthly rollup table */
   type MonthlyRow = {

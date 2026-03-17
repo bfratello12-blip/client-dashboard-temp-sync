@@ -2,12 +2,12 @@
 
 import React from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { LayoutDashboard, Package, TrendingUp, Settings, Shield } from "lucide-react";
 import { type User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import useClientId from "@/hooks/useClientId";
-import { getContextValueClient } from "@/lib/shopifyContext";
+import { getStoredContextValueClient } from "@/lib/shopifyContext";
 
 interface SidebarProps {
   clientName: string;
@@ -76,32 +76,18 @@ export default function Sidebar({
   loading,
 }: SidebarProps) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const clientId = useClientId();
   const [supabaseUser, setSupabaseUser] = React.useState<User | null>(null);
 
   const withClientId = React.useCallback(
     (path: string) => {
       const qs = new URLSearchParams();
-      const liveParams =
-        typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
-
-      const shop =
-        (searchParams.get("shop") || liveParams?.get("shop") || getContextValueClient(searchParams as any, "shop") || "").trim();
-      const shopDomain =
-        (searchParams.get("shop_domain") ||
-          liveParams?.get("shop_domain") ||
-          getContextValueClient(searchParams as any, "shop_domain") ||
-          "").trim();
+      const shop = getStoredContextValueClient("shop").trim();
+      const shopDomain = getStoredContextValueClient("shop_domain").trim();
       const effectiveShopDomain = shopDomain || shop;
-      const host =
-        (searchParams.get("host") || liveParams?.get("host") || getContextValueClient(searchParams as any, "host") || "").trim();
-      const embedded =
-        (searchParams.get("embedded") ||
-          liveParams?.get("embedded") ||
-          getContextValueClient(searchParams as any, "embedded") ||
-          "").trim();
-      const contextClientId = getContextValueClient(searchParams as any, "client_id").trim();
+      const host = getStoredContextValueClient("host").trim();
+      const embedded = getStoredContextValueClient("embedded").trim();
+      const contextClientId = getStoredContextValueClient("client_id").trim();
 
       if (shop) qs.set("shop", shop);
       if (effectiveShopDomain) qs.set("shop_domain", effectiveShopDomain);
@@ -112,7 +98,7 @@ export default function Sidebar({
       const query = qs.toString();
       return query ? `${path}?${query}` : path;
     },
-    [clientId, searchParams]
+    [clientId]
   );
 
   React.useEffect(() => {

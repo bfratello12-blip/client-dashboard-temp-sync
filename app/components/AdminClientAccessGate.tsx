@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import HomeClient from "@/app/page.client";
-import { supabase } from "@/lib/supabaseClient";
 
 type AdminClientAccessGateProps = {
   clientId: string;
@@ -13,53 +12,30 @@ export default function AdminClientAccessGate({ clientId }: AdminClientAccessGat
   const router = useRouter();
   const [status, setStatus] = useState<"checking" | "authorized" | "unauthorized">("checking");
   const [message, setMessage] = useState("");
-  const allowMultiClientAdmin =
-    String(process.env.NEXT_PUBLIC_ALLOW_MULTI_CLIENT_ADMIN || "")
-      .trim()
-      .toLowerCase() === "true";
 
   useEffect(() => {
     let cancelled = false;
 
     const run = async () => {
-      const { data: userData, error: userError } = await supabase.auth.getUser();
+      const res = await fetch(`/api/admin/access?client_id=${encodeURIComponent(clientId)}`, {
+        cache: "no-store",
+      });
+      const json = await res.json().catch(() => ({}));
 
       if (cancelled) return;
 
-      if (userError || !userData.user) {
+      if (res.status === 401) {
         router.replace("/admin/login");
         return;
       }
 
-      const { data: accessRows, error: accessError } = await supabase
-        .from("user_clients")
-        .select("client_id")
-        .eq("user_id", userData.user.id)
-        .eq("client_id", clientId)
-        .limit(1);
-
-      if (cancelled) return;
-
-      if (accessError) {
+      if (!res.ok || !json?.ok) {
         setStatus("unauthorized");
-        setMessage("Unauthorized access");
+        setMessage(json?.error || "Unauthorized access");
         return;
       }
 
-      if (!accessRows?.length) {
-        if (allowMultiClientAdmin) {
-          try {
-            const projectRes = await fetch("/api/client/project-default", { cache: "no-store" });
-            const projectJson = await projectRes.json().catch(() => ({}));
-            const projectDefaultClientId = String(projectJson?.client?.id || "").trim();
-            if (projectRes.ok && projectJson?.ok && projectDefaultClientId === clientId) {
-              setStatus("authorized");
-              return;
-            }
-          } catch {
-            // no-op
-          }
-        }
+      if (!json?.authorized) {
         setStatus("unauthorized");
         setMessage("Unauthorized access");
         router.replace("/admin");
@@ -74,7 +50,7 @@ export default function AdminClientAccessGate({ clientId }: AdminClientAccessGat
     return () => {
       cancelled = true;
     };
-  }, [clientId, router, allowMultiClientAdmin]);
+  }, [clientId, router]);
 
   if (status === "authorized") {
     return <HomeClient initialClientId={clientId} />;

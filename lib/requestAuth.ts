@@ -114,19 +114,46 @@ function extractSupabaseTokensFromRequest(req: Request): string[] {
 }
 
 export async function getSupabaseUserIdFromRequest(req: Request): Promise<string | null> {
+  const user = await getSupabaseUserFromRequest(req);
+  return user?.id || null;
+}
+
+export async function getSupabaseUserFromRequest(
+  req: Request
+): Promise<{ id: string; email: string | null } | null> {
   const supabase = supabaseAdmin();
   const tokens = extractSupabaseTokensFromRequest(req);
 
   for (const token of tokens) {
     try {
       const { data, error } = await supabase.auth.getUser(token);
-      if (!error && data?.user?.id) return data.user.id;
+      if (!error && data?.user?.id) {
+        return {
+          id: data.user.id,
+          email: data.user.email || null,
+        };
+      }
     } catch {
       // try next token
     }
   }
 
   return null;
+}
+
+export function getConfiguredAdminEmails(): string[] {
+  const raw = String(process.env.ADMIN_EMAILS || process.env.SUPPORT_ADMIN_EMAILS || "").trim();
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function isConfiguredAdminEmail(email: string | null | undefined): boolean {
+  const normalized = String(email || "").trim().toLowerCase();
+  if (!normalized) return false;
+  return getConfiguredAdminEmails().includes(normalized);
 }
 
 export async function getInstallClientIdForShop(shop: string): Promise<string | null> {

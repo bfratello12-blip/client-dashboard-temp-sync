@@ -3,17 +3,12 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
 import AdminClientAccessGate from "@/app/components/AdminClientAccessGate";
 
 type ClientRow = {
   id: string;
   name: string | null;
-};
-
-type UserClientJoinRow = {
-  client_id: string;
-  clients: ClientRow | ClientRow[] | null;
+  projectDefault?: boolean;
 };
 
 export default function AdminPage() {
@@ -27,11 +22,8 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [clients, setClients] = useState<ClientRow[]>([]);
-  const [projectClient, setProjectClient] = useState<ClientRow | null>(null);
-
-  if (allowMultiClientAdmin && selectedClientId) {
-    return <AdminClientAccessGate clientId={selectedClientId} />;
-  }
+  const [projectClientId, setProjectClientId] = useState<string>("");
+  const [isGlobalAdmin, setIsGlobalAdmin] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,69 +32,24 @@ export default function AdminPage() {
       setLoading(true);
       setError(null);
 
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-
-      if (userError) {
-        if (!cancelled) {
-          setError(userError.message || "Unable to verify authentication.");
-          setLoading(false);
-        }
-        return;
-      }
-
-      const userId = userData.user?.id;
-      if (!userId) {
+      const res = await fetch("/api/admin/clients", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      if (res.status === 401) {
         router.replace("/admin/login");
         return;
       }
-
-      const { data, error: mapError } = await supabase
-        .from("user_clients")
-        .select("client_id, clients(id, name)")
-        .eq("user_id", userId);
-
-      if (mapError) {
+      if (!res.ok || !json?.ok) {
         if (!cancelled) {
-          setError(mapError.message || "Failed to load clients.");
+          setError(json?.error || "Failed to load clients.");
           setLoading(false);
         }
         return;
       }
 
-      const normalized = ((data || []) as UserClientJoinRow[])
-        .map((row) => {
-          const joined = Array.isArray(row.clients) ? row.clients[0] : row.clients;
-          const id = joined?.id || row.client_id;
-          const name = joined?.name || "Unnamed Client";
-          return { id, name };
-        })
-        .filter((row) => Boolean(row.id));
-
-      let projectDefaultClient: ClientRow | null = null;
-      if (allowMultiClientAdmin) {
-        try {
-          const projectRes = await fetch("/api/client/project-default", { cache: "no-store" });
-          const projectJson = await projectRes.json().catch(() => ({}));
-          const projectId = String(projectJson?.client?.id || "").trim();
-          if (projectRes.ok && projectJson?.ok && projectId) {
-            projectDefaultClient = {
-              id: projectId,
-              name: String(projectJson?.client?.name || "Project Default Client"),
-            };
-          }
-        } catch {
-          // no-op; admin list will fall back to assigned clients only
-        }
-      }
-
-      const merged = [...normalized];
-      if (projectDefaultClient && !merged.some((c) => c.id === projectDefaultClient?.id)) {
-        merged.unshift(projectDefaultClient);
-      }
-
       if (!cancelled) {
-        setProjectClient(projectDefaultClient);
-        setClients(merged);
+        setClients(Array.isArray(json?.clients) ? json.clients : []);
+        setProjectClientId(String(json?.meta?.projectDefaultClientId || ""));
+        setIsGlobalAdmin(Boolean(json?.meta?.isGlobalAdmin));
         setLoading(false);
       }
     };
@@ -113,6 +60,10 @@ export default function AdminPage() {
       cancelled = true;
     };
   }, [router]);
+
+  if (allowMultiClientAdmin && selectedClientId) {
+    return <AdminClientAccessGate clientId={selectedClientId} />;
+  }
 
   return (
     <main className="min-h-screen bg-slate-50 p-6 md:p-8">
@@ -139,9 +90,14 @@ export default function AdminPage() {
                   >
                     <div className="text-sm font-semibold text-slate-900">
                       {client.name || "Unnamed Client"}
-                      {projectClient?.id === client.id ? (
+                      {projectClientId === client.id ? (
                         <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-700">
                           Project default
+                        </span>
+                      ) : null}
+                      {isGlobalAdmin ? (
+                        <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                          Global admin
                         </span>
                       ) : null}
                     </div>

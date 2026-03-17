@@ -1,43 +1,30 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import {
-  getPersistedAppContextClient,
-  getRuntimeContextValueClient,
-  getStoredContextValueClient,
-  onAppContextUpdatedClient,
-  persistAppContextClient,
-} from "@/lib/shopifyContext";
+import { getContextValueClient } from "@/lib/shopifyContext";
 
 export default function useClientId() {
-  const [clientId, setClientId] = useState<string | null>(() => {
-    const storedClientId = getRuntimeContextValueClient("client_id");
-    const persisted = getPersistedAppContextClient();
-    const shop = String(persisted.shop_domain || persisted.shop || "").trim().toLowerCase();
-    return storedClientId || (shop ? null : "");
-  });
+  const params = useSearchParams();
 
-  useEffect(() => {
-    const syncFromContext = () => {
-      const storedClientId = getStoredContextValueClient("client_id");
-      if (storedClientId) setClientId(storedClientId);
-    };
-    syncFromContext();
-    return onAppContextUpdatedClient(syncFromContext);
-  }, []);
+  const urlClientId = getContextValueClient(params as any, "client_id");
+  const shop = (
+    getContextValueClient(params as any, "shop") ||
+    getContextValueClient(params as any, "shop_domain")
+  )
+    .trim()
+    .toLowerCase();
+  const [clientId, setClientId] = useState<string | null>(urlClientId || (shop ? null : ""));
 
   useEffect(() => {
     let cancelled = false;
 
     const run = async () => {
-      const storedClientId = getRuntimeContextValueClient("client_id");
-      if (storedClientId) {
-        if (!cancelled) setClientId(storedClientId);
+      if (urlClientId) {
+        if (!cancelled) setClientId(urlClientId);
         return;
       }
 
-      const persisted = getPersistedAppContextClient();
-      const shop = String(persisted.shop_domain || persisted.shop || "").trim().toLowerCase();
       if (!shop) {
         if (!cancelled) setClientId("");
         return;
@@ -52,7 +39,6 @@ export default function useClientId() {
         const data = await res.json().catch(() => ({}));
         const resolved = typeof data?.client_id === "string" ? data.client_id.trim() : "";
         if (!cancelled) {
-          if (resolved) persistAppContextClient({ client_id: resolved });
           setClientId(res.ok ? resolved : "");
         }
       } catch {
@@ -65,7 +51,7 @@ export default function useClientId() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [urlClientId, shop]);
 
   return clientId;
 }

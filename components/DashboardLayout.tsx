@@ -1,16 +1,14 @@
 "use client";
 
-import React, { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import React, { Suspense, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import useClientId from "@/hooks/useClientId";
 import {
-  captureAppContextFromSearchParamsClient,
-  getRuntimeContextValueClient,
-  getStoredContextValueClient,
+  getContextValueClient,
   hasShopifyContextClient,
   persistAppContextClient,
-  resolveShopDomain,
+  persistAppContextFromSearchParamsClient,
 } from "@/lib/shopifyContext";
 
 interface DashboardLayoutProps {
@@ -21,14 +19,7 @@ interface DashboardLayoutProps {
 function ClientIdWarningBanner() {
   const clientId = useClientId();
   const params = useSearchParams();
-  const [resolvedShopDomain, setResolvedShopDomain] = useState<string | null>(null);
-
-  useEffect(() => {
-    const resolved = resolveShopDomain(params as any);
-    setResolvedShopDomain(resolved);
-  }, [params]);
-
-  const shop = (resolvedShopDomain || getRuntimeContextValueClient("shop") || "").trim();
+  const shop = (params.get("shop") || params.get("shop_domain") || "").trim();
   if (clientId || shop || hasShopifyContextClient()) return null;
 
   return (
@@ -39,12 +30,14 @@ function ClientIdWarningBanner() {
 }
 
 function ContextPersistence() {
+  const router = useRouter();
+  const pathname = usePathname();
   const params = useSearchParams();
   const clientId = useClientId();
   const [rehydrating, setRehydrating] = React.useState(false);
 
   React.useEffect(() => {
-    captureAppContextFromSearchParamsClient(params as any);
+    persistAppContextFromSearchParamsClient(params as any);
   }, [params]);
 
   React.useEffect(() => {
@@ -53,12 +46,28 @@ function ContextPersistence() {
   }, [clientId]);
 
   React.useEffect(() => {
+    const hasShopDomainInUrl = (params.get("shop_domain") || "").trim();
+    if (hasShopDomainInUrl) return;
+
+    const persistedShopDomain = getContextValueClient(params as any, "shop_domain").trim();
+    if (!persistedShopDomain) return;
+
+    const next = new URLSearchParams(params.toString());
+    next.set("shop_domain", persistedShopDomain);
+    const query = next.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname);
+  }, [params, pathname, router]);
+
+  React.useEffect(() => {
     if (rehydrating) return;
 
-    const persistedShopDomain = (resolveShopDomain(params as any) || "").trim() || getStoredContextValueClient("shop_domain").trim();
+    const hasShopDomain = (params.get("shop_domain") || "").trim();
+    if (hasShopDomain) return;
+
+    const persistedShopDomain = getContextValueClient(params as any, "shop_domain").trim();
     if (persistedShopDomain) return;
 
-    const cid = getRuntimeContextValueClient("client_id").trim();
+    const cid = getContextValueClient(params as any, "client_id").trim();
     if (!cid) return;
 
     let cancelled = false;
@@ -72,6 +81,11 @@ function ContextPersistence() {
         const resolvedShop = String(json?.shop_domain || "").trim().toLowerCase();
         if (!cancelled && res.ok && json?.ok && resolvedShop) {
           persistAppContextClient({ client_id: cid, shop_domain: resolvedShop, shop: resolvedShop });
+          const next = new URLSearchParams(params.toString());
+          next.set("shop_domain", resolvedShop);
+          if (!next.get("client_id")) next.set("client_id", cid);
+          const query = next.toString();
+          router.replace(query ? `${pathname}?${query}` : pathname);
         }
       } finally {
         if (!cancelled) setRehydrating(false);
@@ -82,7 +96,7 @@ function ContextPersistence() {
     return () => {
       cancelled = true;
     };
-  }, [params, rehydrating]);
+  }, [params, pathname, router, rehydrating]);
 
   return null;
 }

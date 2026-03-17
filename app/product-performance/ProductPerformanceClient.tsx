@@ -6,7 +6,7 @@ import { format, subDays } from "date-fns";
 import DashboardLayout from "@/components/DashboardLayout";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
-import { getRuntimeContextValueClient, resolveShopDomain } from "@/lib/shopifyContext";
+import { getContextValueClient } from "@/lib/shopifyContext";
 
 type ProductPerfRow = {
   variant_id: string;
@@ -122,16 +122,23 @@ function HeaderTooltip({ text, align = "center" }: { text: string; align?: "cent
 
 export default function ProductPerformanceClient() {
   const searchParams = useSearchParams();
-  const contextClientId = getRuntimeContextValueClient("client_id").trim();
-  const [resolvedShopDomain, setResolvedShopDomain] = useState<string | null>(null);
+  const shopDomain = (
+    getContextValueClient(searchParams as any, "shop") ||
+    getContextValueClient(searchParams as any, "shop_domain") ||
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  const contextClientId = getContextValueClient(searchParams as any, "client_id").trim();
+  const [resolvedShopDomain, setResolvedShopDomain] = useState<string>(shopDomain);
 
   useEffect(() => {
-    const resolved = resolveShopDomain(searchParams as any);
-    setResolvedShopDomain(resolved);
-  }, [searchParams]);
+    if (!shopDomain) return;
+    setResolvedShopDomain(shopDomain);
+  }, [shopDomain]);
 
   useEffect(() => {
-    if (resolvedShopDomain || !contextClientId) return;
+    if (shopDomain || resolvedShopDomain || !contextClientId) return;
     let cancelled = false;
 
     (async () => {
@@ -152,7 +159,7 @@ export default function ProductPerformanceClient() {
     return () => {
       cancelled = true;
     };
-  }, [resolvedShopDomain, contextClientId]);
+  }, [shopDomain, resolvedShopDomain, contextClientId]);
 
   const initialRange = useMemo(() => {
     const { startISO, endISO } = last30DaysRange();
@@ -215,11 +222,11 @@ export default function ProductPerformanceClient() {
       setLoading(true);
       setError("");
       try {
-        const effectiveShopDomain = (resolvedShopDomain || "").trim().toLowerCase();
+        const effectiveShopDomain = (resolvedShopDomain || shopDomain || "").trim().toLowerCase();
         if (!effectiveShopDomain) {
-          console.error("[product-performance] Missing shop domain context. API request not sent.");
+          console.error("[product-performance] Missing shop domain in URL/session context. Skipping API request.");
           if (!isCancelled?.()) {
-            setError("Missing shop domain context");
+            setError("Missing shop domain in URL or session context");
           }
           return;
         }
@@ -288,7 +295,7 @@ export default function ProductPerformanceClient() {
         if (!isCancelled?.()) setLoading(false);
       }
     },
-    [resolvedShopDomain, page, pageSize, searchTerm, activeFilter, sortKey, sortDirection]
+    [shopDomain, resolvedShopDomain, page, pageSize, searchTerm, activeFilter, sortKey, sortDirection]
   );
 
   useEffect(() => {

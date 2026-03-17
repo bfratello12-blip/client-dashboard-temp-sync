@@ -2,14 +2,12 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import {
-  getRuntimeContextValueClient,
-  getStoredContextValueClient,
   hasShopifyContextClient,
+  getContextValueClient,
   getPersistedAppContextClient,
-  resolveShopDomain,
 } from "@/lib/shopifyContext";
 import DashboardLayout from "@/components/DashboardLayout";
 
@@ -111,18 +109,30 @@ function formatPct(v: number | null) {
 
 function SettingsPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
-  const contextClientId = getRuntimeContextValueClient("client_id").trim();
-  const [resolvedShopDomain, setResolvedShopDomain] = useState<string | null>(null);
-  const effectiveShopDomain = (resolvedShopDomain || "").trim().toLowerCase();
+  const shopDomainParam = useMemo(
+    () =>
+      (
+        getContextValueClient(searchParams as any, "shop") ||
+        getContextValueClient(searchParams as any, "shop_domain") ||
+        ""
+      )
+        .trim()
+        .toLowerCase(),
+    [searchParams]
+  );
+  const contextClientId = getContextValueClient(searchParams as any, "client_id").trim();
+  const [resolvedShopDomain, setResolvedShopDomain] = useState<string>(shopDomainParam);
+  const effectiveShopDomain = (shopDomainParam || resolvedShopDomain || "").trim().toLowerCase();
 
   useEffect(() => {
-    const resolved = resolveShopDomain(searchParams as any);
-    setResolvedShopDomain(resolved);
-  }, [searchParams]);
+    if (!shopDomainParam) return;
+    setResolvedShopDomain(shopDomainParam);
+  }, [shopDomainParam]);
 
   useEffect(() => {
-    if (resolvedShopDomain || !contextClientId) return;
+    if (shopDomainParam || resolvedShopDomain || !contextClientId) return;
     let cancelled = false;
 
     (async () => {
@@ -143,7 +153,7 @@ function SettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [resolvedShopDomain, contextClientId]);
+  }, [shopDomainParam, resolvedShopDomain, contextClientId]);
 
   const [loading, setLoading] = useState(true);
   const [clientId, setClientId] = useState("");
@@ -580,17 +590,17 @@ function SettingsPage() {
     const run = async () => {
       setLoading(true);
 
+      const params = new URLSearchParams(window.location.search);
       const persisted = getPersistedAppContextClient();
-      let overrideClientId = (getStoredContextValueClient("client_id") || persisted.client_id || "").trim();
-      const shopFromContext = (getStoredContextValueClient("shop") || persisted.shop || "").trim().toLowerCase();
-      const shopDomainFromContext = (getStoredContextValueClient("shop_domain") || persisted.shop_domain || "")
-        .trim()
-        .toLowerCase();
+      let overrideClientId = (getContextValueClient(params as any, "client_id") || persisted.client_id || "").trim();
+      const shopFromUrl = (getContextValueClient(params as any, "shop") || "").trim().toLowerCase();
+      const shopDomainFromContext =
+        (getContextValueClient(params as any, "shop_domain") || persisted.shop_domain || "").trim().toLowerCase();
       const isEmbeddedShopifyContext = hasShopifyContextClient();
 
-      if (!overrideClientId && shopFromContext) {
+      if (!overrideClientId && shopFromUrl) {
         try {
-          const res = await fetch(`/api/client/resolve?shop=${encodeURIComponent(shopFromContext)}`, {
+          const res = await fetch(`/api/client/resolve?shop=${encodeURIComponent(shopFromUrl)}`, {
             cache: "no-store",
           });
           const json = await res.json().catch(() => ({}));
@@ -625,7 +635,7 @@ function SettingsPage() {
 
       if (isEmbeddedShopifyContext && !shopDomain && !overrideClientId) {
         try {
-          const shopQuery = encodeURIComponent((shopFromContext || "").trim());
+          const shopQuery = encodeURIComponent((shopFromUrl || "").trim());
           const whoRes = await fetch(`/api/shopify/whoami?shop=${shopQuery}`, { cache: "no-store" });
           if (!whoRes.ok) {
             if (!cancelled) {

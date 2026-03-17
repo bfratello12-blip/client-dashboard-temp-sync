@@ -6,7 +6,7 @@ import { format, subDays } from "date-fns";
 import DashboardLayout from "@/components/DashboardLayout";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
-import { getRuntimeContextValueClient, resolveShopDomain } from "@/lib/shopifyContext";
+import { getContextValueClient } from "@/lib/shopifyContext";
 import ScatterCorrelationChart from "@/components/ScatterCorrelationChart";
 import { MultiSeriesEventfulLineChart } from "@/app/page.client";
 
@@ -166,16 +166,23 @@ function ChannelChart({
 
 export default function ChannelPerformanceClient() {
   const searchParams = useSearchParams();
-  const contextClientId = getRuntimeContextValueClient("client_id").trim();
-  const [resolvedShopDomain, setResolvedShopDomain] = useState<string | null>(null);
+  const shopDomain = (
+    getContextValueClient(searchParams as any, "shop") ||
+    getContextValueClient(searchParams as any, "shop_domain") ||
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  const contextClientId = getContextValueClient(searchParams as any, "client_id").trim();
+  const [resolvedShopDomain, setResolvedShopDomain] = useState<string>(shopDomain);
 
   useEffect(() => {
-    const resolved = resolveShopDomain(searchParams as any);
-    setResolvedShopDomain(resolved);
-  }, [searchParams]);
+    if (!shopDomain) return;
+    setResolvedShopDomain(shopDomain);
+  }, [shopDomain]);
 
   useEffect(() => {
-    if (resolvedShopDomain || !contextClientId) return;
+    if (shopDomain || resolvedShopDomain || !contextClientId) return;
     let cancelled = false;
 
     (async () => {
@@ -196,7 +203,7 @@ export default function ChannelPerformanceClient() {
     return () => {
       cancelled = true;
     };
-  }, [resolvedShopDomain, contextClientId]);
+  }, [shopDomain, resolvedShopDomain, contextClientId]);
 
   const initialRange = useMemo(() => {
     const { startISO, endISO } = last30DaysRange();
@@ -220,11 +227,11 @@ export default function ChannelPerformanceClient() {
       setLoading(true);
       setError("");
       try {
-        const effectiveShopDomain = (resolvedShopDomain || "").trim().toLowerCase();
+        const effectiveShopDomain = (resolvedShopDomain || shopDomain || "").trim().toLowerCase();
         if (!effectiveShopDomain) {
-          console.error("[channel-performance] Missing shop domain context. API request not sent.");
+          console.error("[channel-performance] Missing shop domain in URL/session context. Skipping API request.");
           if (!cancelled) {
-            setError("Missing shop domain context");
+            setError("Missing shop domain in URL or session context");
             setLoading(false);
           }
           return;
@@ -300,7 +307,7 @@ export default function ChannelPerformanceClient() {
     return () => {
       cancelled = true;
     };
-  }, [rangeValue, resolvedShopDomain]);
+  }, [rangeValue, shopDomain, resolvedShopDomain]);
 
   const filteredRows = useMemo(() => {
     const startDate = new Date(`${rangeValue.startISO}T00:00:00Z`);

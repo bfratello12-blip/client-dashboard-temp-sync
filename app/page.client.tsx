@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
-import { getRuntimeContextValueClient, hasShopifyContextClient, resolveShopDomain } from "@/lib/shopifyContext";
+import { hasShopifyContextClient, getContextValueClient } from "@/lib/shopifyContext";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import {
   ResponsiveContainer,
@@ -1433,11 +1433,6 @@ export default function Home({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [resolvedShopDomain, setResolvedShopDomain] = useState<string | null>(null);
-  useEffect(() => {
-    const resolved = resolveShopDomain(searchParams as any);
-    setResolvedShopDomain(resolved);
-  }, [searchParams]);
   // 🔑 Shopify embedded check: session token ping
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1628,14 +1623,24 @@ export default function Home({
   const [adminAccessError, setAdminAccessError] = useState<string>("");
   const [clientName, setClientName] = useState<string>("");
   const [clientId, setClientId] = useState<string>(initialClientId || "");
-  const shopDomain = (resolvedShopDomain || "").trim().toLowerCase();
+  const shopDomain = useMemo(
+    () =>
+      (
+        getContextValueClient(searchParams as any, "shop") ||
+        getContextValueClient(searchParams as any, "shop_domain") ||
+        ""
+      )
+        .trim()
+        .toLowerCase(),
+    [searchParams]
+  );
   const settingsHref = useMemo(() => {
     const qs = new URLSearchParams();
-    const shop = getRuntimeContextValueClient("shop").trim();
-    const shopDomain = (resolvedShopDomain || "").trim();
+    const shop = getContextValueClient(searchParams as any, "shop").trim();
+    const shopDomain = getContextValueClient(searchParams as any, "shop_domain").trim();
     const effectiveShopDomain = shopDomain || shop;
-    const host = getRuntimeContextValueClient("host").trim();
-    const embedded = getRuntimeContextValueClient("embedded").trim();
+    const host = getContextValueClient(searchParams as any, "host").trim();
+    const embedded = getContextValueClient(searchParams as any, "embedded").trim();
 
     if (shop) qs.set("shop", shop);
     if (effectiveShopDomain) qs.set("shop_domain", effectiveShopDomain);
@@ -1645,7 +1650,7 @@ export default function Home({
 
     const query = qs.toString();
     return query ? `/settings?${query}` : "/settings";
-  }, [clientId, resolvedShopDomain]);
+  }, [searchParams, clientId]);
   const [metricDataCount, setMetricDataCount] = useState<number>(0);
   /** Monthly rollup table */
   type MonthlyRow = {
@@ -2282,7 +2287,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       let metricData: DailyMetricRow[] = [];
       try {
         if (!shopDomain) {
-          console.error("[dashboard] Missing shop_domain context for /api/data/daily-metrics. API request not sent.");
+          console.error("[dashboard] Missing shop_domain for /api/data/daily-metrics. Skipping API request.");
           if (!cancelled) setLoading(false);
           return;
         }

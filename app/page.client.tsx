@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
-import { getRuntimeContextValueClient, hasShopifyContextClient } from "@/lib/shopifyContext";
+import { getRuntimeContextValueClient, hasShopifyContextClient, resolveShopDomain } from "@/lib/shopifyContext";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import {
   ResponsiveContainer,
@@ -1622,21 +1622,11 @@ export default function Home({
   const [adminAccessError, setAdminAccessError] = useState<string>("");
   const [clientName, setClientName] = useState<string>("");
   const [clientId, setClientId] = useState<string>(initialClientId || "");
-  const shopDomain = useMemo(
-    () =>
-      (
-        getRuntimeContextValueClient("shop") ||
-        getRuntimeContextValueClient("shop_domain") ||
-        ""
-      )
-        .trim()
-        .toLowerCase(),
-    []
-  );
+  const shopDomain = useMemo(() => resolveShopDomain().trim().toLowerCase(), []);
   const settingsHref = useMemo(() => {
     const qs = new URLSearchParams();
     const shop = getRuntimeContextValueClient("shop").trim();
-    const shopDomain = getRuntimeContextValueClient("shop_domain").trim();
+    const shopDomain = resolveShopDomain().trim();
     const effectiveShopDomain = shopDomain || shop;
     const host = getRuntimeContextValueClient("host").trim();
     const embedded = getRuntimeContextValueClient("embedded").trim();

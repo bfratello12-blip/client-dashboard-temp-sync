@@ -9,6 +9,7 @@ import {
   getStoredContextValueClient,
   hasShopifyContextClient,
   getPersistedAppContextClient,
+  resolveShopDomain,
 } from "@/lib/shopifyContext";
 import DashboardLayout from "@/components/DashboardLayout";
 
@@ -112,14 +113,7 @@ function SettingsPage() {
   const router = useRouter();
   const pathname = usePathname();
   const shopDomainParam = useMemo(
-    () =>
-      (
-        getRuntimeContextValueClient("shop") ||
-        getRuntimeContextValueClient("shop_domain") ||
-        ""
-      )
-        .trim()
-        .toLowerCase(),
+    () => resolveShopDomain().trim().toLowerCase(),
     []
   );
   const contextClientId = getRuntimeContextValueClient("client_id").trim();

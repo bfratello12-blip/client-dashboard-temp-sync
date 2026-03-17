@@ -137,6 +137,32 @@ export function getRuntimeContextValueClient(key: keyof AppClientContext): strin
   return getStoredContextValueClient(key);
 }
 
+export function resolveShopDomain(params?: QueryLike): string {
+  const fromUrl = (() => {
+    if (params) {
+      const direct = normalize(params.get("shop_domain") || "");
+      if (direct) return normalizeShopDomain(direct);
+      const shop = normalize(params.get("shop") || "");
+      if (shop) return normalizeShopDomain(shop);
+      return "";
+    }
+    if (typeof window === "undefined") return "";
+    const search = new URLSearchParams(window.location.search);
+    const direct = normalize(search.get("shop_domain") || "");
+    if (direct) return normalizeShopDomain(direct);
+    const shop = normalize(search.get("shop") || "");
+    if (shop) return normalizeShopDomain(shop);
+    return "";
+  })();
+
+  if (fromUrl) {
+    persistAppContextClient({ shop_domain: fromUrl, shop: fromUrl });
+    return fromUrl;
+  }
+
+  return getStoredContextValueClient("shop_domain");
+}
+
 export function onAppContextUpdatedClient(listener: () => void) {
   if (typeof window === "undefined") return () => {};
   const wrapped = () => listener();

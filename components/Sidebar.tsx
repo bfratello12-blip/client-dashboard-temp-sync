@@ -7,7 +7,7 @@ import { LayoutDashboard, Package, TrendingUp, Settings, Shield } from "lucide-r
 import { type User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import useClientId from "@/hooks/useClientId";
-import { getRuntimeContextValueClient } from "@/lib/shopifyContext";
+import { getRuntimeContextValueClient, resolveShopDomain } from "@/lib/shopifyContext";
 
 interface SidebarProps {
   clientName: string;
@@ -83,7 +83,7 @@ export default function Sidebar({
     (path: string) => {
       const qs = new URLSearchParams();
       const shop = getRuntimeContextValueClient("shop").trim();
-      const shopDomain = getRuntimeContextValueClient("shop_domain").trim();
+      const shopDomain = resolveShopDomain().trim();
       const effectiveShopDomain = shopDomain || shop;
       const host = getRuntimeContextValueClient("host").trim();
       const embedded = getRuntimeContextValueClient("embedded").trim();

@@ -10,6 +10,7 @@ import {
   getStoredContextValueClient,
   hasShopifyContextClient,
   persistAppContextClient,
+  resolveShopDomain,
 } from "@/lib/shopifyContext";
 
 interface DashboardLayoutProps {
@@ -19,7 +20,7 @@ interface DashboardLayoutProps {
 
 function ClientIdWarningBanner() {
   const clientId = useClientId();
-  const shop = (getRuntimeContextValueClient("shop_domain") || getRuntimeContextValueClient("shop") || "").trim();
+  const shop = (resolveShopDomain() || getRuntimeContextValueClient("shop") || "").trim();
   if (clientId || shop || hasShopifyContextClient()) return null;
 
   return (
@@ -46,7 +47,7 @@ function ContextPersistence() {
   React.useEffect(() => {
     if (rehydrating) return;
 
-    const persistedShopDomain = getStoredContextValueClient("shop_domain").trim();
+    const persistedShopDomain = resolveShopDomain().trim() || getStoredContextValueClient("shop_domain").trim();
     if (persistedShopDomain) return;
 
     const cid = getRuntimeContextValueClient("client_id").trim();

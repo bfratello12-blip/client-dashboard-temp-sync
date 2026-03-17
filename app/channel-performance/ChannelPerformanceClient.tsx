@@ -5,7 +5,7 @@ import { format, subDays } from "date-fns";
 import DashboardLayout from "@/components/DashboardLayout";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
-import { getRuntimeContextValueClient } from "@/lib/shopifyContext";
+import { getRuntimeContextValueClient, resolveShopDomain } from "@/lib/shopifyContext";
 import ScatterCorrelationChart from "@/components/ScatterCorrelationChart";
 import { MultiSeriesEventfulLineChart } from "@/app/page.client";
 
@@ -164,13 +164,7 @@ function ChannelChart({
 }
 
 export default function ChannelPerformanceClient() {
-  const shopDomain = (
-    getRuntimeContextValueClient("shop") ||
-    getRuntimeContextValueClient("shop_domain") ||
-    ""
-  )
-    .trim()
-    .toLowerCase();
+  const shopDomain = resolveShopDomain().trim().toLowerCase();
   const contextClientId = getRuntimeContextValueClient("client_id").trim();
   const [resolvedShopDomain, setResolvedShopDomain] = useState<string>(shopDomain);
 

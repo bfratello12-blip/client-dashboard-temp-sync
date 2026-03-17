@@ -5,7 +5,7 @@ import { format, subDays } from "date-fns";
 import DashboardLayout from "@/components/DashboardLayout";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
-import { getRuntimeContextValueClient } from "@/lib/shopifyContext";
+import { getRuntimeContextValueClient, resolveShopDomain } from "@/lib/shopifyContext";
 
 type ProductPerfRow = {
   variant_id: string;
@@ -120,13 +120,7 @@ function HeaderTooltip({ text, align = "center" }: { text: string; align?: "cent
 }
 
 export default function ProductPerformanceClient() {
-  const shopDomain = (
-    getRuntimeContextValueClient("shop") ||
-    getRuntimeContextValueClient("shop_domain") ||
-    ""
-  )
-    .trim()
-    .toLowerCase();
+  const shopDomain = resolveShopDomain().trim().toLowerCase();
   const contextClientId = getRuntimeContextValueClient("client_id").trim();
   const [resolvedShopDomain, setResolvedShopDomain] = useState<string>(shopDomain);
 

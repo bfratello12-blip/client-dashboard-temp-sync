@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import AdminClientAccessGate from "@/app/components/AdminClientAccessGate";
+import { supabase } from "@/lib/supabaseClient";
 
 type ClientRow = {
   id: string;
@@ -32,7 +33,19 @@ export default function AdminPage() {
       setLoading(true);
       setError(null);
 
-      const res = await fetch("/api/admin/clients", { cache: "no-store" });
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token || "";
+      if (sessionError || !accessToken) {
+        router.replace("/admin/login");
+        return;
+      }
+
+      const res = await fetch("/api/admin/clients", {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
       const json = await res.json().catch(() => ({}));
       if (res.status === 401) {
         router.replace("/admin/login");

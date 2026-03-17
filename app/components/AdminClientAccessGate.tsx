@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import HomeClient from "@/app/page.client";
+import { supabase } from "@/lib/supabaseClient";
 
 type AdminClientAccessGateProps = {
   clientId: string;
@@ -17,8 +18,18 @@ export default function AdminClientAccessGate({ clientId }: AdminClientAccessGat
     let cancelled = false;
 
     const run = async () => {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token || "";
+      if (sessionError || !accessToken) {
+        router.replace("/admin/login");
+        return;
+      }
+
       const res = await fetch(`/api/admin/access?client_id=${encodeURIComponent(clientId)}`, {
         cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
       });
       const json = await res.json().catch(() => ({}));
 

@@ -54,12 +54,19 @@ export function getPersistedAppContextClient(): AppClientContext {
 export function persistAppContextClient(patch: Partial<AppClientContext>) {
   if (typeof window === "undefined") return;
   const current = getPersistedAppContextClient();
+
+  const keepOrReplace = (nextValue: string | undefined, currentValue: string, normalizer = normalize) => {
+    if (nextValue == null) return currentValue;
+    const normalized = normalizer(nextValue);
+    return normalized || currentValue;
+  };
+
   const next: AppClientContext = {
-    shop: normalize(patch.shop ?? current.shop),
-    shop_domain: normalizeShopDomain(patch.shop_domain ?? current.shop_domain),
-    host: normalize(patch.host ?? current.host),
-    embedded: normalize(patch.embedded ?? current.embedded),
-    client_id: normalize(patch.client_id ?? current.client_id),
+    shop: keepOrReplace(patch.shop, current.shop),
+    shop_domain: keepOrReplace(patch.shop_domain, current.shop_domain, normalizeShopDomain),
+    host: keepOrReplace(patch.host, current.host),
+    embedded: keepOrReplace(patch.embedded, current.embedded),
+    client_id: keepOrReplace(patch.client_id, current.client_id),
   };
   try {
     window.sessionStorage.setItem(APP_CONTEXT_KEY, JSON.stringify(next));
@@ -72,13 +79,13 @@ export function persistAppContextFromSearchParamsClient(params: QueryLike) {
   const host = normalize(params.get("host") || "");
   const embedded = normalize(params.get("embedded") || "");
   const clientId = normalize(params.get("client_id") || "");
-  persistAppContextClient({
-    shop,
-    shop_domain: shopDomain || shop,
-    host,
-    embedded,
-    client_id: clientId,
-  });
+  const patch: Partial<AppClientContext> = {};
+  if (shop) patch.shop = shop;
+  if (shopDomain || shop) patch.shop_domain = shopDomain || shop;
+  if (host) patch.host = host;
+  if (embedded) patch.embedded = embedded;
+  if (clientId) patch.client_id = clientId;
+  persistAppContextClient(patch);
 }
 
 export function getContextValueClient(params: QueryLike, key: keyof AppClientContext): string {

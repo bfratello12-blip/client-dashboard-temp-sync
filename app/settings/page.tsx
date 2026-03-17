@@ -4,7 +4,11 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { hasShopifyContextClient, getContextValueClient } from "@/lib/shopifyContext";
+import {
+  hasShopifyContextClient,
+  getContextValueClient,
+  getPersistedAppContextClient,
+} from "@/lib/shopifyContext";
 import DashboardLayout from "@/components/DashboardLayout";
 
 export const dynamic = "force-dynamic";
@@ -555,8 +559,11 @@ function SettingsPage() {
       setLoading(true);
 
       const params = new URLSearchParams(window.location.search);
-      let overrideClientId = (params.get("client_id") || "").trim();
-      const shopFromUrl = (params.get("shop") || "").trim().toLowerCase();
+      const persisted = getPersistedAppContextClient();
+      let overrideClientId = (getContextValueClient(params as any, "client_id") || persisted.client_id || "").trim();
+      const shopFromUrl = (getContextValueClient(params as any, "shop") || "").trim().toLowerCase();
+      const shopDomainFromContext =
+        (getContextValueClient(params as any, "shop_domain") || persisted.shop_domain || "").trim().toLowerCase();
       const isEmbeddedShopifyContext = hasShopifyContextClient();
 
       if (!overrideClientId && shopFromUrl) {
@@ -584,7 +591,9 @@ function SettingsPage() {
         }
       }
 
-      let shopDomain = document.cookie
+      let shopDomain =
+        shopDomainFromContext ||
+        document.cookie
         .split(";")
         .map((c) => c.trim())
         .find((c) => c.startsWith("sa_shop="))

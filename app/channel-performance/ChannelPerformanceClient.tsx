@@ -230,7 +230,7 @@ export default function ChannelPerformanceClient() {
         const effectiveShopDomain = (resolvedShopDomain || shopDomain || "").trim().toLowerCase();
         const effectiveClientId = (contextClientId || "").trim();
         if (!effectiveShopDomain && !effectiveClientId) {
-          console.error("[channel-performance] Missing shop domain/client_id in URL/session context. Skipping API request.");
+          console.warn("[channel-performance] Missing shop domain/client_id in URL/session context. Skipping API request.");
           if (!cancelled) {
             setError("Missing shop domain/client_id in URL or session context");
             setLoading(false);

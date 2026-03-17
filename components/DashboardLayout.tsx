@@ -14,6 +14,7 @@ import {
 interface DashboardLayoutProps {
   children: React.ReactNode;
   skipSupabaseAuth?: boolean;
+  showClientIdWarning?: boolean;
 }
 
 function ClientIdWarningBanner() {
@@ -101,7 +102,7 @@ function ContextPersistence() {
   return null;
 }
 
-export default function DashboardLayout({ children, skipSupabaseAuth }: DashboardLayoutProps) {
+export default function DashboardLayout({ children, skipSupabaseAuth, showClientIdWarning = true }: DashboardLayoutProps) {
   void skipSupabaseAuth;
   const [clientName] = useState<string>("");
   const [loading] = useState(false);
@@ -155,7 +156,7 @@ export default function DashboardLayout({ children, skipSupabaseAuth }: Dashboar
           <ContextPersistence />
         </Suspense>
         <Suspense fallback={null}>
-          <ClientIdWarningBanner />
+          {showClientIdWarning ? <ClientIdWarningBanner /> : null}
         </Suspense>
         {children}
       </main>

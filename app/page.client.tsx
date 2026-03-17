@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
-import { hasShopifyContextClient, getContextValueClient } from "@/lib/shopifyContext";
+import { hasShopifyContextClient, getContextValueClient, persistAppContextClient } from "@/lib/shopifyContext";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import {
   ResponsiveContainer,
@@ -1623,6 +1623,10 @@ export default function Home({
   const [adminAccessError, setAdminAccessError] = useState<string>("");
   const [clientName, setClientName] = useState<string>("");
   const [clientId, setClientId] = useState<string>(initialClientId || "");
+  useEffect(() => {
+    if (!clientId) return;
+    persistAppContextClient({ client_id: clientId });
+  }, [clientId]);
   const shopDomain = useMemo(
     () =>
       (
@@ -2289,7 +2293,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
         const effectiveShopDomain = (shopDomain || "").trim().toLowerCase();
         const effectiveClientId = String(cid || "").trim();
         if (!effectiveShopDomain && !effectiveClientId) {
-          console.error("[dashboard] Missing shop_domain/client_id for /api/data/daily-metrics. Skipping API request.");
+          console.warn("[dashboard] Missing shop_domain/client_id for /api/data/daily-metrics. Skipping API request.");
           if (!cancelled) setLoading(false);
           return;
         }
@@ -4100,7 +4104,10 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
   }
 
   return (
-    <DashboardLayout skipSupabaseAuth={Boolean(skipSupabaseAuth)}>
+    <DashboardLayout
+      skipSupabaseAuth={Boolean(skipSupabaseAuth)}
+      showClientIdWarning={!Boolean(initialClientId)}
+    >
       <PrintStyles />
       <div className="min-w-0 w-full max-w-[1400px] mx-auto px-6 py-6 md:py-8">
         <header className="no-print flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

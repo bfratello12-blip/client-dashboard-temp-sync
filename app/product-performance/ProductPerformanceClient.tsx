@@ -225,7 +225,7 @@ export default function ProductPerformanceClient() {
         const effectiveShopDomain = (resolvedShopDomain || shopDomain || "").trim().toLowerCase();
         const effectiveClientId = (contextClientId || "").trim();
         if (!effectiveShopDomain && !effectiveClientId) {
-          console.error("[product-performance] Missing shop domain/client_id in URL/session context. Skipping API request.");
+          console.warn("[product-performance] Missing shop domain/client_id in URL/session context. Skipping API request.");
           if (!isCancelled?.()) {
             setError("Missing shop domain/client_id in URL or session context");
           }

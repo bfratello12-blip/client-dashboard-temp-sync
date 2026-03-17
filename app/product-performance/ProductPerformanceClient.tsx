@@ -5,7 +5,7 @@ import { format, subDays } from "date-fns";
 import DashboardLayout from "@/components/DashboardLayout";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
-import { getStoredContextValueClient } from "@/lib/shopifyContext";
+import { getRuntimeContextValueClient } from "@/lib/shopifyContext";
 
 type ProductPerfRow = {
   variant_id: string;
@@ -121,13 +121,13 @@ function HeaderTooltip({ text, align = "center" }: { text: string; align?: "cent
 
 export default function ProductPerformanceClient() {
   const shopDomain = (
-    getStoredContextValueClient("shop") ||
-    getStoredContextValueClient("shop_domain") ||
+    getRuntimeContextValueClient("shop") ||
+    getRuntimeContextValueClient("shop_domain") ||
     ""
   )
     .trim()
     .toLowerCase();
-  const contextClientId = getStoredContextValueClient("client_id").trim();
+  const contextClientId = getRuntimeContextValueClient("client_id").trim();
   const [resolvedShopDomain, setResolvedShopDomain] = useState<string>(shopDomain);
 
   useEffect(() => {
@@ -222,9 +222,9 @@ export default function ProductPerformanceClient() {
       try {
         const effectiveShopDomain = (resolvedShopDomain || shopDomain || "").trim().toLowerCase();
         if (!effectiveShopDomain) {
-          console.error("[product-performance] Missing shop domain in URL/session context. Skipping API request.");
+          console.error("[product-performance] Missing shop domain context. API request not sent.");
           if (!isCancelled?.()) {
-            setError("Missing shop domain in URL or session context");
+            setError("Missing shop domain context");
           }
           return;
         }

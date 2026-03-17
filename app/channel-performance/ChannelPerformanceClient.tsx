@@ -5,7 +5,7 @@ import { format, subDays } from "date-fns";
 import DashboardLayout from "@/components/DashboardLayout";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
-import { getStoredContextValueClient } from "@/lib/shopifyContext";
+import { getRuntimeContextValueClient } from "@/lib/shopifyContext";
 import ScatterCorrelationChart from "@/components/ScatterCorrelationChart";
 import { MultiSeriesEventfulLineChart } from "@/app/page.client";
 
@@ -165,13 +165,13 @@ function ChannelChart({
 
 export default function ChannelPerformanceClient() {
   const shopDomain = (
-    getStoredContextValueClient("shop") ||
-    getStoredContextValueClient("shop_domain") ||
+    getRuntimeContextValueClient("shop") ||
+    getRuntimeContextValueClient("shop_domain") ||
     ""
   )
     .trim()
     .toLowerCase();
-  const contextClientId = getStoredContextValueClient("client_id").trim();
+  const contextClientId = getRuntimeContextValueClient("client_id").trim();
   const [resolvedShopDomain, setResolvedShopDomain] = useState<string>(shopDomain);
 
   useEffect(() => {
@@ -227,9 +227,9 @@ export default function ChannelPerformanceClient() {
       try {
         const effectiveShopDomain = (resolvedShopDomain || shopDomain || "").trim().toLowerCase();
         if (!effectiveShopDomain) {
-          console.error("[channel-performance] Missing shop domain in URL/session context. Skipping API request.");
+          console.error("[channel-performance] Missing shop domain context. API request not sent.");
           if (!cancelled) {
-            setError("Missing shop domain in URL or session context");
+            setError("Missing shop domain context");
             setLoading(false);
           }
           return;

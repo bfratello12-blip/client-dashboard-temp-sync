@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
-import { getStoredContextValueClient, hasShopifyContextClient } from "@/lib/shopifyContext";
+import { getRuntimeContextValueClient, hasShopifyContextClient } from "@/lib/shopifyContext";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import {
   ResponsiveContainer,
@@ -1625,8 +1625,8 @@ export default function Home({
   const shopDomain = useMemo(
     () =>
       (
-        getStoredContextValueClient("shop") ||
-        getStoredContextValueClient("shop_domain") ||
+        getRuntimeContextValueClient("shop") ||
+        getRuntimeContextValueClient("shop_domain") ||
         ""
       )
         .trim()
@@ -1635,11 +1635,11 @@ export default function Home({
   );
   const settingsHref = useMemo(() => {
     const qs = new URLSearchParams();
-    const shop = getStoredContextValueClient("shop").trim();
-    const shopDomain = getStoredContextValueClient("shop_domain").trim();
+    const shop = getRuntimeContextValueClient("shop").trim();
+    const shopDomain = getRuntimeContextValueClient("shop_domain").trim();
     const effectiveShopDomain = shopDomain || shop;
-    const host = getStoredContextValueClient("host").trim();
-    const embedded = getStoredContextValueClient("embedded").trim();
+    const host = getRuntimeContextValueClient("host").trim();
+    const embedded = getRuntimeContextValueClient("embedded").trim();
 
     if (shop) qs.set("shop", shop);
     if (effectiveShopDomain) qs.set("shop_domain", effectiveShopDomain);
@@ -2286,7 +2286,7 @@ const { data: clientRow } = await supabase.from("clients").select("name").eq("id
       let metricData: DailyMetricRow[] = [];
       try {
         if (!shopDomain) {
-          console.error("[dashboard] Missing shop_domain for /api/data/daily-metrics. Skipping API request.");
+          console.error("[dashboard] Missing shop_domain context for /api/data/daily-metrics. API request not sent.");
           if (!cancelled) setLoading(false);
           return;
         }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   getPersistedAppContextClient,
+  getRuntimeContextValueClient,
   getStoredContextValueClient,
   onAppContextUpdatedClient,
   persistAppContextClient,
@@ -10,7 +11,7 @@ import {
 
 export default function useClientId() {
   const [clientId, setClientId] = useState<string | null>(() => {
-    const storedClientId = getStoredContextValueClient("client_id");
+    const storedClientId = getRuntimeContextValueClient("client_id");
     const persisted = getPersistedAppContextClient();
     const shop = String(persisted.shop_domain || persisted.shop || "").trim().toLowerCase();
     return storedClientId || (shop ? null : "");
@@ -29,7 +30,7 @@ export default function useClientId() {
     let cancelled = false;
 
     const run = async () => {
-      const storedClientId = getStoredContextValueClient("client_id");
+      const storedClientId = getRuntimeContextValueClient("client_id");
       if (storedClientId) {
         if (!cancelled) setClientId(storedClientId);
         return;

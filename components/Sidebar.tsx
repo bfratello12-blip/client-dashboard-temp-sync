@@ -7,7 +7,7 @@ import { LayoutDashboard, Package, TrendingUp, Settings, Shield } from "lucide-r
 import { type User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import useClientId from "@/hooks/useClientId";
-import { getStoredContextValueClient } from "@/lib/shopifyContext";
+import { getRuntimeContextValueClient } from "@/lib/shopifyContext";
 
 interface SidebarProps {
   clientName: string;
@@ -82,12 +82,12 @@ export default function Sidebar({
   const withClientId = React.useCallback(
     (path: string) => {
       const qs = new URLSearchParams();
-      const shop = getStoredContextValueClient("shop").trim();
-      const shopDomain = getStoredContextValueClient("shop_domain").trim();
+      const shop = getRuntimeContextValueClient("shop").trim();
+      const shopDomain = getRuntimeContextValueClient("shop_domain").trim();
       const effectiveShopDomain = shopDomain || shop;
-      const host = getStoredContextValueClient("host").trim();
-      const embedded = getStoredContextValueClient("embedded").trim();
-      const contextClientId = getStoredContextValueClient("client_id").trim();
+      const host = getRuntimeContextValueClient("host").trim();
+      const embedded = getRuntimeContextValueClient("embedded").trim();
+      const contextClientId = getRuntimeContextValueClient("client_id").trim();
 
       if (shop) qs.set("shop", shop);
       if (effectiveShopDomain) qs.set("shop_domain", effectiveShopDomain);

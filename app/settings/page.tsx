@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import {
+  getRuntimeContextValueClient,
   getStoredContextValueClient,
   hasShopifyContextClient,
   getPersistedAppContextClient,
@@ -113,15 +114,15 @@ function SettingsPage() {
   const shopDomainParam = useMemo(
     () =>
       (
-        getStoredContextValueClient("shop") ||
-        getStoredContextValueClient("shop_domain") ||
+        getRuntimeContextValueClient("shop") ||
+        getRuntimeContextValueClient("shop_domain") ||
         ""
       )
         .trim()
         .toLowerCase(),
     []
   );
-  const contextClientId = getStoredContextValueClient("client_id").trim();
+  const contextClientId = getRuntimeContextValueClient("client_id").trim();
   const [resolvedShopDomain, setResolvedShopDomain] = useState<string>(shopDomainParam);
   const effectiveShopDomain = (shopDomainParam || resolvedShopDomain || "").trim().toLowerCase();
 

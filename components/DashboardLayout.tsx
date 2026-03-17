@@ -6,6 +6,7 @@ import Sidebar from "@/components/Sidebar";
 import useClientId from "@/hooks/useClientId";
 import {
   captureAppContextFromSearchParamsClient,
+  getRuntimeContextValueClient,
   getStoredContextValueClient,
   hasShopifyContextClient,
   persistAppContextClient,
@@ -18,7 +19,7 @@ interface DashboardLayoutProps {
 
 function ClientIdWarningBanner() {
   const clientId = useClientId();
-  const shop = (getStoredContextValueClient("shop_domain") || getStoredContextValueClient("shop") || "").trim();
+  const shop = (getRuntimeContextValueClient("shop_domain") || getRuntimeContextValueClient("shop") || "").trim();
   if (clientId || shop || hasShopifyContextClient()) return null;
 
   return (
@@ -48,7 +49,7 @@ function ContextPersistence() {
     const persistedShopDomain = getStoredContextValueClient("shop_domain").trim();
     if (persistedShopDomain) return;
 
-    const cid = getStoredContextValueClient("client_id").trim();
+    const cid = getRuntimeContextValueClient("client_id").trim();
     if (!cid) return;
 
     let cancelled = false;

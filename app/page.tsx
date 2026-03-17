@@ -100,9 +100,18 @@ export default async function Page({
   const cookieStore = await cookies();
   const cookieShopRaw = !shopParam ? cookieStore.get("sa_shop")?.value || "" : "";
   const cookieShop = normalizeShopDomain(cookieShopRaw);
+  const pinnedClientId = String(process.env.DEFAULT_CLIENT_ID || "").trim();
 
   // Admin access path: only when explicit client_id is present and request is not in Shopify embedded context.
   const embeddedSignalsPresent = Boolean(shopParam || hostParam || idToken || headerShop);
+  if (pinnedClientId && !embeddedSignalsPresent && adminClientId !== pinnedClientId) {
+    const qs = new URLSearchParams();
+    qs.set("client_id", pinnedClientId);
+    const normalizedShopDomainParam = normalizeShopDomain(shopDomainParam);
+    if (normalizedShopDomainParam) qs.set("shop_domain", normalizedShopDomainParam);
+    redirect(`/?${qs.toString()}`);
+  }
+
   if (adminClientId && !embeddedSignalsPresent) {
     return <AdminClientAccessGate clientId={adminClientId} />;
   }
@@ -162,6 +171,9 @@ export default async function Page({
   if (!shopGuess) {
     if (hasShopifyContext) {
       return <ShopifyBootstrap host={hostParam} />;
+    }
+    if (pinnedClientId) {
+      return <HomeClient initialClientId={pinnedClientId} />;
     }
     // Non-embedded website path:
     // If a Supabase user session exists, route to that user's first mapped client shop_domain.

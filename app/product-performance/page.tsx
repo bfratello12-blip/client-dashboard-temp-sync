@@ -59,6 +59,16 @@ export default async function ProductPerformancePage({
       : Array.isArray(embeddedRaw)
       ? embeddedRaw[0]
       : "";
+  const pinnedClientId = String(process.env.DEFAULT_CLIENT_ID || "").trim();
+  const embeddedSignalsPresent = Boolean(shop || shopDomain || host || embedded === "1");
+
+  if (pinnedClientId && !embeddedSignalsPresent && clientId !== pinnedClientId) {
+    const qs = new URLSearchParams();
+    qs.set("client_id", pinnedClientId);
+    const normalizedShopDomain = normalizeShopDomain(shop || shopDomain);
+    if (normalizedShopDomain) qs.set("shop_domain", normalizedShopDomain);
+    redirect(`/product-performance?${qs.toString()}`);
+  }
 
   const normalizedShop = normalizeShopDomain(shop || shopDomain);
   if (!clientId && normalizedShop) {

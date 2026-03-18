@@ -332,29 +332,48 @@ export default function ProductPerformanceClient() {
 
   return (
     <DashboardLayout>
-      <div className="p-6 md:p-8 min-w-0">
-        <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900">Product Performance</h1>
-            <p className="mt-1 text-slate-600">Products with sales in the selected date range</p>
-            <p className="mt-1 text-sm text-slate-500">Sorted by profit by default.</p>
+      <div className="min-w-0 p-6 md:p-8">
+        <header className="relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-900 p-6 text-white shadow-[0_24px_60px_-28px_rgba(2,6,23,0.9)] md:p-8">
+          <div className="pointer-events-none absolute -top-24 -right-10 h-56 w-56 rounded-full bg-emerald-300/20 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-20 left-1/3 h-52 w-52 rounded-full bg-cyan-400/20 blur-3xl" />
+          <div className="relative flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+              <div className="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-100">
+                Profitability Insights
+              </div>
+              <h1 className="mt-3 text-3xl font-bold tracking-tight text-white md:text-4xl">Product Performance</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-200">Products with sales in the selected date range. Ranked by profit contribution by default.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-right">
+              <div className="rounded-xl border border-white/20 bg-white/10 px-3 py-2.5 backdrop-blur-sm">
+                <div className="text-[11px] uppercase tracking-wide text-slate-300">Products</div>
+                <div className="text-lg font-semibold tabular-nums text-white">{summary.productsAnalyzed.toLocaleString()}</div>
+              </div>
+              <div className="rounded-xl border border-white/20 bg-white/10 px-3 py-2.5 backdrop-blur-sm">
+                <div className="text-[11px] uppercase tracking-wide text-slate-300">Profit Covered</div>
+                <div className="text-lg font-semibold tabular-nums text-white">{formatCurrency(summary.profitCovered)}</div>
+              </div>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
+        </header>
+
+        <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_10px_30px_-20px_rgba(15,23,42,0.35)]">
+          <div className="flex flex-wrap items-center gap-3 md:gap-4">
             <input
               type="search"
-              className="w-64 rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm text-slate-700 placeholder:text-slate-400"
+              className="h-10 w-64 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-700 shadow-sm placeholder:text-slate-400 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
               placeholder="Search products, SKU, or variant ID"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
             <button
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              className="h-10 rounded-xl border border-slate-300 bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
               disabled={syncingInventory}
               onClick={handleInventorySync}
             >
               {syncingInventory ? "Syncing…" : "Sync Inventory"}
             </button>
-            {syncMessage ? <span className="text-xs text-slate-500">{syncMessage}</span> : null}
+            {syncMessage ? <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">{syncMessage}</span> : null}
             <DateRangePicker
               value={rangeValue}
               onChange={setRangeValue}
@@ -362,9 +381,9 @@ export default function ProductPerformanceClient() {
               availableMaxISO={undefined}
             />
           </div>
-        </header>
+        </section>
 
-        <section className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+        <section className="mt-6 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_12px_35px_-20px_rgba(15,23,42,0.35)]">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             {([
               { key: "all", label: "All Products" },
@@ -379,9 +398,9 @@ export default function ProductPerformanceClient() {
                 type="button"
                 onClick={() => setActiveFilter(chip.key)}
                 className={[
-                  "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                  "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
                   activeFilter === chip.key
-                    ? "border-slate-500 bg-slate-100 text-slate-800"
+                    ? "border-slate-700 bg-slate-900 text-white"
                     : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
                 ].join(" ")}
               >
@@ -390,67 +409,67 @@ export default function ProductPerformanceClient() {
             ))}
           </div>
           <div className="mb-4 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-shadow hover:shadow-md">
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-[0_10px_24px_-20px_rgba(15,23,42,0.35)] transition-shadow hover:shadow-md">
               <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
                 Products analyzed
               </div>
-              <div className="mt-1 text-lg font-semibold text-slate-900">
+              <div className="mt-1 text-lg font-semibold tabular-nums text-slate-900">
                 {summary.productsAnalyzed.toLocaleString()}
               </div>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-shadow hover:shadow-md">
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-[0_10px_24px_-20px_rgba(15,23,42,0.35)] transition-shadow hover:shadow-md">
               <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
                 Revenue covered
               </div>
-              <div className="mt-1 text-lg font-semibold text-slate-900">
+              <div className="mt-1 text-lg font-semibold tabular-nums text-slate-900">
                 {formatCurrency(summary.revenueCovered)}
               </div>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-shadow hover:shadow-md">
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-[0_10px_24px_-20px_rgba(15,23,42,0.35)] transition-shadow hover:shadow-md">
               <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
                 Profit covered
               </div>
               <div
                 className={[
-                  "mt-1 text-lg font-semibold",
+                  "mt-1 text-lg font-semibold tabular-nums",
                   summary.profitCovered >= 0 ? "text-emerald-700" : "text-rose-700",
                 ].join(" ")}
               >
                 {formatCurrency(summary.profitCovered)}
               </div>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-shadow hover:shadow-md">
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-[0_10px_24px_-20px_rgba(15,23,42,0.35)] transition-shadow hover:shadow-md">
               <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
                 Avg margin
               </div>
               <div
                 className={[
-                  "mt-1 text-lg font-semibold",
+                  "mt-1 text-lg font-semibold tabular-nums",
                   summary.avgMarginPct >= 0 ? "text-slate-900" : "text-rose-700",
                 ].join(" ")}
               >
                 {formatPct1(summary.avgMarginPct)}
               </div>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-shadow hover:shadow-md">
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-[0_10px_24px_-20px_rgba(15,23,42,0.35)] transition-shadow hover:shadow-md">
               <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
                 % of Revenue
               </div>
-              <div className="mt-1 text-lg font-semibold text-slate-900">
+              <div className="mt-1 text-lg font-semibold tabular-nums text-slate-900">
                 {formatPct1(summary.revenueCoveragePct)}
               </div>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-shadow hover:shadow-md">
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-[0_10px_24px_-20px_rgba(15,23,42,0.35)] transition-shadow hover:shadow-md">
               <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
                 % of Profit
               </div>
-              <div className="mt-1 text-lg font-semibold text-slate-900">
+              <div className="mt-1 text-lg font-semibold tabular-nums text-slate-900">
                 {formatPct1(summary.profitCoveragePct)}
               </div>
             </div>
           </div>
-          <div className="overflow-x-auto">
-            <div className="mb-2 text-xs text-slate-500">
+          <div className="overflow-x-auto rounded-2xl border border-slate-200">
+            <div className="border-b border-slate-200 bg-slate-50/80 px-3 py-2 text-xs font-medium text-slate-500">
               {(() => {
                 const filterActive = searchTerm.trim().length > 0 || activeFilter !== "all";
                 if (filterActive) {
@@ -459,11 +478,11 @@ export default function ProductPerformanceClient() {
                 return `Showing ${rows.length} of ${pagination.total} products with sales`;
               })()}
             </div>
-            <table className="w-full text-sm">
+            <table className="w-full bg-white text-sm">
               <thead>
-                <tr className="text-left text-slate-600">
-                  <th className="sticky top-0 z-10 bg-white border-b border-slate-200 px-3 py-2">Product</th>
-                  <th className="sticky top-0 z-10 bg-white border-b border-slate-200 px-3 py-2 text-center">
+                <tr className="text-left text-[12px] font-semibold text-slate-600">
+                  <th className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-3 py-2.5 backdrop-blur">Product</th>
+                  <th className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-3 py-2.5 text-center backdrop-blur">
                     <span className="inline-flex items-center">
                       <button className="inline-flex items-center" onClick={() => handleSort("units")}>
                         Units{sortIndicator("units")}
@@ -471,7 +490,7 @@ export default function ProductPerformanceClient() {
                       <HeaderTooltip text="Units sold in the selected date range." />
                     </span>
                   </th>
-                  <th className="sticky top-0 z-10 bg-white border-b border-slate-200 px-3 py-2 text-center">
+                  <th className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-3 py-2.5 text-center backdrop-blur">
                     <span className="inline-flex items-center">
                       <button className="inline-flex items-center" onClick={() => handleSort("units_per_day")}>
                         Units/Day{sortIndicator("units_per_day")}
@@ -479,7 +498,7 @@ export default function ProductPerformanceClient() {
                       <HeaderTooltip text="Average units sold per day in the selected date range." />
                     </span>
                   </th>
-                  <th className="sticky top-0 z-10 bg-white border-b border-slate-200 px-3 py-2 text-center">
+                  <th className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-3 py-2.5 text-center backdrop-blur">
                     <span className="inline-flex items-center">
                       <button className="inline-flex items-center" onClick={() => handleSort("revenue")}>
                         Revenue{sortIndicator("revenue")}
@@ -487,7 +506,7 @@ export default function ProductPerformanceClient() {
                       <HeaderTooltip text="Total product revenue in the selected date range." />
                     </span>
                   </th>
-                  <th className="sticky top-0 z-10 bg-white border-b border-slate-200 px-3 py-2 text-center">
+                  <th className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-3 py-2.5 text-center backdrop-blur">
                     <span className="inline-flex items-center">
                       <button className="inline-flex items-center" onClick={() => handleSort("revenue_share_pct")}>
                         Rev Share{sortIndicator("revenue_share_pct")}
@@ -495,7 +514,7 @@ export default function ProductPerformanceClient() {
                       <HeaderTooltip text="This product’s share of total store revenue for the selected date range." />
                     </span>
                   </th>
-                  <th className="sticky top-0 z-10 bg-white border-b border-slate-200 px-3 py-2 text-center">
+                  <th className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-3 py-2.5 text-center backdrop-blur">
                     <span className="inline-flex items-center">
                       <button className="inline-flex items-center" onClick={() => handleSort("est_cogs")}>
                         Est. COGS{sortIndicator("est_cogs")}
@@ -503,7 +522,7 @@ export default function ProductPerformanceClient() {
                       <HeaderTooltip text="Estimated cost of goods sold based on known unit costs and fallback margin settings." />
                     </span>
                   </th>
-                  <th className="sticky top-0 z-10 bg-white border-b border-slate-200 px-3 py-2 text-center">
+                  <th className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-3 py-2.5 text-center backdrop-blur">
                     <span className="inline-flex items-center">
                       <button className="inline-flex items-center" onClick={() => handleSort("profit")}>
                         Profit{sortIndicator("profit")}
@@ -511,7 +530,7 @@ export default function ProductPerformanceClient() {
                       <HeaderTooltip text="Revenue minus estimated cost of goods sold." />
                     </span>
                   </th>
-                  <th className="sticky top-0 z-10 bg-white border-b border-slate-200 px-3 py-2 text-center">
+                  <th className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-3 py-2.5 text-center backdrop-blur">
                     <span className="inline-flex items-center">
                       <button className="inline-flex items-center" onClick={() => handleSort("profit_per_unit")}>
                         Profit / Unit{sortIndicator("profit_per_unit")}
@@ -519,7 +538,7 @@ export default function ProductPerformanceClient() {
                       <HeaderTooltip text="Average profit earned per unit sold." />
                     </span>
                   </th>
-                  <th className="sticky top-0 z-10 bg-white border-b border-slate-200 px-3 py-2 text-center">
+                  <th className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-3 py-2.5 text-center backdrop-blur">
                     <span className="inline-flex items-center">
                       <button className="inline-flex items-center" onClick={() => handleSort("profit_margin_pct")}>
                         Margin{sortIndicator("profit_margin_pct")}
@@ -527,7 +546,7 @@ export default function ProductPerformanceClient() {
                       <HeaderTooltip text="Profit as a percentage of revenue." />
                     </span>
                   </th>
-                  <th className="sticky top-0 z-10 bg-white border-b border-slate-200 px-3 py-2 text-center">
+                  <th className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-3 py-2.5 text-center backdrop-blur">
                     <span className="inline-flex items-center">
                       <button className="inline-flex items-center" onClick={() => handleSort("trend_pct")}>
                         Trend{sortIndicator("trend_pct")}
@@ -535,7 +554,7 @@ export default function ProductPerformanceClient() {
                       <HeaderTooltip text="Revenue change compared with the previous matching date range." />
                     </span>
                   </th>
-                  <th className="sticky top-0 z-10 bg-white border-b border-slate-200 px-3 py-2 text-center">
+                  <th className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-3 py-2.5 text-center backdrop-blur">
                     <span className="inline-flex items-center">
                       <button className="inline-flex items-center" onClick={() => handleSort("days_of_inventory")}>
                         Inventory{sortIndicator("days_of_inventory")}
@@ -543,7 +562,7 @@ export default function ProductPerformanceClient() {
                       <HeaderTooltip text="Estimated days of inventory remaining, with current units on hand shown in parentheses." />
                     </span>
                   </th>
-                  <th className="sticky top-0 z-10 bg-white border-b border-slate-200 px-3 py-2 text-center">
+                  <th className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-3 py-2.5 text-center backdrop-blur">
                     <span className="inline-flex items-center">
                       <button className="inline-flex items-center" onClick={() => handleSort("cogs_coverage_pct")}>
                         COGS Coverage{sortIndicator("cogs_coverage_pct")}
@@ -580,11 +599,11 @@ export default function ProductPerformanceClient() {
                     <tr
                       key={`${row.variant_id}-${row.inventory_item_id}`}
                       className={[
-                        "hover:bg-slate-50 transition-colors border-b border-slate-200 last:border-b-0",
+                        "border-b border-slate-100 transition-colors hover:bg-slate-50/90 last:border-b-0 even:bg-slate-50/30",
                         Number(row.profit || 0) < 0 ? "bg-rose-50" : "",
                       ].join(" ")}
                     >
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2.5">
                         <a
                           href={row.admin_variant_url || row.admin_product_url || undefined}
                           target="_blank"
@@ -609,27 +628,27 @@ export default function ProductPerformanceClient() {
                           </div>
                         </a>
                       </td>
-                      <td className="px-3 py-2 text-center text-slate-700">{Number(row.units || 0).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-center text-slate-700">{Number(row.units_per_day || 0).toFixed(1)}</td>
-                      <td className="px-3 py-2 text-center text-slate-700">{formatCurrency(Number(row.revenue || 0))}</td>
-                      <td className="px-3 py-2 text-center text-slate-700">{formatPct1(Number(row.revenue_share_pct || 0))}</td>
-                      <td className="px-3 py-2 text-center text-slate-700">{formatCurrency(Number(row.est_cogs || 0))}</td>
-                      <td className="px-3 py-2 text-center font-semibold">
+                      <td className="px-3 py-2.5 text-center tabular-nums text-slate-700">{Number(row.units || 0).toLocaleString()}</td>
+                      <td className="px-3 py-2.5 text-center tabular-nums text-slate-700">{Number(row.units_per_day || 0).toFixed(1)}</td>
+                      <td className="px-3 py-2.5 text-center tabular-nums text-slate-700">{formatCurrency(Number(row.revenue || 0))}</td>
+                      <td className="px-3 py-2.5 text-center tabular-nums text-slate-700">{formatPct1(Number(row.revenue_share_pct || 0))}</td>
+                      <td className="px-3 py-2.5 text-center tabular-nums text-slate-700">{formatCurrency(Number(row.est_cogs || 0))}</td>
+                      <td className="px-3 py-2.5 text-center font-semibold tabular-nums">
                         <span className={getValueColor(Number(row.profit || 0))}>
                           {formatCurrency(Number(row.profit || 0))}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-center">
+                      <td className="px-3 py-2.5 text-center tabular-nums">
                         <span className={getValueColor(Number(row.profit_per_unit || 0))}>
                           {formatCurrency(Number(row.profit_per_unit || 0))}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-center">
+                      <td className="px-3 py-2.5 text-center tabular-nums">
                         <span className={getValueColor(Number(row.profit_margin_pct || 0))}>
                           {formatPct1(Number(row.profit_margin_pct || 0))}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-center">
+                      <td className="px-3 py-2.5 text-center">
                         {(() => {
                           const t = trendLabel(Number(row.trend_pct || 0));
                           return (
@@ -641,7 +660,7 @@ export default function ProductPerformanceClient() {
                       </td>
                       <td
                         className={[
-                          "px-3 py-2 text-center",
+                          "px-3 py-2.5 text-center tabular-nums",
                           row.days_of_inventory == null
                             ? "text-slate-500"
                             : row.days_of_inventory <= 7
@@ -664,7 +683,7 @@ export default function ProductPerformanceClient() {
                           return "—";
                         })()}
                       </td>
-                      <td className="px-3 py-2 text-center text-slate-700">{formatPct1(Number(row.cogs_coverage_pct || 0))}</td>
+                      <td className="px-3 py-2.5 text-center tabular-nums text-slate-700">{formatPct1(Number(row.cogs_coverage_pct || 0))}</td>
                     </tr>
                   ))
                 )}
@@ -675,14 +694,14 @@ export default function ProductPerformanceClient() {
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
               <div className="flex items-center gap-2">
                 <button
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1 disabled:opacity-50"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 font-medium disabled:opacity-50"
                   disabled={page <= 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
                   Previous
                 </button>
                 <button
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1 disabled:opacity-50"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 font-medium disabled:opacity-50"
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 >
@@ -693,7 +712,7 @@ export default function ProductPerformanceClient() {
               <div className="flex items-center gap-2">
                 <span>Rows</span>
                 <select
-                  className="rounded-lg border border-slate-200 bg-white px-2 py-1"
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 font-medium"
                   value={pageSize}
                   onChange={(e) => setPageSize(Number(e.target.value))}
                 >

@@ -451,9 +451,9 @@ function DualLineTooltip({
   const delta = pVal - cVal;
   const deltaPct = cVal === 0 ? (pVal === 0 ? 0 : 999) : ((pVal - cVal) / cVal) * 100;
   return (
-    <div className="rounded-lg bg-slate-900/95 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur">
+    <div className="rounded-xl border border-slate-700/70 bg-slate-950/95 text-white shadow-[0_20px_45px_-24px_rgba(2,6,23,0.95)] ring-1 ring-white/10 backdrop-blur">
       <div className="px-3 py-2">
-        <div className="text-[11px] text-slate-300">{dateLabel}</div>
+        <div className="text-[11px] font-medium text-slate-300">{dateLabel}</div>
         <div className="mt-2 space-y-1">
           <div className="flex items-center justify-between gap-4">
             <div className="text-[11px] text-slate-300">Primary</div>
@@ -465,7 +465,7 @@ function DualLineTooltip({
                 <div className="text-[11px] text-slate-300">{compareLabel}</div>
                 <div className="text-sm font-semibold text-slate-100">{valueFormatter(cVal)}</div>
               </div>
-              <div className="mt-2 rounded-md border border-white/10 bg-white/5 px-2 py-1">
+              <div className="mt-2 rounded-md border border-white/10 bg-white/10 px-2 py-1">
                 <div className="flex items-center justify-between gap-4">
                   <div className="text-[10px] text-slate-400">Δ</div>
                   <div className="text-xs font-semibold text-slate-100">
@@ -500,9 +500,9 @@ function MultiSeriesTooltip({
   const iso = Number.isFinite(ts) ? new Date(ts).toISOString().slice(0, 10) : "";
   const dateLabel = iso?.length === 10 ? `${mmdd(iso)} (${iso})` : String(label);
   return (
-    <div className="rounded-lg bg-slate-900/95 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur">
+    <div className="rounded-xl border border-slate-700/70 bg-slate-950/95 text-white shadow-[0_20px_45px_-24px_rgba(2,6,23,0.95)] ring-1 ring-white/10 backdrop-blur">
       <div className="px-3 py-2">
-        <div className="text-[11px] text-slate-300">{dateLabel}</div>
+        <div className="text-[11px] font-medium text-slate-300">{dateLabel}</div>
         <div className="mt-2 space-y-1">
           {payload
             .filter((p) => p && Number.isFinite(Number(p.value)))
@@ -686,15 +686,16 @@ function EventfulLineChart({
   return (
     <div
       ref={wrapRef}
-      className="relative w-full min-w-0 min-h-0 rounded-2xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white p-2 shadow-sm"
+      className="relative w-full min-w-0 min-h-0 overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-2.5 shadow-[0_16px_36px_-26px_rgba(15,23,42,0.5)]"
       style={{ height: `${height}px`, minHeight: `${height}px` }}
       onMouseLeave={clearHover}
       onPointerLeave={clearHover}
     >
-      <div className="pointer-events-none absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] [background-size:22px_22px] opacity-20" />
+      <div className="pointer-events-none absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_1px_1px,#dbe2ee_1px,transparent_0)] [background-size:24px_24px] opacity-25" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-cyan-50/65 to-transparent" />
       <SafeResponsiveContainer height={height} className="h-full w-full">
         <ComposedChart data={chartData} margin={{ top: 12, right: 20, left: 8, bottom: 8 }}>
-          <CartesianGrid stroke="#94a3b8" strokeDasharray="4 6" strokeOpacity={0.2} vertical={false} />
+          <CartesianGrid stroke="#94a3b8" strokeDasharray="3 6" strokeOpacity={0.24} vertical={false} />
           <defs>
             <radialGradient id="eventMarkerGradient" cx="30%" cy="30%" r="70%">
               <stop offset="0%" stopColor="#22c55e" />
@@ -702,13 +703,13 @@ function EventfulLineChart({
               <stop offset="100%" stopColor="#15803d" />
             </radialGradient>
             <linearGradient id={singleGradId} x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#60a5fa" stopOpacity={1} />
-              <stop offset="50%" stopColor="#2563eb" stopOpacity={0.85} />
-              <stop offset="100%" stopColor="#1d4ed8" stopOpacity={1} />
+              <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.95} />
+              <stop offset="45%" stopColor="#2563eb" stopOpacity={0.8} />
+              <stop offset="100%" stopColor="#1e40af" stopOpacity={1} />
             </linearGradient>
             <linearGradient id={`${singleGradId}-fill`} x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#2563eb" stopOpacity={0.4} />
-              <stop offset="50%" stopColor="#2563eb" stopOpacity={0.15} />
+              <stop offset="0%" stopColor="#1d4ed8" stopOpacity={0.34} />
+              <stop offset="45%" stopColor="#2563eb" stopOpacity={0.12} />
               <stop offset="100%" stopColor="#2563eb" stopOpacity={0} />
             </linearGradient>
             <linearGradient id={singleCompareGradId} x1="0%" y1="0%" x2="100%" y2="0%">
@@ -727,18 +728,18 @@ function EventfulLineChart({
             type="number"
             scale="time"
             domain={xDomain ?? ["dataMin", "dataMax"]}
-            tick={{ fontSize: 11, fill: "#94a3b8" }}
+            tick={{ fontSize: 11, fill: "#64748b" }}
             tickFormatter={(v) => mmdd(new Date(Number(v)).toISOString().slice(0, 10))}
             interval="preserveStartEnd"
             minTickGap={28}
             tickLine={false}
-            axisLine={{ stroke: "#e2e8f0", strokeOpacity: 0.35 }}
+            axisLine={{ stroke: "#cbd5e1", strokeOpacity: 0.45 }}
           />
           <YAxis 
-            tick={{ fontSize: 11, fill: "#94a3b8" }} 
+            tick={{ fontSize: 11, fill: "#64748b" }} 
             domain={yDomain as any} 
             tickLine={false}
-            axisLine={{ stroke: "#e2e8f0", strokeOpacity: 0.35 }}
+            axisLine={{ stroke: "#cbd5e1", strokeOpacity: 0.45 }}
             tickFormatter={(v) => {
               const n = Number(v);
               if (!isFinite(n)) return "";
@@ -761,7 +762,7 @@ function EventfulLineChart({
                 compareLabel={compareLabel}
               />
             )}
-            cursor={{ stroke: "#94a3b8", strokeDasharray: "4 6", strokeOpacity: 0.35 }}
+            cursor={{ stroke: "#64748b", strokeDasharray: "4 6", strokeOpacity: 0.45 }}
           />
           {/* shading */}
           {showMarkers &&
@@ -858,11 +859,13 @@ function EventfulLineChart({
               dataKey={yKey}
               data={compareChartData as any}
               stroke={`url(#${singleCompareGradId})`}
-              strokeWidth={1.8}
+              strokeWidth={1.4}
               dot={false}
               connectNulls
-              strokeDasharray="6 4"
-              opacity={0.65}
+              strokeDasharray="5 5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity={0.48}
             />
           )}
           {/* primary area fill */}
@@ -881,10 +884,14 @@ function EventfulLineChart({
               data={trendlineData as any}
               dataKey="trend"
               stroke="#94a3b8"
-              strokeWidth={1.5}
+              strokeWidth={1.1}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="5 4"
               dot={false}
               connectNulls
               isAnimationActive={false}
+              opacity={0.8}
             />
           ) : null}
           {/* primary line */}
@@ -892,10 +899,12 @@ function EventfulLineChart({
             type="linear"
             dataKey={yKey}
             stroke={`url(#${singleGradId})`}
-            strokeWidth={2.6}
+            strokeWidth={2.1}
             dot={false}
             connectNulls
-            activeDot={{ r: 5, stroke: "#1d4ed8", strokeWidth: 2, fill: "#f8fafc" }}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            activeDot={{ r: 4.5, stroke: "#1d4ed8", strokeWidth: 1.75, fill: "#f8fafc" }}
           />
         </ComposedChart>
       </SafeResponsiveContainer>
@@ -1068,18 +1077,19 @@ export function MultiSeriesEventfulLineChart({
   return (
     <div
       ref={wrapRef}
-      className="relative w-full min-w-0 min-h-0 rounded-2xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white p-2 shadow-sm"
+      className="relative w-full min-w-0 min-h-0 overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-2.5 shadow-[0_16px_36px_-26px_rgba(15,23,42,0.5)]"
       style={{ height: `${height}px`, minHeight: `${height}px` }}
       onMouseLeave={clearHover}
       onPointerLeave={clearHover}
     >
-      <div className="pointer-events-none absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] [background-size:22px_22px] opacity-20" />
+      <div className="pointer-events-none absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_1px_1px,#dbe2ee_1px,transparent_0)] [background-size:24px_24px] opacity-25" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-cyan-50/65 to-transparent" />
       <SafeResponsiveContainer height={height} className="h-full w-full">
         <ComposedChart
           data={chartData}
           margin={{ top: 12, right: 20, left: 8, bottom: 8 }}
         >
-          <CartesianGrid stroke="#94a3b8" strokeDasharray="4 6" strokeOpacity={0.2} vertical={false} />
+          <CartesianGrid stroke="#94a3b8" strokeDasharray="3 6" strokeOpacity={0.24} vertical={false} />
           <defs>
             <radialGradient id="eventMarkerGradient" cx="30%" cy="30%" r="70%">
               <stop offset="0%" stopColor="#22c55e" />
@@ -1106,18 +1116,18 @@ export function MultiSeriesEventfulLineChart({
             type={useDateAxis ? "category" : "number"}
             scale={useDateAxis ? "auto" : "time"}
             domain={useDateAxis ? undefined : xDomain}
-            tick={{ fontSize: 11, fill: "#94a3b8" }}
+            tick={{ fontSize: 11, fill: "#64748b" }}
             tickFormatter={(v) => (useDateAxis ? mmdd(toISO10(v)) : mmdd(new Date(Number(v)).toISOString().slice(0, 10)))}
             interval="preserveStartEnd"
             minTickGap={20}
             tickLine={false}
-            axisLine={{ stroke: "#e2e8f0", strokeOpacity: 0.35 }}
+            axisLine={{ stroke: "#cbd5e1", strokeOpacity: 0.45 }}
           />
           {dualYAxis ? (
             <>
               <YAxis
                 yAxisId="left"
-                tick={{ fontSize: 11, fill: "#94a3b8" }}
+                tick={{ fontSize: 11, fill: "#64748b" }}
                 domain={leftYDomain as any}
                 label={
                   (leftYAxisLabel || yAxisLabel)
@@ -1125,13 +1135,13 @@ export function MultiSeriesEventfulLineChart({
                         value: leftYAxisLabel || yAxisLabel,
                         angle: -90,
                         position: "insideLeft",
-                        fill: "#94a3b8",
+                        fill: "#64748b",
                         fontSize: 11,
                       }
                     : undefined
                 }
                 tickLine={false}
-                axisLine={{ stroke: "#e2e8f0", strokeOpacity: 0.35 }}
+                axisLine={{ stroke: "#cbd5e1", strokeOpacity: 0.45 }}
                 tickFormatter={(v) => {
                   const n = Number(v);
                   if (!isFinite(n)) return "";
@@ -1144,7 +1154,7 @@ export function MultiSeriesEventfulLineChart({
               <YAxis
                 yAxisId="right"
                 orientation="right"
-                tick={{ fontSize: 11, fill: "#94a3b8" }}
+                tick={{ fontSize: 11, fill: "#64748b" }}
                 domain={rightYDomain as any}
                 label={
                   rightYAxisLabel
@@ -1152,13 +1162,13 @@ export function MultiSeriesEventfulLineChart({
                         value: rightYAxisLabel,
                         angle: 90,
                         position: "insideRight",
-                        fill: "#94a3b8",
+                        fill: "#64748b",
                         fontSize: 11,
                       }
                     : undefined
                 }
                 tickLine={false}
-                axisLine={{ stroke: "#e2e8f0", strokeOpacity: 0.35 }}
+                axisLine={{ stroke: "#cbd5e1", strokeOpacity: 0.45 }}
                 tickFormatter={(v) => {
                   const n = Number(v);
                   if (!isFinite(n)) return "";
@@ -1171,15 +1181,15 @@ export function MultiSeriesEventfulLineChart({
             </>
           ) : (
             <YAxis
-              tick={{ fontSize: 11, fill: "#94a3b8" }}
+              tick={{ fontSize: 11, fill: "#64748b" }}
               domain={yDomain as any}
               label={
                 yAxisLabel
-                  ? { value: yAxisLabel, angle: -90, position: "insideLeft", fill: "#94a3b8", fontSize: 11 }
+                    ? { value: yAxisLabel, angle: -90, position: "insideLeft", fill: "#64748b", fontSize: 11 }
                   : undefined
               }
               tickLine={false}
-              axisLine={{ stroke: "#e2e8f0", strokeOpacity: 0.35 }}
+                  axisLine={{ stroke: "#cbd5e1", strokeOpacity: 0.45 }}
               tickFormatter={(v) => {
                 const n = Number(v);
                 if (!isFinite(n)) return "";
@@ -1203,15 +1213,15 @@ export function MultiSeriesEventfulLineChart({
                     />
                   )
             }
-            cursor={{ stroke: "#94a3b8", strokeDasharray: "4 6", strokeOpacity: 0.35 }}
+            cursor={{ stroke: "#64748b", strokeDasharray: "4 6", strokeOpacity: 0.45 }}
           />
           <Legend
             verticalAlign="top"
             align="right"
             iconType="circle"
             iconSize={8}
-            wrapperStyle={{ paddingBottom: 6 }}
-            formatter={(value) => <span className="text-xs text-slate-500">{value}</span>}
+            wrapperStyle={{ paddingBottom: 8 }}
+            formatter={(value) => <span className="text-xs font-medium text-slate-600">{value}</span>}
           />
           {/* Event markers */}
           {eventDotData.map((dot, i) => {
@@ -1278,11 +1288,13 @@ export function MultiSeriesEventfulLineChart({
               data={compareChartData as any}
               name={`${s.name} (${compareLabel})`}
               stroke={`url(#${strokeIds[s.key]})`}
-              strokeWidth={1.8}
+              strokeWidth={1.4}
               dot={false}
               connectNulls
-              strokeDasharray="6 4"
-              opacity={0.65}
+              strokeDasharray="5 5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity={0.48}
             />
           ))}
           {/* Primary area fills */}
@@ -1309,10 +1321,12 @@ export function MultiSeriesEventfulLineChart({
               yAxisId={dualYAxis ? (s.yAxisId || "left") : undefined}
               name={s.name}
               stroke={`url(#${strokeIds[s.key]})`}
-              strokeWidth={s.strokeWidth ?? 2.6}
+              strokeWidth={(s.strokeWidth ?? 2.8) * 0.75}
               dot={false}
               connectNulls
-              activeDot={{ r: 5, stroke: s.color, strokeWidth: 2, fill: "#f8fafc" }}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              activeDot={{ r: 4.5, stroke: s.color, strokeWidth: 1.75, fill: "#f8fafc" }}
             />
           ))}
         </ComposedChart>
@@ -4131,9 +4145,14 @@ export default function Home({
       showClientIdWarning={!Boolean(initialClientId)}
     >
       <PrintStyles />
-      <div className="min-w-0 w-full max-w-[1400px] mx-auto px-6 py-6 md:py-8">
-        <header className="no-print flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
+      <div className="relative mx-auto w-full max-w-[1440px] min-w-0 px-6 py-6 md:py-8">
+        <div className="pointer-events-none absolute -left-24 top-10 h-64 w-64 rounded-full bg-cyan-100/60 blur-3xl" />
+        <div className="pointer-events-none absolute right-0 top-0 h-72 w-72 rounded-full bg-emerald-100/60 blur-3xl" />
+        <header className="no-print relative overflow-hidden rounded-3xl border border-slate-200/80 bg-white/85 p-5 shadow-[0_24px_60px_-38px_rgba(15,23,42,0.45)] backdrop-blur md:p-6">
+          <div className="pointer-events-none absolute -top-20 right-0 h-52 w-52 rounded-full bg-gradient-to-br from-cyan-300/35 to-transparent blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-16 left-1/4 h-48 w-48 rounded-full bg-gradient-to-br from-emerald-300/30 to-transparent blur-3xl" />
+          <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">Media Dashboard</h1>
               <p className="mt-1 text-slate-600">Business-first view (Revenue, Orders, AOV, ASP) + ads as the lever</p>
               {effectiveShowComparison ? (
@@ -4145,7 +4164,7 @@ export default function Home({
                 <p className="mt-1 text-xs text-amber-700">Comparison hidden: {compareDisabledReason}</p>
               ) : null}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2.5">
               
               {/* Date Range Picker */}
               <DateRangePicker
@@ -4158,7 +4177,7 @@ export default function Home({
                 compareMode={compareModeSetting}
                 onCompareModeChange={setCompareModeSetting}
               />
-              <label className="flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-medium text-slate-700">
+              <label className="flex items-center gap-2 rounded-xl border border-slate-200/90 bg-white/95 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm">
                 <input type="checkbox" checked={showEventMarkers} onChange={(e) => setShowEventMarkers(e.target.checked)} />
                 Show event markers
               </label>
@@ -4167,11 +4186,12 @@ export default function Home({
                   await supabase.auth.signOut();
                   router.replace("/login");
                 }}
-                className="rounded-xl border bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                className="rounded-xl border border-slate-300 bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800"
               >
                 Logout
               </button>
             </div>
+          </div>
           </header>
           {/* North Star */}
           <section className="mt-6 overflow-hidden rounded-2xl border border-[#1f5fb8]/40 bg-gradient-to-br from-[#2B72D7] via-[#2568c8] to-[#1f5fb8] p-[1px] shadow-lg shadow-[#1f5fb8]/30">
@@ -4280,7 +4300,7 @@ export default function Home({
             })}
           </section>
           {/* Settings: Cost Inputs */}
-          <section className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <section className="mt-6 rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-[0_16px_40px_-28px_rgba(15,23,42,0.35)] backdrop-blur">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="text-base font-semibold text-slate-900">Costs & margins</div>
@@ -4388,7 +4408,7 @@ export default function Home({
           </section>
           {/* Event Performance */}
           {effectiveShowComparison && lift.hasCompare && lift.compare ? (
-            <section className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <section className="mt-6 rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-[0_16px_40px_-28px_rgba(15,23,42,0.35)] backdrop-blur">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">Event Performance</h2>
@@ -4960,7 +4980,8 @@ export default function Home({
           ) : null}
 {/* Spend + pie */}
           <section className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2 min-w-0 rounded-xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            <div className="relative min-w-0 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-[0_18px_44px_-30px_rgba(15,23,42,0.4)] lg:col-span-2">
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-cyan-50/70 to-transparent" />
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h2 className="mb-2 text-[15px] font-semibold text-slate-900">Ad Spend Trend</h2>
@@ -5039,7 +5060,8 @@ export default function Home({
                 ) : null}
               </ChartReadyWrapper>
             </div>
-            <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            <div className="relative min-w-0 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-[0_18px_44px_-30px_rgba(15,23,42,0.4)]">
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-cyan-50/70 to-transparent" />
               <div className="pb-4">
                 <div className="flex items-center gap-3">
                   <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
@@ -5341,7 +5363,8 @@ export default function Home({
             </div>
           </section>
           {/* Ad Attribution Over Time: ROAS vs True ROAS */}
-          <section className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+          <section className="relative mt-6 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-[0_18px_44px_-30px_rgba(15,23,42,0.4)]">
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-cyan-50/70 to-transparent" />
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h2 className="mb-2 text-[15px] font-semibold text-slate-900">Ad Attribution Over Time: ROAS vs True ROAS</h2>
@@ -5506,23 +5529,24 @@ function ChartCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-      <div className="flex items-start justify-between">
+    <div className="relative min-w-0 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-[0_18px_44px_-30px_rgba(15,23,42,0.4)]">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-cyan-50/70 to-transparent" />
+      <div className="relative flex items-start justify-between">
         <div>
           <h2 className="mb-2 text-[15px] font-semibold text-slate-900">{title}</h2>
           <p className="text-sm text-slate-600">{subtitle}</p>
         </div>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{badge}</span>
+        <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">{badge}</span>
       </div>
-      <div className="mt-3">{children}</div>
+      <div className="relative mt-3">{children}</div>
     </div>
   );
 }
 function MiniKPI({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
-      <div className="text-xs font-semibold text-slate-600">{label}</div>
-      <div className="mt-2 text-2xl font-bold text-slate-900">{value}</div>
+    <div className="rounded-xl border border-slate-200/80 bg-white/95 p-4 shadow-[0_12px_32px_-24px_rgba(15,23,42,0.35)]">
+      <div className="text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">{label}</div>
+      <div className="mt-2 text-2xl font-bold tabular-nums text-slate-900">{value}</div>
       {sub ? <div className="mt-1 text-xs text-slate-500">{sub}</div> : null}
     </div>
   );

@@ -137,11 +137,11 @@ export default function Sidebar({
         <img
           src="/ScaleAble_Logo1.svg"
           alt="ScaleAble"
-          className="h-10-auto max-w-[220px] object-contain"
+          className="h-auto max-w-[150px] object-contain"
         />
         <div className="sr-only text-xl font-semibold text-slate-900">ScaleAble</div>
       </div>
-      <div className="mt-1 text-s text-slate-500">Client Portal</div>
+      <div className="mt-1 text-[11px] text-slate-500">Client Portal</div>
 
       <nav className="mt-8 space-y-1">
         <NavItem href={withClientId("/")} active={pathname === "/"} label="Dashboard" icon={<LayoutDashboard size={18} />} />

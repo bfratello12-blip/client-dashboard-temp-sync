@@ -69,19 +69,20 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+    <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-4 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.45)]">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-cyan-50/70 to-transparent" />
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold text-slate-900">{label}</div>
+          <div className="text-sm font-semibold tracking-tight text-slate-900">{label}</div>
           {help ? <div className="mt-1 text-xs text-slate-500">{help}</div> : null}
         </div>
         {rightHint ? (
-          <div className="shrink-0 rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+          <div className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
             {rightHint}
           </div>
         ) : null}
       </div>
-      <div className="mt-3">{children}</div>
+      <div className="relative mt-3">{children}</div>
     </div>
   );
 }
@@ -880,21 +881,29 @@ function SettingsPage() {
 
   return (
     <DashboardLayout skipSupabaseAuth={hasShopifyContextClient()}>
-      <div className="mx-auto flex max-w-[1400px] gap-6 px-6 py-8">
+      <div className="relative mx-auto flex max-w-[1400px] gap-6 px-6 py-8">
+        <div className="pointer-events-none absolute -left-24 top-20 h-64 w-64 rounded-full bg-cyan-100/60 blur-3xl" />
+        <div className="pointer-events-none absolute -right-10 top-0 h-72 w-72 rounded-full bg-emerald-100/60 blur-3xl" />
         <div className="mx-auto max-w-4xl">
-          <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <div className="text-sm font-semibold text-slate-900">Settings</div>
-              <div className="mt-1 text-sm text-slate-600">
+          <header className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-white/90 p-5 shadow-[0_24px_60px_-38px_rgba(15,23,42,0.45)] backdrop-blur sm:p-6">
+            <div className="pointer-events-none absolute -top-20 right-0 h-52 w-52 rounded-full bg-gradient-to-br from-cyan-300/35 to-transparent blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-14 left-1/4 h-44 w-44 rounded-full bg-gradient-to-br from-emerald-300/30 to-transparent blur-3xl" />
+            <div className="relative flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <div className="inline-flex rounded-full border border-slate-200 bg-white/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-700">
+                  Configuration
+                </div>
+                <div className="mt-2 text-2xl font-bold tracking-tight text-slate-900">Settings</div>
+                <div className="mt-1 text-sm text-slate-600">
                 Configure how ScaleAble calculates profit and how your data is refreshed.
+                </div>
               </div>
-            </div>
 
-            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
               <button
                 onClick={syncAllPlatforms}
                 disabled={syncing}
-                className={`rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 ${
+                className={`rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 ${
                   syncing ? "cursor-not-allowed opacity-60" : ""
                 }`}
                 title="Pull latest Meta, Google, and Shopify data"
@@ -904,31 +913,32 @@ function SettingsPage() {
               <button
                 onClick={save}
                 disabled={saving || !clientId}
-                className="rounded-xl bg-gradient-to-b from-[#2B72D7] to-[#1f5fb8] px-4 py-2 text-sm font-semibold text-white hover:bg-gradient-to-b hover:from-[#1f5fb8] hover:to-[#1a4a9a] disabled:opacity-50"
+                className="rounded-xl bg-gradient-to-b from-[#2B72D7] to-[#1f5fb8] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_20px_-12px_rgba(31,95,184,0.9)] transition hover:from-[#1f5fb8] hover:to-[#1a4a9a] disabled:opacity-50"
               >
                 {saving ? "Saving & Updating…" : "Save changes"}
               </button>
             </div>
+            </div>
           </header>
 
           {saveError ? (
-            <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{saveError}</div>
+            <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50/90 p-3 text-sm text-rose-800 shadow-sm">{saveError}</div>
           ) : null}
           {saveSuccess ? (
-            <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+            <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/90 p-3 text-sm text-emerald-800 shadow-sm">
               {saveSuccess}
             </div>
           ) : null}
           {syncError ? (
-            <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{syncError}</div>
+            <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50/90 p-3 text-sm text-rose-800 shadow-sm">{syncError}</div>
           ) : null}
           {shopifyAuthWarning ? (
-            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/90 p-3 text-sm text-amber-800 shadow-sm">
               {shopifyAuthWarning}
             </div>
           ) : null}
 
-          <section className="mt-6">
+          <section className="mt-6 rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-[0_18px_44px_-30px_rgba(15,23,42,0.4)]">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <div className="text-base font-semibold text-slate-900">Integrations</div>
@@ -948,7 +958,7 @@ function SettingsPage() {
             ) : null}
 
             <div className="mt-4 space-y-3">
-              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">Google Ads</div>
                   <div className="mt-1 text-xs text-slate-500">Paid search spend and conversions.</div>
@@ -983,7 +993,7 @@ function SettingsPage() {
                     <button
                       onClick={startGoogleOAuth}
                       disabled={!clientId}
-                      className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
+                      className={`rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-sm transition ${
                         !clientId ? "cursor-not-allowed bg-slate-300" : "bg-blue-600 hover:bg-blue-700"
                       }`}
                     >
@@ -993,7 +1003,7 @@ function SettingsPage() {
                     <button
                       onClick={startGoogleOAuth}
                       disabled={!clientId}
-                      className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
+                      className={`rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-sm transition ${
                         !clientId ? "cursor-not-allowed bg-slate-300" : "bg-blue-600 hover:bg-blue-700"
                       }`}
                     >
@@ -1004,7 +1014,7 @@ function SettingsPage() {
               </div>
 
               {integrationStatus?.google?.hasToken && !integrationStatus?.google?.customerId ? (
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
                   <div className="text-sm font-semibold text-slate-900">Select Google Ads Account</div>
                   <div className="mt-1 text-xs text-slate-500">
                     Choose the account to sync for this client.
@@ -1021,7 +1031,7 @@ function SettingsPage() {
                       value={googleSelectedAccountId}
                       onChange={(e) => setGoogleSelectedAccountId(e.target.value)}
                       disabled={googleAccountsLoading || googleAccounts.length === 0}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 sm:max-w-md"
+                      className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200 sm:max-w-md"
                     >
                       {googleAccountsLoading ? (
                         <option>Loading accounts…</option>
@@ -1051,7 +1061,7 @@ function SettingsPage() {
                 </div>
               ) : null}
 
-              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">Meta Ads</div>
                   <div className="mt-1 text-xs text-slate-500">Paid social spend and conversions.</div>
@@ -1089,7 +1099,7 @@ function SettingsPage() {
                     <button
                       onClick={startMetaOAuth}
                       disabled={!clientId}
-                      className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
+                      className={`rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-sm transition ${
                         !clientId ? "cursor-not-allowed bg-slate-300" : "bg-blue-600 hover:bg-blue-700"
                       }`}
                     >
@@ -1100,7 +1110,7 @@ function SettingsPage() {
               </div>
 
               {integrationStatus?.meta?.hasToken && !integrationStatus?.meta?.accountId ? (
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
                   <div className="text-sm font-semibold text-slate-900">Select Meta Ad Account</div>
                   <div className="mt-1 text-xs text-slate-500">
                     Choose the ad account to sync for this client.
@@ -1117,7 +1127,7 @@ function SettingsPage() {
                       value={metaSelectedAccountId}
                       onChange={(e) => setMetaSelectedAccountId(e.target.value)}
                       disabled={metaAccountsLoading || metaAccounts.length === 0}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 sm:max-w-md"
+                      className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200 sm:max-w-md"
                     >
                       {metaAccountsLoading ? (
                         <option>Loading accounts…</option>
@@ -1149,7 +1159,7 @@ function SettingsPage() {
             </div>
           </section>
 
-          <section className="mt-6">
+          <section className="mt-6 rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-[0_18px_44px_-30px_rgba(15,23,42,0.4)]">
             <div className="text-base font-semibold text-slate-900">Costs & margins</div>
             <div className="mt-1 text-sm text-slate-500">
               These inputs power Contribution Profit and Profit Return on Costs. Leave blank if you don’t know it yet.
@@ -1163,7 +1173,7 @@ function SettingsPage() {
               >
                 <div className="space-y-3">
                   {/* Option 1: Shopify unit costs */}
-                  <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white p-3 hover:bg-slate-50">
+                  <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm transition hover:bg-slate-50">
                     <input
                       type="checkbox"
                       checked={productCostMode === "shopify"}
@@ -1211,7 +1221,7 @@ function SettingsPage() {
                   </label>
 
                   {/* Option 2: Estimates */}
-                  <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white p-3 hover:bg-slate-50">
+                  <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm transition hover:bg-slate-50">
                     <input
                       type="checkbox"
                       checked={productCostMode === "estimate"}
@@ -1233,7 +1243,7 @@ function SettingsPage() {
                       </div>
 
                       {productCostMode === "estimate" ? (
-                        <div className="mt-3 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                        <div className="mt-3 rounded-2xl border border-slate-200/80 bg-slate-50/80 p-4 shadow-inner">
                           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <label className="text-xs font-semibold text-slate-700">
                               Fallback gross margin (%) — used when Shopify unit cost is missing
@@ -1241,7 +1251,7 @@ function SettingsPage() {
                                 value={formatPct(costs.default_gross_margin_pct)}
                                 onChange={(e) => setCS("default_gross_margin_pct", e.target.value)}
                                 inputMode="decimal"
-                                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                                className="mt-1 w-full rounded-xl border border-slate-300/90 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
                                 placeholder="e.g. 55"
                               />
                               <div className="mt-1 text-[11px] text-slate-500">
@@ -1255,7 +1265,7 @@ function SettingsPage() {
                                 value={costs.avg_cogs_per_unit ?? ""}
                                 onChange={(e) => setCS("avg_cogs_per_unit", e.target.value)}
                                 inputMode="decimal"
-                                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                                className="mt-1 w-full rounded-xl border border-slate-300/90 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
                                 placeholder="e.g. 18.50"
                               />
                               <div className="mt-1 text-[11px] text-slate-500">
@@ -1269,7 +1279,7 @@ function SettingsPage() {
                   </label>
 
                   {productCostMode === "shopify" ? (
-                    <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-600 ring-1 ring-slate-200">
+                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 text-xs text-slate-600 shadow-inner">
                       <div className="text-xs font-semibold text-slate-700">Fallback gross margin (%) (optional)</div>
                       <div className="mt-1 text-[11px] text-slate-500">
                         Used only when a product is missing a Shopify unit cost.
@@ -1278,7 +1288,7 @@ function SettingsPage() {
                         value={formatPct(costs.default_gross_margin_pct)}
                         onChange={(e) => setCS("default_gross_margin_pct", e.target.value)}
                         inputMode="decimal"
-                        className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                        className="mt-2 w-full rounded-xl border border-slate-300/90 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
                         placeholder="e.g. 55"
                       />
                     </div>
@@ -1297,7 +1307,7 @@ function SettingsPage() {
                       value={formatPct(costs.processing_fee_pct)}
                       onChange={(e) => setCS("processing_fee_pct", e.target.value)}
                       inputMode="decimal"
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                      className="mt-1 w-full rounded-xl border border-slate-300/90 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
                       placeholder="e.g. 2.9"
                     />
                   </label>
@@ -1308,7 +1318,7 @@ function SettingsPage() {
                       value={costs.processing_fee_fixed ?? ""}
                       onChange={(e) => setCS("processing_fee_fixed", e.target.value)}
                       inputMode="decimal"
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                      className="mt-1 w-full rounded-xl border border-slate-300/90 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
                       placeholder="e.g. 0.30"
                     />
                   </label>
@@ -1326,7 +1336,7 @@ function SettingsPage() {
                       value={costs.pick_pack_per_order ?? ""}
                       onChange={(e) => setCS("pick_pack_per_order", e.target.value)}
                       inputMode="decimal"
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                      className="mt-1 w-full rounded-xl border border-slate-300/90 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
                       placeholder="e.g. 2.25"
                     />
                   </label>
@@ -1337,7 +1347,7 @@ function SettingsPage() {
                       value={costs.shipping_subsidy_per_order ?? ""}
                       onChange={(e) => setCS("shipping_subsidy_per_order", e.target.value)}
                       inputMode="decimal"
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                      className="mt-1 w-full rounded-xl border border-slate-300/90 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
                       placeholder="e.g. 4.00"
                     />
                   </label>
@@ -1348,7 +1358,7 @@ function SettingsPage() {
                       value={costs.materials_per_order ?? ""}
                       onChange={(e) => setCS("materials_per_order", e.target.value)}
                       inputMode="decimal"
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                      className="mt-1 w-full rounded-xl border border-slate-300/90 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
                       placeholder="e.g. 0.75"
                     />
                   </label>
@@ -1366,7 +1376,7 @@ function SettingsPage() {
                       value={formatPct(costs.other_variable_pct_revenue)}
                       onChange={(e) => setCS("other_variable_pct_revenue", e.target.value)}
                       inputMode="decimal"
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                      className="mt-1 w-full rounded-xl border border-slate-300/90 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
                       placeholder="e.g. 1.0"
                     />
                   </label>
@@ -1377,7 +1387,7 @@ function SettingsPage() {
                       value={costs.other_fixed_per_day ?? ""}
                       onChange={(e) => setCS("other_fixed_per_day", e.target.value)}
                       inputMode="decimal"
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                      className="mt-1 w-full rounded-xl border border-slate-300/90 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
                       placeholder="e.g. 25"
                     />
                   </label>
@@ -1388,7 +1398,7 @@ function SettingsPage() {
                       value={formatPct(costs.margin_after_costs_pct)}
                       onChange={(e) => setCS("margin_after_costs_pct", e.target.value)}
                       inputMode="decimal"
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                      className="mt-1 w-full rounded-xl border border-slate-300/90 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
                       placeholder="optional"
                     />
                     <div className="mt-1 text-[11px] text-slate-500">
@@ -1400,7 +1410,7 @@ function SettingsPage() {
             </div>
           </section>
 
-          <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-5">
+          <section className="mt-8 rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-[0_18px_44px_-30px_rgba(15,23,42,0.4)]">
             <div className="text-base font-semibold text-slate-900">Coming soon</div>
             <div className="mt-1 text-sm text-slate-500">
               Good future Settings candidates for ScaleAble:

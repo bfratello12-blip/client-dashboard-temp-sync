@@ -200,7 +200,7 @@ async function fetchGoogleCampaignMetrics(cfg: GoogleCfg, startDay: string, endD
   const gaql = `
     SELECT
       segments.date,
-      segments.campaign_id,
+      campaign.id,
       campaign.name,
       metrics.clicks,
       metrics.impressions,
@@ -209,7 +209,6 @@ async function fetchGoogleCampaignMetrics(cfg: GoogleCfg, startDay: string, endD
       metrics.conversions_value
     FROM campaign
     WHERE segments.date BETWEEN '${startDay}' AND '${endDay}'
-      AND campaign.status = 'ENABLED'
   `.trim();
 
   const customer = encodeURIComponent(normalizeCustomerId(cfg.customerId));
@@ -246,7 +245,7 @@ async function fetchGoogleCampaignMetrics(cfg: GoogleCfg, startDay: string, endD
   for (const s of streams) {
     for (const r of s.results ?? []) {
       const day = r.segments?.date;
-      const campaignId = String(r.segments?.campaignId ?? r.segments?.campaign_id ?? "").trim();
+      const campaignId = String(r.campaign?.id ?? "").trim();
       const campaignName = String(r.campaign?.name ?? "").trim() || `Campaign ${campaignId}`;
 
       if (!day || !campaignId) continue;
@@ -413,6 +412,8 @@ export async function GET(req: NextRequest) {
       await upsertDailyMetrics(rows);
       daysWritten += rows.length;
 
+      let campaignRowsWritten = 0;
+
       // Fetch and sync campaign-level metrics
       try {
         const byCampaignDay = await fetchGoogleCampaignMetrics(cfg, startDay, endDay);
@@ -442,13 +443,17 @@ export async function GET(req: NextRequest) {
 
         if (campaignRows.length > 0) {
           await upsertDailyCampaignMetrics(campaignRows);
+          campaignRowsWritten = campaignRows.length;
         }
       } catch (campaignErr: any) {
-        // Log campaign sync errors but don't fail the whole sync
-        console.warn(`Campaign metrics sync failed for ${clientId}:`, campaignErr?.message);
+        errors.push({
+          client_id: clientId,
+          phase: "campaign_sync",
+          error: campaignErr?.message || String(campaignErr),
+        });
       }
 
-      results.push({ client_id: clientId, days: rows.length, status: "ok" });
+      results.push({ client_id: clientId, days: rows.length, campaignRowsWritten, status: "ok" });
     } catch (e: any) {
       errors.push({ client_id: clientId, error: e?.message || String(e) });
 
@@ -469,6 +474,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const hasErrors = errors.length > 0;
   return NextResponse.json({
     ok: true,
     source: "google",
@@ -478,7 +484,7 @@ export async function GET(req: NextRequest) {
     daysWritten,
     errors,
     results,
-  });
+  }, { status: hasErrors && Boolean(clientIdFilter) ? 500 : 200 });
 }
 
 export async function POST(req: NextRequest) {

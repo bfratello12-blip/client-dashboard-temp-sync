@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireCronAuth } from "@/lib/cronAuth";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,6 +41,7 @@ function parseWindow(req: NextRequest, body: any | null) {
   const fillZerosRaw = (body?.fillZeros ?? sp.get("fillZeros") ?? "0").toString();
   const fillZeros = fillZerosRaw === "1" || fillZerosRaw.toLowerCase() === "true";
   const client_id = (body?.client_id ?? sp.get("client_id") ?? "").toString().trim() || undefined;
+  const shop_domain = (body?.shop_domain ?? sp.get("shop_domain") ?? "").toString().trim().toLowerCase() || undefined;
 
   // default: last 30 days ending yesterday (UTC)
   const today = new Date();
@@ -56,7 +58,7 @@ function parseWindow(req: NextRequest, body: any | null) {
     throw new Error(`Invalid start/end. Expected YYYY-MM-DD. Got start=${startISO} end=${endISO}`);
   }
 
-  return { startISO, endISO, fillZeros, client_id };
+  return { startISO, endISO, fillZeros, client_id, shop_domain };
 }
 
 function dateRangeInclusive(startISO: string, endISO: string): string[] {
@@ -226,8 +228,8 @@ async function fetchMetaCampaignInsightsDailyRange(args: {
   const apiVersion = process.env.META_API_VERSION || "v21.0";
 
   const fields = [
-    "id",
-    "name",
+    "campaign_id",
+    "campaign_name",
     "date_start",
     "spend",
     "impressions",
@@ -283,8 +285,8 @@ async function fetchMetaCampaignInsightsDailyRange(args: {
       const day = String(row?.date_start || "").slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
 
-      const campaignId = String(row?.id || "").trim();
-      const campaignName = String(row?.name || "").trim() || `Campaign ${campaignId}`;
+      const campaignId = String(row?.campaign_id ?? row?.id ?? "").trim();
+      const campaignName = String(row?.campaign_name ?? row?.name ?? "").trim() || `Campaign ${campaignId}`;
       if (!campaignId) continue;
 
       const spend = Number(row?.spend ?? 0) || 0;
@@ -376,11 +378,17 @@ async function handler(req: NextRequest) {
   if (auth) return auth;
 
   const body = req.method === "POST" ? await req.json().catch(() => null) : null;
-  const { startISO, endISO, fillZeros, client_id } = parseWindow(req, body);
+  const { startISO, endISO, fillZeros, client_id, shop_domain } = parseWindow(req, body);
 
-  const supabaseUrl = process.env.SUPABASE_URL;
+  const clientIdFromShop = shop_domain ? await resolveClientIdFromShopDomainParam(shop_domain) : null;
+  if (shop_domain && !clientIdFromShop) {
+    return NextResponse.json({ ok: false, error: "Shop not installed" }, { status: 401 });
+  }
+  const clientIdFilter = String(client_id || clientIdFromShop || "").trim() || undefined;
+
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl) throw new Error("SUPABASE_URL is required.");
+  if (!supabaseUrl) throw new Error("SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL is required.");
   if (!serviceRole) throw new Error("SUPABASE_SERVICE_ROLE_KEY is required.");
 
   const supabase = createClient(supabaseUrl, serviceRole, { auth: { persistSession: false } });
@@ -390,15 +398,15 @@ async function handler(req: NextRequest) {
     .select("client_id, provider, status, meta_ad_account_id, meta_access_token")
     .eq("provider", "meta");
 
-  if (client_id) q = q.eq("client_id", client_id);
+  if (clientIdFilter) q = q.eq("client_id", clientIdFilter);
 
   const { data: integrations, error: integErr } = await q;
   if (integErr) return NextResponse.json({ ok: false, error: integErr.message }, { status: 500 });
 
-  if (client_id) {
+  if (clientIdFilter) {
     const row = (integrations ?? [])[0] as any;
     if (!row?.meta_ad_account_id) {
-      console.warn("Meta sync skipped: no meta_ad_account_id", { client_id });
+      console.warn("Meta sync skipped: no meta_ad_account_id", { client_id: clientIdFilter });
       return NextResponse.json({
         ok: true,
         source: "meta",
@@ -496,8 +504,11 @@ async function handler(req: NextRequest) {
           await upsertDailyCampaignMetrics(supabase, campaignRows);
         }
       } catch (campaignErr: any) {
-        // Log campaign sync errors but don't fail the whole sync
-        console.warn(`Campaign metrics sync failed for ${clientId}:`, campaignErr?.message);
+        errors.push({
+          client_id: clientId,
+          phase: "campaign_sync",
+          error: campaignErr?.message || String(campaignErr),
+        });
       }
 
       results.push({ client_id: clientId, status: "ok", daysReturned: byDay.size });
@@ -507,6 +518,7 @@ async function handler(req: NextRequest) {
     }
   }
 
+  const hasErrors = errors.length > 0;
   return NextResponse.json({
     ok: true,
     source: "meta",
@@ -518,7 +530,7 @@ async function handler(req: NextRequest) {
     zerosInserted,
     errors,
     results,
-  });
+  }, { status: hasErrors && Boolean(clientIdFilter) ? 500 : 200 });
 }
 
 export async function GET(req: NextRequest) {

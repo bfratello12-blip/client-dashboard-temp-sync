@@ -111,7 +111,15 @@ function SourceBadge({ source }: { source: string }) {
 
 export default function CampaignPerformanceClient() {
   const searchParams = useSearchParams();
-  const shopDomain = searchParams.get("shop_domain") || "";
+  const shopDomain = (
+    getContextValueClient(searchParams as any, "shop") ||
+    getContextValueClient(searchParams as any, "shop_domain") ||
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  const contextClientId = getContextValueClient(searchParams as any, "client_id").trim();
+  const [resolvedShopDomain, setResolvedShopDomain] = useState<string>(shopDomain);
 
   const [range, setRange] = useState<RangeValue | null>(null);
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
@@ -120,6 +128,35 @@ export default function CampaignPerformanceClient() {
   const [sortKey, setSortKey] = useState<SortKey>("revenue");
   const [sortAsc, setSortAsc] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<string>("");
+
+  useEffect(() => {
+    if (!shopDomain) return;
+    setResolvedShopDomain(shopDomain);
+  }, [shopDomain]);
+
+  useEffect(() => {
+    if (shopDomain || resolvedShopDomain || !contextClientId) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/client/context?client_id=${encodeURIComponent(contextClientId)}`, {
+          cache: "no-store",
+        });
+        const json = await res.json().catch(() => ({}));
+        const recovered = String(json?.shop_domain || "").trim().toLowerCase();
+        if (!cancelled && res.ok && json?.ok && recovered) {
+          setResolvedShopDomain(recovered);
+        }
+      } catch {
+        // no-op
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shopDomain, resolvedShopDomain, contextClientId]);
 
   useEffect(() => {
     setRange(last30DaysRange());
@@ -133,13 +170,22 @@ export default function CampaignPerformanceClient() {
       setError("");
 
       try {
-        const url = new URL("/api/data/campaign-performance", window.location.origin);
-        url.searchParams.set("start", range.startISO);
-        url.searchParams.set("end", range.endISO);
-        if (shopDomain) url.searchParams.set("shop_domain", shopDomain);
-        if (sourceFilter) url.searchParams.set("source", sourceFilter);
+        const effectiveShopDomain = (resolvedShopDomain || shopDomain || "").trim().toLowerCase();
+        const effectiveClientId = contextClientId.trim();
+        if (!effectiveShopDomain && !effectiveClientId) {
+          setError("Missing shop domain/client_id in URL or session context");
+          setCampaigns([]);
+          return;
+        }
 
-        const res = await fetch(url.toString(), { cache: "no-store" });
+        const params = new URLSearchParams();
+        params.set("start", range.startISO);
+        params.set("end", range.endISO);
+        if (effectiveShopDomain) params.set("shop_domain", effectiveShopDomain);
+        if (effectiveClientId) params.set("client_id", effectiveClientId);
+        if (sourceFilter) params.set("source", sourceFilter);
+
+        const res = await authenticatedFetch(`/api/data/campaign-performance?${params.toString()}`);
         const payload = await res.json().catch(() => ({}));
 
         if (!res.ok || !payload?.ok) {
@@ -155,7 +201,7 @@ export default function CampaignPerformanceClient() {
     };
 
     fetchCampaigns();
-  }, [range, shopDomain, sourceFilter]);
+  }, [range, shopDomain, resolvedShopDomain, contextClientId, sourceFilter]);
 
   const sorted = useMemo(() => {
     const filtered = sourceFilter
@@ -190,7 +236,7 @@ export default function CampaignPerformanceClient() {
     }
   };
 
-  if (!shopDomain) {
+  if (!resolvedShopDomain && !contextClientId) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center min-h-screen">

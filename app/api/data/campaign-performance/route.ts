@@ -103,8 +103,6 @@ export async function GET(req: NextRequest) {
         roas: number;
         cpc: number;
         ctr: number;
-        profit: number;
-        profit_margin_pct: number;
       }
     >();
 
@@ -124,8 +122,6 @@ export async function GET(req: NextRequest) {
         roas: 0,
         cpc: 0,
         ctr: 0,
-        profit: 0,
-        profit_margin_pct: 0,
       };
 
       existing.days += 1;
@@ -144,16 +140,12 @@ export async function GET(req: NextRequest) {
       const roas = c.spend > 0 ? c.revenue / c.spend : 0;
       const cpc = c.clicks > 0 ? c.spend / c.clicks : 0;
       const ctr = c.impressions > 0 ? (c.clicks / c.impressions) * 100 : 0;
-      const profit = c.revenue - c.spend;
-      const profit_margin_pct = c.revenue > 0 ? (profit / c.revenue) * 100 : 0;
 
       return {
         ...c,
         roas: Number(roas.toFixed(2)),
         cpc: Number(cpc.toFixed(2)),
         ctr: Number(ctr.toFixed(2)),
-        profit: Number(profit.toFixed(2)),
-        profit_margin_pct: Number(profit_margin_pct.toFixed(1)),
       };
     });
 

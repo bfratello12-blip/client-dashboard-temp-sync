@@ -37,8 +37,6 @@ type CampaignRow = {
   roas: number;
   cpc: number;
   ctr: number;
-  profit: number;
-  profit_margin_pct: number;
 };
 
 type SortKey = keyof CampaignRow;
@@ -60,29 +58,8 @@ function formatCurrencyDetail(n: number) {
   });
 }
 
-function formatPct(n: number) {
-  return `${(n * 100).toFixed(1)}%`;
-}
-
-function getLabelForMetric(key: SortKey): string {
-  const labels: Record<SortKey, string> = {
-    campaign_name: "Campaign",
-    campaign_id: "Campaign ID",
-    source: "Source",
-    days: "Days",
-    spend: "Spend",
-    revenue: "Revenue",
-    clicks: "Clicks",
-    impressions: "Impressions",
-    conversions: "Conversions",
-    conversion_value: "Conv. Value",
-    roas: "ROAS",
-    cpc: "CPC",
-    ctr: "CTR (%)",
-    profit: "Profit",
-    profit_margin_pct: "Margin %",
-  };
-  return labels[key] || String(key);
+function formatCompact(n: number) {
+  return Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
 
 function last30DaysRange() {
@@ -97,16 +74,20 @@ function last30DaysRange() {
 }
 
 function SourceBadge({ source }: { source: string }) {
-  const bgColor =
+  const tone =
     source === "google"
-      ? "bg-blue-100 text-blue-800"
+      ? "border-blue-200 bg-blue-50 text-blue-700"
       : source === "meta"
-        ? "bg-purple-100 text-purple-800"
-        : "bg-slate-100 text-slate-800";
+        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+        : "border-slate-200 bg-slate-50 text-slate-700";
 
   const label = source === "google" ? "Google Ads" : source === "meta" ? "Meta" : source;
 
-  return <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${bgColor}`}>{label}</span>;
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${tone}`}>
+      {label}
+    </span>
+  );
 }
 
 export default function CampaignPerformanceClient() {
@@ -227,6 +208,22 @@ export default function CampaignPerformanceClient() {
     return Array.from(set).sort();
   }, [campaigns]);
 
+  const summary = useMemo(() => {
+    const totalSpend = campaigns.reduce((acc, row) => acc + Number(row.spend || 0), 0);
+    const totalRevenue = campaigns.reduce((acc, row) => acc + Number(row.revenue || 0), 0);
+    const totalClicks = campaigns.reduce((acc, row) => acc + Number(row.clicks || 0), 0);
+    const totalImpressions = campaigns.reduce((acc, row) => acc + Number(row.impressions || 0), 0);
+    const blendedRoas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
+    return {
+      campaigns: campaigns.length,
+      totalSpend,
+      totalRevenue,
+      totalClicks,
+      blendedRoas,
+      ctr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
+    };
+  }, [campaigns]);
+
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
       setSortAsc(!sortAsc);
@@ -248,32 +245,57 @@ export default function CampaignPerformanceClient() {
 
   return (
     <DashboardLayout>
-      <div className="flex flex-col gap-6 p-6">
-        {/* Header */}
-        <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-bold text-slate-900">Campaign Performance</h1>
-          <p className="text-slate-600">
-            Track performance metrics across all Google Ads and Meta campaigns
-          </p>
-        </div>
+      <div className="relative mx-auto flex max-w-[1440px] flex-col gap-6 px-6 py-8">
+        <div className="pointer-events-none absolute -left-20 top-10 h-64 w-64 rounded-full bg-cyan-100/60 blur-3xl" />
+        <div className="pointer-events-none absolute -right-16 top-0 h-72 w-72 rounded-full bg-emerald-100/55 blur-3xl" />
 
-        {/* Controls */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          {range && (
-            <DateRangePicker
-              value={range}
-              onChange={setRange}
-            />
-          )}
+        <header className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-white/90 p-6 shadow-[0_24px_64px_-34px_rgba(15,23,42,0.45)] backdrop-blur">
+          <div className="pointer-events-none absolute -right-10 -top-16 h-48 w-48 rounded-full bg-gradient-to-br from-cyan-300/30 to-transparent blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-12 left-1/4 h-40 w-40 rounded-full bg-gradient-to-br from-emerald-300/30 to-transparent blur-3xl" />
 
-          {sources.length > 0 && (
-            <div className="flex gap-2">
+          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="inline-flex rounded-full border border-slate-200 bg-white/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-700">
+                Growth Analytics
+              </div>
+              <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-900">Campaign Performance</h1>
+              <p className="mt-2 max-w-2xl text-sm text-slate-600">
+                Performance trends by campaign, with platform-native revenue definitions for Google Ads and Meta.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 shadow-sm">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Campaigns</div>
+                <div className="mt-1 text-xl font-semibold text-slate-900">{formatCompact(summary.campaigns)}</div>
+              </div>
+              <div className="rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 shadow-sm">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Spend</div>
+                <div className="mt-1 text-xl font-semibold text-slate-900">{formatCurrency(summary.totalSpend)}</div>
+              </div>
+              <div className="rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 shadow-sm">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Revenue</div>
+                <div className="mt-1 text-xl font-semibold text-slate-900">{formatCurrency(summary.totalRevenue)}</div>
+              </div>
+              <div className="rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 shadow-sm">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Blended ROAS</div>
+                <div className="mt-1 text-xl font-semibold text-slate-900">{summary.blendedRoas.toFixed(2)}x</div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-[0_18px_44px_-30px_rgba(15,23,42,0.4)]">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            {range ? <DateRangePicker value={range} onChange={setRange} /> : null}
+
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => setSourceFilter("")}
-                className={`px-3 py-1 rounded-lg text-sm font-medium transition ${
+                className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
                   sourceFilter === ""
-                    ? "bg-blue-600 text-white"
-                    : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                    ? "bg-slate-900 text-white"
+                    : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
                 }`}
               >
                 All Sources
@@ -282,101 +304,84 @@ export default function CampaignPerformanceClient() {
                 <button
                   key={src}
                   onClick={() => setSourceFilter(src)}
-                  className={`px-3 py-1 rounded-lg text-sm font-medium transition ${
+                  className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
                     sourceFilter === src
-                      ? "bg-blue-600 text-white"
-                      : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                      ? "bg-slate-900 text-white"
+                      : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
                   }`}
                 >
                   {src === "google" ? "Google" : "Meta"}
                 </button>
               ))}
             </div>
-          )}
-        </div>
-
-        {/* Error */}
-        {error && (
-          <div className="rounded-lg bg-red-50 border border-red-200 p-4">
-            <p className="text-red-700 text-sm">{error}</p>
           </div>
-        )}
+        </section>
 
-        {/* Loading */}
-        {loading && (
+        {error ? (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50/90 p-3 text-sm text-rose-800 shadow-sm">
+            {error}
+          </div>
+        ) : null}
+
+        {loading ? (
           <div className="flex justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div className="h-9 w-9 animate-spin rounded-full border-2 border-slate-300 border-b-slate-800" />
           </div>
-        )}
+        ) : null}
 
-        {/* Campaign Table */}
-        {!loading && sorted.length > 0 && (
-          <div className="rounded-lg border border-slate-200 bg-white overflow-hidden shadow-sm">
+        {!loading && sorted.length > 0 ? (
+          <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 shadow-[0_18px_44px_-30px_rgba(15,23,42,0.4)]">
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="min-w-[980px] w-full">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50">
-                    <th className="px-4 py-3 text-left">
-                      <button
-                        onClick={() => toggleSort("campaign_name")}
-                        className="font-semibold text-slate-700 hover:text-slate-900 text-sm"
-                      >
+                  <tr className="bg-slate-50/95 text-slate-700">
+                    <th className="sticky top-0 border-b border-slate-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide">
+                      <button onClick={() => toggleSort("campaign_name")} className="transition hover:text-slate-900">
                         Campaign {sortKey === "campaign_name" && (sortAsc ? "↑" : "↓")}
                       </button>
                     </th>
-                    <th className="px-4 py-3 text-left">
-                      <button
-                        onClick={() => toggleSort("source")}
-                        className="font-semibold text-slate-700 hover:text-slate-900 text-sm"
-                      >
+                    <th className="sticky top-0 border-b border-slate-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide">
+                      <button onClick={() => toggleSort("source")} className="transition hover:text-slate-900">
                         Source {sortKey === "source" && (sortAsc ? "↑" : "↓")}
                       </button>
                     </th>
-                    <th className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => toggleSort("spend")}
-                        className="font-semibold text-slate-700 hover:text-slate-900 text-sm"
-                      >
+                    <th className="sticky top-0 border-b border-slate-200 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide">
+                      <button onClick={() => toggleSort("spend")} className="transition hover:text-slate-900">
                         Spend {sortKey === "spend" && (sortAsc ? "↑" : "↓")}
                       </button>
                     </th>
-                    <th className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => toggleSort("revenue")}
-                        className="font-semibold text-slate-700 hover:text-slate-900 text-sm"
-                      >
+                    <th className="sticky top-0 border-b border-slate-200 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide">
+                      <button onClick={() => toggleSort("revenue")} className="transition hover:text-slate-900">
                         Revenue {sortKey === "revenue" && (sortAsc ? "↑" : "↓")}
                       </button>
                     </th>
-                    <th className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => toggleSort("profit")}
-                        className="font-semibold text-slate-700 hover:text-slate-900 text-sm"
-                      >
-                        Profit {sortKey === "profit" && (sortAsc ? "↑" : "↓")}
-                      </button>
-                    </th>
-                    <th className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => toggleSort("roas")}
-                        className="font-semibold text-slate-700 hover:text-slate-900 text-sm"
-                      >
+                    <th className="sticky top-0 border-b border-slate-200 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide">
+                      <button onClick={() => toggleSort("roas")} className="transition hover:text-slate-900">
                         ROAS {sortKey === "roas" && (sortAsc ? "↑" : "↓")}
                       </button>
                     </th>
-                    <th className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => toggleSort("clicks")}
-                        className="font-semibold text-slate-700 hover:text-slate-900 text-sm"
-                      >
+                    <th className="sticky top-0 border-b border-slate-200 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide">
+                      <button onClick={() => toggleSort("clicks")} className="transition hover:text-slate-900">
                         Clicks {sortKey === "clicks" && (sortAsc ? "↑" : "↓")}
                       </button>
                     </th>
-                    <th className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => toggleSort("cpc")}
-                        className="font-semibold text-slate-700 hover:text-slate-900 text-sm"
-                      >
+                    <th className="sticky top-0 border-b border-slate-200 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide">
+                      <button onClick={() => toggleSort("impressions")} className="transition hover:text-slate-900">
+                        Impressions {sortKey === "impressions" && (sortAsc ? "↑" : "↓")}
+                      </button>
+                    </th>
+                    <th className="sticky top-0 border-b border-slate-200 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide">
+                      <button onClick={() => toggleSort("conversions")} className="transition hover:text-slate-900">
+                        Conversions {sortKey === "conversions" && (sortAsc ? "↑" : "↓")}
+                      </button>
+                    </th>
+                    <th className="sticky top-0 border-b border-slate-200 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide">
+                      <button onClick={() => toggleSort("ctr")} className="transition hover:text-slate-900">
+                        CTR {sortKey === "ctr" && (sortAsc ? "↑" : "↓")}
+                      </button>
+                    </th>
+                    <th className="sticky top-0 border-b border-slate-200 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide">
+                      <button onClick={() => toggleSort("cpc")} className="transition hover:text-slate-900">
                         CPC {sortKey === "cpc" && (sortAsc ? "↑" : "↓")}
                       </button>
                     </th>
@@ -386,48 +391,37 @@ export default function CampaignPerformanceClient() {
                   {sorted.map((row) => (
                     <tr
                       key={`${row.campaign_id}|${row.source}`}
-                      className="border-b border-slate-200 hover:bg-slate-50 transition"
+                      className="border-b border-slate-100/80 transition hover:bg-slate-50/70"
                     >
-                      <td className="px-4 py-3 text-sm font-medium text-slate-900">
-                        {row.campaign_name}
+                      <td className="px-4 py-3">
+                        <div className="text-sm font-semibold text-slate-900">{row.campaign_name}</div>
+                        <div className="text-xs text-slate-500">{row.campaign_id}</div>
                       </td>
                       <td className="px-4 py-3 text-sm">
                         <SourceBadge source={row.source} />
                       </td>
-                      <td className="px-4 py-3 text-sm text-right text-slate-700">
-                        {formatCurrency(row.spend)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-right text-slate-700">
-                        {formatCurrency(row.revenue)}
-                      </td>
-                      <td className={`px-4 py-3 text-sm text-right font-medium ${
-                        row.profit > 0 ? "text-green-700" : row.profit < 0 ? "text-red-700" : "text-slate-700"
-                      }`}>
-                        {formatCurrency(row.profit)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-right text-slate-700">
-                        {row.roas.toFixed(2)}x
-                      </td>
-                      <td className="px-4 py-3 text-sm text-right text-slate-700">
-                        {row.clicks.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-right text-slate-700">
-                        {formatCurrencyDetail(row.cpc)}
-                      </td>
+                      <td className="px-4 py-3 text-right text-sm font-semibold text-slate-800">{formatCurrency(row.spend)}</td>
+                      <td className="px-4 py-3 text-right text-sm font-semibold text-slate-900">{formatCurrency(row.revenue)}</td>
+                      <td className="px-4 py-3 text-right text-sm text-slate-700">{row.roas.toFixed(2)}x</td>
+                      <td className="px-4 py-3 text-right text-sm text-slate-700">{formatCompact(row.clicks)}</td>
+                      <td className="px-4 py-3 text-right text-sm text-slate-700">{formatCompact(row.impressions)}</td>
+                      <td className="px-4 py-3 text-right text-sm text-slate-700">{formatCompact(row.conversions)}</td>
+                      <td className="px-4 py-3 text-right text-sm text-slate-700">{row.ctr.toFixed(2)}%</td>
+                      <td className="px-4 py-3 text-right text-sm text-slate-700">{formatCurrencyDetail(row.cpc)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </div>
-        )}
+          </section>
+        ) : null}
 
-        {/* Empty State */}
-        {!loading && sorted.length === 0 && (
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-12 text-center">
-            <p className="text-slate-600">No campaign data available for the selected date range</p>
-          </div>
-        )}
+        {!loading && sorted.length === 0 ? (
+          <section className="rounded-2xl border border-slate-200/80 bg-white/90 p-12 text-center shadow-sm">
+            <p className="text-slate-700">No campaign data available for the selected date range</p>
+            <p className="mt-1 text-xs text-slate-500">Try widening the range or running Sync & Refresh from Settings.</p>
+          </section>
+        ) : null}
       </div>
     </DashboardLayout>
   );

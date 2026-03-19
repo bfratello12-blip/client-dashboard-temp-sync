@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { LayoutDashboard, Package, TrendingUp, Settings, Shield } from "lucide-react";
+import { LayoutDashboard, Package, TrendingUp, Zap, Settings, Shield } from "lucide-react";
 import { type User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import useClientId from "@/hooks/useClientId";
@@ -156,6 +156,12 @@ export default function Sidebar({
           active={pathname?.startsWith("/channel-performance")}
           label="Channel Revenue vs Ad Spend"
           icon={<TrendingUp size={18} />}
+        />
+        <NavItem
+          href={withClientId("/campaign-performance")}
+          active={pathname?.startsWith("/campaign-performance")}
+          label="Campaign Performance"
+          icon={<Zap size={18} />}
         />
         <NavItem href={withClientId("/settings")} active={pathname?.startsWith("/settings")} label="Settings" icon={<Settings size={18} />} />
         {supabaseUser ? (

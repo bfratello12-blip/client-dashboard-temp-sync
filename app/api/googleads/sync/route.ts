@@ -6,6 +6,21 @@ import { ensureDailyMetricsRows, upsertDailyMetrics, type DailyMetricsRow } from
 import { requireCronAuth } from "@/lib/cronAuth";
 import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
+type DailyCampaignMetricsRow = {
+  client_id: string;
+  source: string;
+  date: string;
+  campaign_id: string;
+  campaign_name?: string;
+  spend: number;
+  revenue: number;
+  clicks: number;
+  impressions: number;
+  conversions: number;
+  conversion_value: number;
+  orders: number;
+};
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -179,6 +194,105 @@ async function fetchGoogleDailyMetrics(cfg: GoogleCfg, startDay: string, endDay:
   return byDay;
 }
 
+async function fetchGoogleCampaignMetrics(cfg: GoogleCfg, startDay: string, endDay: string) {
+  const accessToken = await refreshGoogleAccessToken(cfg);
+
+  const gaql = `
+    SELECT
+      segments.date,
+      segments.campaign_id,
+      campaign.name,
+      metrics.clicks,
+      metrics.impressions,
+      metrics.cost_micros,
+      metrics.conversions,
+      metrics.conversions_value
+    FROM campaign
+    WHERE segments.date BETWEEN '${startDay}' AND '${endDay}'
+      AND campaign.status = 'ENABLED'
+  `.trim();
+
+  const customer = encodeURIComponent(normalizeCustomerId(cfg.customerId));
+  const url = "https://googleads.googleapis.com/v22/customers/" + customer + "/googleAds:searchStream";
+
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${accessToken}`,
+    "developer-token": cfg.developerToken,
+    "content-type": "application/json",
+  };
+  if (cfg.managerCustomerId) headers["login-customer-id"] = normalizeCustomerId(cfg.managerCustomerId);
+
+  const res = await fetch(url, { method: "POST", headers, body: JSON.stringify({ query: gaql }) });
+  const bodyText = await res.text();
+
+  if (!res.ok) throw new Error(`Google Ads API failed (${res.status}): ${bodyText.slice(0, 500)}`);
+
+  const json = parseGoogleAdsSearchStreamBody(bodyText);
+
+  const byCampaignDay = new Map<
+    string,
+    {
+      campaignId: string;
+      campaignName: string;
+      clicks: number;
+      impressions: number;
+      spend: number;
+      conversions: number;
+      conversion_value: number;
+    }
+  >();
+
+  const streams = Array.isArray(json) ? json : [];
+  for (const s of streams) {
+    for (const r of s.results ?? []) {
+      const day = r.segments?.date;
+      const campaignId = String(r.segments?.campaignId ?? r.segments?.campaign_id ?? "").trim();
+      const campaignName = String(r.campaign?.name ?? "").trim() || `Campaign ${campaignId}`;
+
+      if (!day || !campaignId) continue;
+
+      const key = `${day}|${campaignId}`;
+      const clicks = Number(r.metrics?.clicks ?? 0);
+      const impressions = Number(r.metrics?.impressions ?? 0);
+      const micros = Number(r.metrics?.costMicros ?? r.metrics?.cost_micros ?? 0);
+      const spend = micros / 1_000_000;
+      const conversions = Number(r.metrics?.conversions ?? 0);
+      const conversionValue = Number(r.metrics?.conversionsValue ?? r.metrics?.conversions_value ?? 0);
+
+      const cur = byCampaignDay.get(key) ?? {
+        campaignId,
+        campaignName,
+        clicks: 0,
+        impressions: 0,
+        spend: 0,
+        conversions: 0,
+        conversion_value: 0,
+      };
+
+      cur.clicks += Number.isFinite(clicks) ? clicks : 0;
+      cur.impressions += Number.isFinite(impressions) ? impressions : 0;
+      cur.spend += Number.isFinite(spend) ? spend : 0;
+      cur.conversions += Number.isFinite(conversions) ? conversions : 0;
+      cur.conversion_value += Number.isFinite(conversionValue) ? conversionValue : 0;
+
+      byCampaignDay.set(key, cur);
+    }
+  }
+
+  return byCampaignDay;
+}
+
+async function upsertDailyCampaignMetrics(rows: DailyCampaignMetricsRow[]) {
+  if (rows.length === 0) return;
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("daily_campaign_metrics").upsert(rows, {
+    onConflict: "client_id,date,source,campaign_id",
+  });
+
+  if (error) throw new Error(`Campaign metrics upsert failed: ${error.message}`);
+}
+
 export async function GET(req: NextRequest) {
   const auth = requireCronAuth(req);
   if (auth) return auth;
@@ -298,6 +412,41 @@ export async function GET(req: NextRequest) {
 
       await upsertDailyMetrics(rows);
       daysWritten += rows.length;
+
+      // Fetch and sync campaign-level metrics
+      try {
+        const byCampaignDay = await fetchGoogleCampaignMetrics(cfg, startDay, endDay);
+        const campaignRows: DailyCampaignMetricsRow[] = [];
+
+        for (const [key, m] of byCampaignDay.entries()) {
+          const [day, _campaignId] = key.split("|");
+          const spend = Number(m.spend.toFixed(2));
+          const conversions = Number(m.conversions ?? 0);
+          const conversion_value = Number((m.conversion_value ?? 0).toFixed(2));
+
+          campaignRows.push({
+            client_id: clientId,
+            source: "google",
+            date: day,
+            campaign_id: m.campaignId,
+            campaign_name: m.campaignName,
+            spend,
+            revenue: conversion_value,
+            clicks: m.clicks,
+            impressions: m.impressions,
+            conversions,
+            conversion_value,
+            orders: 0,
+          });
+        }
+
+        if (campaignRows.length > 0) {
+          await upsertDailyCampaignMetrics(campaignRows);
+        }
+      } catch (campaignErr: any) {
+        // Log campaign sync errors but don't fail the whole sync
+        console.warn(`Campaign metrics sync failed for ${clientId}:`, campaignErr?.message);
+      }
 
       results.push({ client_id: clientId, days: rows.length, status: "ok" });
     } catch (e: any) {

@@ -14,6 +14,21 @@ type IntegrationRow = {
   meta_access_token: string | null;
 };
 
+type DailyCampaignMetricsRow = {
+  client_id: string;
+  source: string;
+  date: string;
+  campaign_id: string;
+  campaign_name?: string;
+  spend: number;
+  revenue: number;
+  clicks: number;
+  impressions: number;
+  conversions: number;
+  conversion_value: number;
+  orders: number;
+};
+
 function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
@@ -202,7 +217,116 @@ async function fetchMetaInsightsDailyRange(args: {
   return out;
 }
 
-async function gapFillZerosIfMissing(args: {
+async function fetchMetaCampaignInsightsDailyRange(args: {
+  adAccountId: string;
+  accessToken: string;
+  startISO: string;
+  endISO: string;
+}) {
+  const apiVersion = process.env.META_API_VERSION || "v21.0";
+
+  const fields = [
+    "id",
+    "name",
+    "date_start",
+    "spend",
+    "impressions",
+    "clicks",
+    "actions",
+    "action_values",
+  ].join(",");
+
+  const timeRange = { since: args.startISO, until: args.endISO };
+
+  const params = new URLSearchParams();
+  params.set("access_token", args.accessToken);
+  params.set("time_range", JSON.stringify(timeRange));
+  params.set("time_increment", "1");
+  params.set("level", "campaign");
+  params.set("fields", fields);
+  params.set("limit", "1000");
+
+  let url = `https://graph.facebook.com/${apiVersion}/${args.adAccountId}/insights?${params.toString()}`;
+
+  const out: Array<{
+    day: string;
+    campaignId: string;
+    campaignName: string;
+    spend: number;
+    impressions: number;
+    clicks: number;
+    purchases: number;
+    revenue: number;
+  }> = [];
+
+  while (url) {
+    const r = await fetch(url, { method: "GET", cache: "no-store" });
+    const raw = await r.text();
+
+    let json: any = null;
+    try {
+      json = raw ? JSON.parse(raw) : null;
+    } catch {
+      throw new Error(
+        `Meta API returned non-JSON response (status ${r.status}). First 120 chars: ${raw.slice(0, 120)}`
+      );
+    }
+
+    if (!r.ok) {
+      const msg = json?.error?.message || "Meta API error";
+      throw new Error(`${msg} (status ${r.status})`);
+    }
+
+    const rows = Array.isArray(json?.data) ? json.data : [];
+
+    for (const row of rows) {
+      const day = String(row?.date_start || "").slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+
+      const campaignId = String(row?.id || "").trim();
+      const campaignName = String(row?.name || "").trim() || `Campaign ${campaignId}`;
+      if (!campaignId) continue;
+
+      const spend = Number(row?.spend ?? 0) || 0;
+      const impressions = Number(row?.impressions ?? 0) || 0;
+      const clicks = Number(row?.clicks ?? 0) || 0;
+
+      const purchases = pickActionCount(row?.actions, [
+        "purchase",
+        "omni_purchase",
+        "offsite_conversion.fb_pixel_purchase",
+        "offsite_conversion.purchase",
+        "web_in_store_purchase",
+      ]);
+
+      const revenue = pickActionValue(row?.action_values, [
+        "purchase",
+        "omni_purchase",
+        "offsite_conversion.fb_pixel_purchase",
+        "offsite_conversion.purchase",
+        "web_in_store_purchase",
+      ]);
+
+      out.push({ day, campaignId, campaignName, spend, impressions, clicks, purchases, revenue });
+    }
+
+    url = json?.paging?.next || "";
+  }
+
+  return out;
+}
+
+async function upsertDailyCampaignMetrics(supabase: any, rows: DailyCampaignMetricsRow[]) {
+  if (rows.length === 0) return;
+  
+  const { error } = await supabase.from("daily_campaign_metrics").upsert(rows, {
+    onConflict: "client_id,date,source,campaign_id",
+  });
+
+  if (error) throw new Error(`Campaign metrics upsert failed: ${error.message}`);
+}
+
+export async function GET(req: NextRequest) {
   supabase: any;
   clientId: string;
   source: string;
@@ -342,6 +466,38 @@ async function handler(req: NextRequest) {
           endISO,
         });
         zerosInserted += gf.inserted;
+      }
+
+      // Fetch and sync campaign-level metrics
+      try {
+        const campaigns = await fetchMetaCampaignInsightsDailyRange({
+          adAccountId: integ.meta_ad_account_id!,
+          accessToken: integ.meta_access_token!,
+          startISO,
+          endISO,
+        });
+
+        const campaignRows: DailyCampaignMetricsRow[] = campaigns.map((row) => ({
+          client_id: clientId,
+          source: "meta",
+          date: row.day,
+          campaign_id: row.campaignId,
+          campaign_name: row.campaignName,
+          spend: Number(row.spend || 0),
+          revenue: Number(row.revenue || 0),
+          clicks: Math.trunc(Number(row.clicks || 0)),
+          impressions: Math.trunc(Number(row.impressions || 0)),
+          conversions: Math.trunc(Number(row.purchases || 0)),
+          conversion_value: Number(row.revenue || 0),
+          orders: Math.trunc(Number(row.purchases || 0)),
+        }));
+
+        if (campaignRows.length > 0) {
+          await upsertDailyCampaignMetrics(supabase, campaignRows);
+        }
+      } catch (campaignErr: any) {
+        // Log campaign sync errors but don't fail the whole sync
+        console.warn(`Campaign metrics sync failed for ${clientId}:`, campaignErr?.message);
       }
 
       results.push({ client_id: clientId, status: "ok", daysReturned: byDay.size });

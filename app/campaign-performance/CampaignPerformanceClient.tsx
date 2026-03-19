@@ -88,7 +88,12 @@ function getLabelForMetric(key: SortKey): string {
 function last30DaysRange() {
   const endISO = format(new Date(), "yyyy-MM-dd");
   const startISO = format(subDays(new Date(), 29), "yyyy-MM-dd");
-  return { startISO, endISO };
+  return {
+    mode: "preset" as const,
+    preset: "last30days" as const,
+    startISO,
+    endISO,
+  };
 }
 
 function SourceBadge({ source }: { source: string }) {
@@ -212,7 +217,6 @@ export default function CampaignPerformanceClient() {
             <DateRangePicker
               value={range}
               onChange={setRange}
-              includeAllTime={true}
             />
           )}
 

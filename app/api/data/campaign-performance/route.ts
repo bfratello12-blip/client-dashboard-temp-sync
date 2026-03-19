@@ -44,11 +44,14 @@ export async function GET(req: NextRequest) {
     }
 
     // Check authorization
-    const authErr = await isRequestAuthorizedForClient(req, clientId);
-    if (authErr) return authErr;
+    const allowed = await isRequestAuthorizedForClient(req, clientId);
+    if (!allowed) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
 
     // Build query
-    let q = supabaseAdmin
+    const supabase = supabaseAdmin();
+    let q = supabase
       .from("daily_campaign_metrics")
       .select("date, campaign_id, campaign_name, source, spend, revenue, clicks, impressions, conversions, conversion_value")
       .eq("client_id", clientId)

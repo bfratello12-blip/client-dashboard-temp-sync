@@ -318,7 +318,7 @@ async function fetchMetaCampaignInsightsDailyRange(args: {
 
 async function upsertDailyCampaignMetrics(supabase: any, rows: DailyCampaignMetricsRow[]) {
   if (rows.length === 0) return;
-  
+
   const { error } = await supabase.from("daily_campaign_metrics").upsert(rows, {
     onConflict: "client_id,date,source,campaign_id",
   });
@@ -326,7 +326,7 @@ async function upsertDailyCampaignMetrics(supabase: any, rows: DailyCampaignMetr
   if (error) throw new Error(`Campaign metrics upsert failed: ${error.message}`);
 }
 
-export async function GET(req: NextRequest) {
+async function gapFillZerosIfMissing(args: {
   supabase: any;
   clientId: string;
   source: string;

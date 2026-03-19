@@ -30,6 +30,12 @@ function getOAuthClientId(): string {
   return (process.env.GOOGLE_ADS_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "").trim();
 }
 
+function getOAuthRedirectUri(origin: string): string {
+  const configured = (process.env.GOOGLE_ADS_REDIRECT_URI || process.env.GOOGLE_REDIRECT_URI || "").trim();
+  if (configured) return configured;
+  return `${origin}/api/googleads/callback`;
+}
+
 function base64url(input: Buffer | string): string {
   const b = Buffer.isBuffer(input) ? input : Buffer.from(input, "utf8");
   return b.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
@@ -63,7 +69,7 @@ export async function GET(req: NextRequest) {
 
     // Redirect URI must match Google Cloud Console exactly.
     const origin = req.nextUrl.origin;
-    const redirectUri = `${origin}/api/googleads/callback`;
+    const redirectUri = getOAuthRedirectUri(origin);
     console.log("[googleads/connect] origin=", origin, "redirect_uri=", redirectUri);
 
     const payload = {

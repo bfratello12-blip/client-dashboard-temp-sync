@@ -66,6 +66,13 @@ function normalizeCustomerId(v: string) {
   return String(v || "").replace(/-/g, "").trim();
 }
 
+type CustomerOption = {
+  id: string;
+  name: string | null;
+  isManager?: boolean;
+  parentManagerId?: string;
+};
+
 async function fetchCustomerName(args: {
   accessToken: string;
   developerToken: string;
@@ -88,6 +95,67 @@ async function fetchCustomerName(args: {
   const row = json?.results?.[0]?.customer ?? json?.results?.[0]?.customerCustomer ?? null;
   const name = row?.descriptiveName ?? row?.descriptive_name ?? null;
   return name ? String(name) : null;
+}
+
+async function fetchManagerChildren(args: {
+  accessToken: string;
+  developerToken: string;
+  managerCustomerId: string;
+}) {
+  const { accessToken, developerToken, managerCustomerId } = args;
+  const managerId = normalizeCustomerId(managerCustomerId);
+  if (!managerId) return [] as CustomerOption[];
+
+  const query = `
+    SELECT
+      customer_client.client_customer,
+      customer_client.descriptive_name,
+      customer_client.manager,
+      customer_client.level
+    FROM customer_client
+    WHERE customer_client.level <= 2
+    ORDER BY customer_client.level
+  `;
+
+  const url = `https://googleads.googleapis.com/v22/customers/${encodeURIComponent(managerId)}/googleAds:search`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      "developer-token": developerToken,
+      "login-customer-id": managerId,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ query }),
+  });
+
+  if (!res.ok) {
+    return [] as CustomerOption[];
+  }
+
+  const json = await res.json().catch(() => ({}));
+  const rows = Array.isArray(json?.results) ? json.results : [];
+
+  const children: CustomerOption[] = [];
+  for (const row of rows) {
+    const cc = row?.customerClient || row?.customer_client || {};
+    const resource = String(cc?.clientCustomer || cc?.client_customer || "");
+    const id = normalizeCustomerId(resource.split("/").pop() || resource);
+    if (!id || id === managerId) continue;
+
+    const isManager = Boolean(cc?.manager);
+    const rawName = cc?.descriptiveName ?? cc?.descriptive_name ?? null;
+    const name = rawName ? String(rawName) : null;
+
+    children.push({
+      id,
+      name,
+      isManager,
+      parentManagerId: managerId,
+    });
+  }
+
+  return children;
 }
 
 export async function GET(req: NextRequest) {
@@ -153,16 +221,53 @@ export async function GET(req: NextRequest) {
     const managerCustomerIdRaw = String(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID ?? "").trim();
     const managerCustomerId = managerCustomerIdRaw ? normalizeCustomerId(managerCustomerIdRaw) : undefined;
 
-    const accounts = await Promise.all(
+    const baseAccounts = await Promise.all(
       ids.map(async (id) => {
         try {
           const name = await fetchCustomerName({ accessToken, developerToken, customerId: id, managerCustomerId });
-          return { id, name: name || null };
+          return { id, name: name || null } as CustomerOption;
         } catch {
-          return { id, name: null };
+          return { id, name: null } as CustomerOption;
         }
       })
     );
+
+    // Expand manager accounts into selectable child accounts.
+    const childMatrix = await Promise.all(
+      ids.map((id) =>
+        fetchManagerChildren({
+          accessToken,
+          developerToken,
+          managerCustomerId: id,
+        })
+      )
+    );
+    const expandedChildren = childMatrix.flat();
+
+    const byId = new Map<string, CustomerOption>();
+    for (const acct of [...baseAccounts, ...expandedChildren]) {
+      if (!acct?.id) continue;
+      if (!byId.has(acct.id)) {
+        byId.set(acct.id, acct);
+        continue;
+      }
+      const existing = byId.get(acct.id)!;
+      // Prefer rows with a name and non-manager rows for selection clarity.
+      if (!existing.name && acct.name) existing.name = acct.name;
+      if (existing.isManager && acct.isManager === false) existing.isManager = false;
+    }
+
+    const accounts = Array.from(byId.values())
+      .map((acct) => ({
+        id: acct.id,
+        name: acct.name ? `${acct.name}${acct.isManager ? " (MCC)" : ""}` : acct.id,
+      }))
+      .sort((a, b) => {
+        const aMcc = /\(MCC\)$/i.test(a.name || "");
+        const bMcc = /\(MCC\)$/i.test(b.name || "");
+        if (aMcc !== bMcc) return aMcc ? 1 : -1;
+        return String(a.name || a.id).localeCompare(String(b.name || b.id));
+      });
 
     return NextResponse.json({ ok: true, accounts });
   } catch (e: any) {

@@ -19,6 +19,12 @@ function getOAuthClientSecret(): string {
   return (process.env.GOOGLE_ADS_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || "").trim();
 }
 
+function getOAuthRedirectUri(origin: string): string {
+  const configured = (process.env.GOOGLE_ADS_REDIRECT_URI || process.env.GOOGLE_REDIRECT_URI || "").trim();
+  if (configured) return configured;
+  return `${origin}/api/googleads/callback`;
+}
+
 function b64urlToString(b64url: string): string {
   const b64 = b64url.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((b64url.length + 3) % 4);
   return Buffer.from(b64, "base64").toString("utf8");
@@ -111,7 +117,7 @@ export async function GET(req: NextRequest) {
     console.log("GOOGLE CALLBACK verified client_id", clientId);
 
     const origin = req.nextUrl.origin;
-    const redirectUri = `${origin}/api/googleads/callback`;
+    const redirectUri = getOAuthRedirectUri(origin);
     console.log("[googleads/callback] origin=", origin, "redirect_uri=", redirectUri);
     const tokens = await exchangeCodeForTokens(code, redirectUri);
 

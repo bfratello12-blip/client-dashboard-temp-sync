@@ -59,7 +59,12 @@ async function runStep(args: {
     ...pickCounts(body),
   };
   if (!ok) {
-    summary.error = body?.error || body?.message || `HTTP ${res.status}`;
+    summary.error =
+      body?.error ||
+      body?.message ||
+      body?.errors?.[0]?.error ||
+      body?.errors?.[0]?.message ||
+      `HTTP ${res.status}`;
   }
   return { res, body, summary };
 }

@@ -73,6 +73,49 @@ async function refreshGoogleAccessToken(cfg: GoogleCfg) {
   return accessToken;
 }
 
+async function postGoogleSearchStream(args: {
+  cfg: GoogleCfg;
+  accessToken: string;
+  gaql: string;
+}) {
+  const customer = encodeURIComponent(normalizeCustomerId(args.cfg.customerId));
+  const url = "https://googleads.googleapis.com/v22/customers/" + customer + "/googleAds:searchStream";
+
+  const post = async (useLoginCustomerId: boolean) => {
+    const headers: Record<string, string> = {
+      authorization: `Bearer ${args.accessToken}`,
+      "developer-token": args.cfg.developerToken,
+      "content-type": "application/json",
+    };
+    if (useLoginCustomerId && args.cfg.managerCustomerId) {
+      headers["login-customer-id"] = normalizeCustomerId(args.cfg.managerCustomerId);
+    }
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ query: args.gaql }),
+    });
+    const bodyText = await res.text();
+    return { res, bodyText };
+  };
+
+  // First try with login-customer-id (MCC) when configured.
+  let attempt = await post(true);
+
+  // Some client accounts are directly accessible but not under the configured MCC.
+  // Retry once without login-customer-id to avoid client-specific hard failures.
+  if (!attempt.res.ok && args.cfg.managerCustomerId) {
+    attempt = await post(false);
+  }
+
+  if (!attempt.res.ok) {
+    throw new Error(`Google Ads API failed (${attempt.res.status}): ${attempt.bodyText.slice(0, 500)}`);
+  }
+
+  return parseGoogleAdsSearchStreamBody(attempt.bodyText);
+}
+
 /**
  * Google Ads searchStream sometimes comes back as:
  *  - A single JSON array
@@ -134,23 +177,7 @@ async function fetchGoogleDailyMetrics(cfg: GoogleCfg, startDay: string, endDay:
     WHERE segments.date BETWEEN '${startDay}' AND '${endDay}'
   `.trim();
 
-  const customer = encodeURIComponent(normalizeCustomerId(cfg.customerId));
-  const url = "https://googleads.googleapis.com/v22/customers/" + customer + "/googleAds:searchStream";
-
-  const headers: Record<string, string> = {
-    authorization: `Bearer ${accessToken}`,
-    "developer-token": cfg.developerToken,
-    "content-type": "application/json",
-  };
-  if (cfg.managerCustomerId) headers["login-customer-id"] = normalizeCustomerId(cfg.managerCustomerId);
-
-  const res = await fetch(url, { method: "POST", headers, body: JSON.stringify({ query: gaql }) });
-  const bodyText = await res.text();
-
-  // IMPORTANT: check errors before attempting to parse
-  if (!res.ok) throw new Error(`Google Ads API failed (${res.status}): ${bodyText.slice(0, 500)}`);
-
-  const json = parseGoogleAdsSearchStreamBody(bodyText);
+  const json = await postGoogleSearchStream({ cfg, accessToken, gaql });
 
   const byDay = new Map<
     string,
@@ -211,22 +238,7 @@ async function fetchGoogleCampaignMetrics(cfg: GoogleCfg, startDay: string, endD
     WHERE segments.date BETWEEN '${startDay}' AND '${endDay}'
   `.trim();
 
-  const customer = encodeURIComponent(normalizeCustomerId(cfg.customerId));
-  const url = "https://googleads.googleapis.com/v22/customers/" + customer + "/googleAds:searchStream";
-
-  const headers: Record<string, string> = {
-    authorization: `Bearer ${accessToken}`,
-    "developer-token": cfg.developerToken,
-    "content-type": "application/json",
-  };
-  if (cfg.managerCustomerId) headers["login-customer-id"] = normalizeCustomerId(cfg.managerCustomerId);
-
-  const res = await fetch(url, { method: "POST", headers, body: JSON.stringify({ query: gaql }) });
-  const bodyText = await res.text();
-
-  if (!res.ok) throw new Error(`Google Ads API failed (${res.status}): ${bodyText.slice(0, 500)}`);
-
-  const json = parseGoogleAdsSearchStreamBody(bodyText);
+  const json = await postGoogleSearchStream({ cfg, accessToken, gaql });
 
   const byCampaignDay = new Map<
     string,
@@ -476,12 +488,13 @@ export async function GET(req: NextRequest) {
 
   const hasErrors = errors.length > 0;
   return NextResponse.json({
-    ok: true,
+    ok: !hasErrors,
     source: "google",
     start: startDay,
     end: endDay,
     clients: integrations?.length ?? 0,
     daysWritten,
+    error: hasErrors ? String(errors?.[0]?.error || "Google sync failed") : undefined,
     errors,
     results,
   }, { status: hasErrors && Boolean(clientIdFilter) ? 500 : 200 });

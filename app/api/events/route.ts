@@ -11,7 +11,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { isRequestAuthorizedForClient, resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
+import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 const ALLOWED_TYPES = ["budget_change", "promo", "price_change", "site_change", "feed_change", "other"] as const;
 type EventType = (typeof ALLOWED_TYPES)[number];
@@ -135,19 +135,11 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Missing shop_domain or client_id" }, { status: 400 });
     }
 
-    let client_id = "";
+    let client_id = clientIdParam;
 
-    if (shopDomain) {
+    if (!client_id && shopDomain) {
       const resolvedClientId = await resolveClientIdFromShopDomainParam(shopDomain);
-      if (resolvedClientId) {
-        client_id = String(resolvedClientId);
-      }
-    }
-
-    if (!client_id && clientIdParam) {
-      const authorized = await isRequestAuthorizedForClient(req, clientIdParam);
-      if (!authorized) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-      client_id = clientIdParam;
+      if (resolvedClientId) client_id = String(resolvedClientId);
     }
 
     if (!client_id) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });

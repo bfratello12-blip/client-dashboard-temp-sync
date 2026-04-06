@@ -1957,6 +1957,9 @@ export default function Home({
         if (!res.ok || !j?.ok) {
           throw new Error(j?.error || "Failed to delete event");
         }
+        setEventsPrimary((prev) => prev.filter((ev) => String(ev.id) !== String(id)));
+        setEvents30((prev) => prev.filter((ev) => String(ev.id) !== String(id)));
+        setLiftFocusEventId((prev) => (String(prev || "") === String(id) ? null : prev));
         setRefreshNonce((n) => n + 1);
       } catch (e: any) {
         console.error(e);

@@ -1552,10 +1552,7 @@ export default function Home({
     try { localStorage.setItem("dash.compare.mode", compareModeSetting); } catch {}
   }, [compareModeSetting]);
   /** Events list behavior */
-  const [showEvents30, setShowEvents30] = useState(false);
   const [eventsPrimary, setEventsPrimary] = useState<EventRow[]>([]);
-  const [events30, setEvents30] = useState<EventRow[]>([]);
-  const [events30Count, setEvents30Count] = useState<number | null>(null);
   /** Lift focus */
   const [liftFocusEventId, setLiftFocusEventId] = useState<string | null>(null);
   const [showAdvancedLift, setShowAdvancedLift] = useState(false);
@@ -1958,7 +1955,6 @@ export default function Home({
           throw new Error(j?.error || "Failed to delete event");
         }
         setEventsPrimary((prev) => prev.filter((ev) => String(ev.id) !== String(id)));
-        setEvents30((prev) => prev.filter((ev) => String(ev.id) !== String(id)));
         setLiftFocusEventId((prev) => (String(prev || "") === String(id) ? null : prev));
         setRefreshNonce((n) => n + 1);
       } catch (e: any) {
@@ -2219,8 +2215,6 @@ export default function Home({
           setCompareDisabledReason("");
           setComparisonAvailable(true);
           setEventsPrimary([]);
-          setEvents30([]);
-          setEvents30Count(null);
           setWindowStartISO("");
           setWindowEndISO("");
           setLastSalesDateISO("");
@@ -2314,22 +2308,6 @@ export default function Home({
         fetchStartISO = toISODate(addDaysLocal(isoToLocalMidnightDate(minStart), -fetchBufferDays));
         fetchEndISO = addDaysISO(primary.endISO, maxAttrib - 1); // forward buffer
       }
-      const fetchEventsCountForLastNDays = async (days: number) => {
-        const e = new Date();
-        e.setHours(0, 0, 0, 0);
-        const s = addDaysLocal(e, -(days - 1));
-        const { count, error } = await supabase
-          .from("events")
-          .select("id", { count: "exact", head: true })
-          .eq("client_id", cid)
-          .gte("event_date", toISODate(s))
-          .lte("event_date", toISODate(e));
-        if (error) {
-          console.error(error);
-          return null;
-        }
-        return typeof count === "number" ? count : 0;
-      };
       let metricDataError: any = null;
       let metricData: DailyMetricRow[] = [];
       try {
@@ -2769,33 +2747,9 @@ export default function Home({
         .from("events")
         .select("id, client_id, event_date, type, title, notes, impact_window_days, created_at")
         .eq("client_id", cid)
-        .gte("event_date", primary.startISO)
-        .lte("event_date", primary.endISO)
         .order("event_date", { ascending: false });
       if (eventsErr) console.error(eventsErr);
       const primaryEventsData = (eventRows ?? []) as EventRow[];
-      let count30: number | null = null;
-      if (range === "7D") {
-        count30 = await fetchEventsCountForLastNDays(30);
-        if (showEvents30) {
-          const e = new Date();
-          e.setHours(0, 0, 0, 0);
-          const s = addDaysLocal(e, -(30 - 1));
-          const { data: rows30, error: err30 } = await supabase
-            .from("events")
-            .select("id, client_id, event_date, type, title, notes, impact_window_days, created_at")
-            .eq("client_id", cid)
-            .gte("event_date", toISODate(s))
-            .lte("event_date", toISODate(e))
-            .order("event_date", { ascending: false });
-          if (err30) console.error(err30);
-          if (!cancelled) setEvents30((rows30 ?? []) as EventRow[]);
-        } else {
-          if (!cancelled) setEvents30([]);
-        }
-      } else {
-        if (!cancelled) setEvents30([]);
-      }
       /** Attribution window (MER vs ROAS) — simple, client-friendly
        *  We compute:
        *   spendRange = sum spend[start..end]
@@ -2941,7 +2895,6 @@ export default function Home({
         });
         setAttribSeries(attribSeriesBuilt);
         setEventsPrimary(primaryEventsData);
-        setEvents30Count(typeof count30 === "number" ? count30 : null);
         setLoading(false);
       }
     };
@@ -2958,7 +2911,6 @@ export default function Home({
     windows,
     router,
     compareModeSetting,
-    showEvents30,
     customStartISO,
     customEndISO,
     attribWindowDays,
@@ -3371,7 +3323,7 @@ export default function Home({
       setEventCompareLoading(false);
       return;
     }
-    const ev = [...eventsPrimary, ...events30].find((e) => String(e.id) === String(liftFocusEventId));
+    const ev = eventsPrimary.find((e) => String(e.id) === String(liftFocusEventId));
     if (!ev?.event_date) {
       setEventCompare(null);
       setEventCompareError("");
@@ -3410,7 +3362,7 @@ export default function Home({
     return () => {
       cancelled = true;
     };
-  }, [shopDomain, liftFocusEventId, eventsPrimary, events30]);
+  }, [shopDomain, liftFocusEventId, eventsPrimary]);
   const lift = useMemo(() => {
     const scopePrimary = liftWindows.primary;
     const scopeCompare = liftWindows.compare;
@@ -4055,10 +4007,7 @@ export default function Home({
     if (!effectiveShowComparison) return "";
     return `Prev: Shopify ${coverage.compareSales}/${rangeDays} • Ads ${coverage.compareAds}/${rangeDays}`;
   }, [effectiveShowComparison, coverage, rangeDays]);
-  const eventsToShow = useMemo(() => {
-    if (range === "7D" && showEvents30) return events30;
-    return eventsPrimary;
-  }, [range, showEvents30, events30, eventsPrimary]);
+  const eventsToShow = useMemo(() => eventsPrimary, [eventsPrimary]);
   const dataHealth = useMemo(() => {
     const missingShopify = Math.max(0, rangeDays - coverage.primarySales);
     const missingAds = Math.max(0, rangeDays - coverage.primaryAds);
@@ -4828,36 +4777,6 @@ export default function Home({
                     {loading ? "…" : `${eventsToShow.length} shown`}
                   </span>
                 </div>
-                {range === "7D" && typeof events30Count === "number" && events30Count > 0 ? (
-                  <div className="mt-3 flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="text-sm text-slate-700">
-                      {showEvents30 ? (
-                        <>
-                          Showing <span className="font-semibold">last 30D</span> events.
-                        </>
-                      ) : (
-                        <>
-                          You have <span className="font-semibold">{events30Count}</span> event(s) in{" "}
-                          <span className="font-semibold">last 30D</span>.
-                        </>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setShowEvents30((v) => !v)}
-                        className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-                      >
-                        {showEvents30 ? "Show 7D only" : "Show last 30D"}
-                      </button>
-                      <button
-                        onClick={() => setRange("30D")}
-                        className="inline-flex items-center justify-center rounded-lg border bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                      >
-                        Switch range to 30D
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
                 {eventFormOpen && (
                   <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-6">
@@ -4939,9 +4858,7 @@ export default function Home({
                 )}
                 <div className="mt-4 space-y-3">
                   {!loading && eventsToShow.length === 0 && (
-                    <div className="text-sm text-slate-500">
-                      No events found in this view{range === "7D" ? " (try last 30D)." : "."}
-                    </div>
+                    <div className="text-sm text-slate-500">No events yet. Add one and it will stay listed until deleted.</div>
                   )}
                   {eventsToShow.map((e) => (
                     <div key={e.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">

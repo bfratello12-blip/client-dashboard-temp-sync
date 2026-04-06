@@ -49,6 +49,12 @@ type CompareDelta = {
   pct: number | null;
 };
 
+type CampaignComparisonRow = {
+  revenuePct: number | null;
+  roasPct: number | null;
+  conversionsPct: number | null;
+};
+
 function formatCurrency(n: number) {
   return Number(n || 0).toLocaleString(undefined, {
     style: "currency",
@@ -114,6 +120,11 @@ function formatPercentDelta(delta: number | null) {
   if (delta === null) return "n/a";
   const sign = delta > 0 ? "+" : "";
   return `${sign}${delta.toFixed(1)}%`;
+}
+
+function deltaTone(delta: number | null) {
+  if (delta === null) return "text-slate-500";
+  return delta >= 0 ? "text-emerald-700" : "text-rose-700";
 }
 
 function SourceBadge({ source }: { source: string }) {
@@ -335,6 +346,28 @@ export default function CampaignPerformanceClient() {
     return deltas;
   }, [comparisonEnabled, campaigns, summary.totalRevenue, summary.blendedRoas, comparisonSummary]);
 
+  const comparisonByCampaign = useMemo(() => {
+    if (!comparisonEnabled) return new Map<string, CampaignComparisonRow>();
+
+    const previousByKey = new Map<string, CampaignRow>();
+    for (const row of comparisonCampaigns) {
+      previousByKey.set(`${row.campaign_id}|${row.source}`, row);
+    }
+
+    const deltasByKey = new Map<string, CampaignComparisonRow>();
+    for (const row of campaigns) {
+      const key = `${row.campaign_id}|${row.source}`;
+      const previous = previousByKey.get(key);
+      deltasByKey.set(key, {
+        revenuePct: computePercentDelta(Number(row.revenue || 0), Number(previous?.revenue || 0)),
+        roasPct: computePercentDelta(Number(row.roas || 0), Number(previous?.roas || 0)),
+        conversionsPct: computePercentDelta(Number(row.conversions || 0), Number(previous?.conversions || 0)),
+      });
+    }
+
+    return deltasByKey;
+  }, [comparisonEnabled, campaigns, comparisonCampaigns]);
+
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
       setSortAsc(!sortAsc);
@@ -554,9 +587,13 @@ export default function CampaignPerformanceClient() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sorted.map((row) => (
+                  {sorted.map((row) => {
+                    const rowKey = `${row.campaign_id}|${row.source}`;
+                    const rowDelta = comparisonByCampaign.get(rowKey);
+
+                    return (
                     <tr
-                      key={`${row.campaign_id}|${row.source}`}
+                      key={rowKey}
                       className="border-b border-slate-100/80 transition hover:bg-slate-50/70"
                     >
                       <td className="px-4 py-3">
@@ -567,15 +604,37 @@ export default function CampaignPerformanceClient() {
                         <SourceBadge source={row.source} />
                       </td>
                       <td className="px-4 py-3 text-right text-sm font-semibold text-slate-800">{formatCurrency(row.spend)}</td>
-                      <td className="px-4 py-3 text-right text-sm font-semibold text-slate-900">{formatCurrency(row.revenue)}</td>
-                      <td className="px-4 py-3 text-right text-sm text-slate-700">{row.roas.toFixed(2)}x</td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="text-sm font-semibold text-slate-900">{formatCurrency(row.revenue)}</div>
+                        {comparisonEnabled ? (
+                          <div className={`text-xs font-semibold ${deltaTone(rowDelta?.revenuePct ?? null)}`}>
+                            {formatPercentDelta(rowDelta?.revenuePct ?? null)}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="text-sm text-slate-700">{row.roas.toFixed(2)}x</div>
+                        {comparisonEnabled ? (
+                          <div className={`text-xs font-semibold ${deltaTone(rowDelta?.roasPct ?? null)}`}>
+                            {formatPercentDelta(rowDelta?.roasPct ?? null)}
+                          </div>
+                        ) : null}
+                      </td>
                       <td className="px-4 py-3 text-right text-sm text-slate-700">{formatCompact(row.clicks)}</td>
                       <td className="px-4 py-3 text-right text-sm text-slate-700">{formatCompact(row.impressions)}</td>
-                      <td className="px-4 py-3 text-right text-sm text-slate-700">{formatCompact(row.conversions)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="text-sm text-slate-700">{formatCompact(row.conversions)}</div>
+                        {comparisonEnabled ? (
+                          <div className={`text-xs font-semibold ${deltaTone(rowDelta?.conversionsPct ?? null)}`}>
+                            {formatPercentDelta(rowDelta?.conversionsPct ?? null)}
+                          </div>
+                        ) : null}
+                      </td>
                       <td className="px-4 py-3 text-right text-sm text-slate-700">{row.ctr.toFixed(2)}%</td>
                       <td className="px-4 py-3 text-right text-sm text-slate-700">{formatCurrencyDetail(row.cpc)}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

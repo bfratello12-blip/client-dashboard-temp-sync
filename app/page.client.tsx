@@ -1939,11 +1939,18 @@ export default function Home({
   /** Delete an event */
   const deleteEvent = useCallback(
     async (id: string) => {
-      if (!shopDomain || !id) return;
+      if (!id) return;
       setEventError("");
+      if (!shopDomain && !clientId) {
+        setEventError("Missing context to delete event.");
+        return;
+      }
       setEventSaving(true);
       try {
-        const res = await fetch(`/api/events?id=${encodeURIComponent(id)}&shop_domain=${encodeURIComponent(shopDomain)}` , {
+        const params = new URLSearchParams({ id: String(id) });
+        if (shopDomain) params.set("shop_domain", shopDomain);
+        if (clientId) params.set("client_id", clientId);
+        const res = await fetch(`/api/events?${params.toString()}`, {
           method: "DELETE",
         });
         const j = await res.json().catch(() => ({}));
@@ -1958,7 +1965,7 @@ export default function Home({
         setEventSaving(false);
       }
     },
-    [shopDomain]
+    [shopDomain, clientId]
   );
   /** Keep custom inputs in sync when clicking preset pills */
   useEffect(() => {

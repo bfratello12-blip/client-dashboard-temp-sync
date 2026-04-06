@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { format, subDays } from "date-fns";
+import { differenceInCalendarDays, format, parseISO, subDays, subYears } from "date-fns";
 import DashboardLayout from "@/components/DashboardLayout";
 import DateRangePicker from "@/app/components/DateRangePicker";
 import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
@@ -41,6 +41,14 @@ type CampaignRow = {
 
 type SortKey = keyof CampaignRow;
 
+type CompareMode = "previous_period" | "previous_year";
+
+type CompareDelta = {
+  current: number;
+  previous: number;
+  pct: number | null;
+};
+
 function formatCurrency(n: number) {
   return Number(n || 0).toLocaleString(undefined, {
     style: "currency",
@@ -71,6 +79,41 @@ function last30DaysRange() {
     startISO,
     endISO,
   };
+}
+
+function getComparisonRange(range: RangeValue, compareMode: CompareMode) {
+  const start = parseISO(range.startISO);
+  const end = parseISO(range.endISO);
+
+  if (compareMode === "previous_year") {
+    return {
+      startISO: format(subYears(start, 1), "yyyy-MM-dd"),
+      endISO: format(subYears(end, 1), "yyyy-MM-dd"),
+    };
+  }
+
+  const dayCount = Math.max(1, differenceInCalendarDays(end, start) + 1);
+  const prevEnd = subDays(start, 1);
+  const prevStart = subDays(prevEnd, dayCount - 1);
+
+  return {
+    startISO: format(prevStart, "yyyy-MM-dd"),
+    endISO: format(prevEnd, "yyyy-MM-dd"),
+  };
+}
+
+function computePercentDelta(current: number, previous: number): number | null {
+  if (previous === 0) {
+    if (current === 0) return 0;
+    return null;
+  }
+  return ((current - previous) / previous) * 100;
+}
+
+function formatPercentDelta(delta: number | null) {
+  if (delta === null) return "n/a";
+  const sign = delta > 0 ? "+" : "";
+  return `${sign}${delta.toFixed(1)}%`;
 }
 
 function SourceBadge({ source }: { source: string }) {
@@ -109,6 +152,9 @@ export default function CampaignPerformanceClient() {
   const [sortKey, setSortKey] = useState<SortKey>("revenue");
   const [sortAsc, setSortAsc] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<string>("");
+  const [comparisonEnabled, setComparisonEnabled] = useState(false);
+  const [compareMode, setCompareMode] = useState<CompareMode>("previous_period");
+  const [comparisonCampaigns, setComparisonCampaigns] = useState<CampaignRow[]>([]);
 
   useEffect(() => {
     if (!shopDomain) return;
@@ -165,15 +211,39 @@ export default function CampaignPerformanceClient() {
         if (effectiveShopDomain) params.set("shop_domain", effectiveShopDomain);
         if (effectiveClientId) params.set("client_id", effectiveClientId);
         if (sourceFilter) params.set("source", sourceFilter);
+        const comparisonRange = getComparisonRange(range, compareMode);
 
-        const res = await authenticatedFetch(`/api/data/campaign-performance?${params.toString()}`);
+        const currentRequest = authenticatedFetch(`/api/data/campaign-performance?${params.toString()}`);
+        const comparisonRequest = comparisonEnabled
+          ? (() => {
+              const comparisonParams = new URLSearchParams(params);
+              comparisonParams.set("start", comparisonRange.startISO);
+              comparisonParams.set("end", comparisonRange.endISO);
+              return authenticatedFetch(`/api/data/campaign-performance?${comparisonParams.toString()}`);
+            })()
+          : null;
+
+        const [res, comparisonRes] = await Promise.all([
+          currentRequest,
+          comparisonRequest ?? Promise.resolve(null),
+        ]);
+
         const payload = await res.json().catch(() => ({}));
-
         if (!res.ok || !payload?.ok) {
           throw new Error(payload?.error || `Failed (${res.status})`);
         }
 
         setCampaigns(payload?.campaigns || []);
+
+        if (comparisonEnabled && comparisonRes) {
+          const comparisonPayload = await comparisonRes.json().catch(() => ({}));
+          if (!comparisonRes.ok || !comparisonPayload?.ok) {
+            throw new Error(comparisonPayload?.error || `Comparison failed (${comparisonRes.status})`);
+          }
+          setComparisonCampaigns(comparisonPayload?.campaigns || []);
+        } else {
+          setComparisonCampaigns([]);
+        }
       } catch (e: any) {
         setError(e?.message || "Failed to load campaigns");
       } finally {
@@ -182,7 +252,7 @@ export default function CampaignPerformanceClient() {
     };
 
     fetchCampaigns();
-  }, [range, shopDomain, resolvedShopDomain, contextClientId, sourceFilter]);
+  }, [range, shopDomain, resolvedShopDomain, contextClientId, sourceFilter, comparisonEnabled, compareMode]);
 
   const sorted = useMemo(() => {
     const filtered = sourceFilter
@@ -223,6 +293,47 @@ export default function CampaignPerformanceClient() {
       ctr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
     };
   }, [campaigns]);
+
+  const comparisonSummary = useMemo(() => {
+    const totalSpend = comparisonCampaigns.reduce((acc, row) => acc + Number(row.spend || 0), 0);
+    const totalRevenue = comparisonCampaigns.reduce((acc, row) => acc + Number(row.revenue || 0), 0);
+    const totalConversions = comparisonCampaigns.reduce((acc, row) => acc + Number(row.conversions || 0), 0);
+    const blendedRoas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
+
+    return {
+      totalRevenue,
+      totalConversions,
+      blendedRoas,
+    };
+  }, [comparisonCampaigns]);
+
+  const comparisonDeltas = useMemo(() => {
+    if (!comparisonEnabled) return null;
+
+    const currentRevenue = summary.totalRevenue;
+    const currentConversions = campaigns.reduce((acc, row) => acc + Number(row.conversions || 0), 0);
+    const currentRoas = summary.blendedRoas;
+
+    const deltas: Record<"revenue" | "conversions" | "roas", CompareDelta> = {
+      revenue: {
+        current: currentRevenue,
+        previous: comparisonSummary.totalRevenue,
+        pct: computePercentDelta(currentRevenue, comparisonSummary.totalRevenue),
+      },
+      conversions: {
+        current: currentConversions,
+        previous: comparisonSummary.totalConversions,
+        pct: computePercentDelta(currentConversions, comparisonSummary.totalConversions),
+      },
+      roas: {
+        current: currentRoas,
+        previous: comparisonSummary.blendedRoas,
+        pct: computePercentDelta(currentRoas, comparisonSummary.blendedRoas),
+      },
+    };
+
+    return deltas;
+  }, [comparisonEnabled, campaigns, summary.totalRevenue, summary.blendedRoas, comparisonSummary]);
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -287,7 +398,16 @@ export default function CampaignPerformanceClient() {
 
         <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-[0_18px_44px_-30px_rgba(15,23,42,0.4)]">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            {range ? <DateRangePicker value={range} onChange={setRange} /> : null}
+            {range ? (
+              <DateRangePicker
+                value={range}
+                onChange={setRange}
+                comparisonEnabled={comparisonEnabled}
+                onComparisonEnabledChange={setComparisonEnabled}
+                compareMode={compareMode}
+                onCompareModeChange={setCompareMode}
+              />
+            ) : null}
 
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -315,6 +435,52 @@ export default function CampaignPerformanceClient() {
               ))}
             </div>
           </div>
+
+          {comparisonEnabled && comparisonDeltas ? (
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Revenue change</div>
+                <div
+                  className={`mt-1 text-lg font-semibold ${
+                    (comparisonDeltas.revenue.pct ?? 0) >= 0 ? "text-emerald-700" : "text-rose-700"
+                  }`}
+                >
+                  {formatPercentDelta(comparisonDeltas.revenue.pct)}
+                </div>
+                <div className="text-xs text-slate-500">
+                  {formatCurrency(comparisonDeltas.revenue.current)} vs {formatCurrency(comparisonDeltas.revenue.previous)}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Conversions change</div>
+                <div
+                  className={`mt-1 text-lg font-semibold ${
+                    (comparisonDeltas.conversions.pct ?? 0) >= 0 ? "text-emerald-700" : "text-rose-700"
+                  }`}
+                >
+                  {formatPercentDelta(comparisonDeltas.conversions.pct)}
+                </div>
+                <div className="text-xs text-slate-500">
+                  {formatCompact(comparisonDeltas.conversions.current)} vs {formatCompact(comparisonDeltas.conversions.previous)}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">ROAS change</div>
+                <div
+                  className={`mt-1 text-lg font-semibold ${
+                    (comparisonDeltas.roas.pct ?? 0) >= 0 ? "text-emerald-700" : "text-rose-700"
+                  }`}
+                >
+                  {formatPercentDelta(comparisonDeltas.roas.pct)}
+                </div>
+                <div className="text-xs text-slate-500">
+                  {comparisonDeltas.roas.current.toFixed(2)}x vs {comparisonDeltas.roas.previous.toFixed(2)}x
+                </div>
+              </div>
+            </div>
+          ) : null}
         </section>
 
         {error ? (

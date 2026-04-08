@@ -74,6 +74,7 @@ export async function GET(req: NextRequest) {
 
     const payload = {
       client_id: clientId,
+      shop_domain: shopDomain,
       ts: Date.now(),
       nonce: crypto.randomBytes(12).toString("hex"),
     };

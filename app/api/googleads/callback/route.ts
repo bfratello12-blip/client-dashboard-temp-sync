@@ -102,7 +102,7 @@ export async function GET(req: NextRequest) {
     const payloadJson = b64urlToString(payloadB64);
     const payload = JSON.parse(payloadJson) as {
       client_id: string;
-      shop_domain?: string;
+      shop_domain: string;
       ts: number;
       nonce: string;
     };
@@ -165,32 +165,10 @@ export async function GET(req: NextRequest) {
       if (insErr) throw insErr;
     }
 
-    // Return a friendly HTML page for browser-based OAuth flow.
-    const html = `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Google Connected</title>
-    <style>
-      body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; padding: 24px; }
-      .card { max-width: 640px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; }
-      code { background: #f3f4f6; padding: 2px 6px; border-radius: 6px; }
-      .ok { color: #065f46; font-weight: 700; }
-    </style>
-  </head>
-  <body>
-    <div class="card">
-      <div class="ok">✅ Google Ads connected</div>
-      <p>Refresh token saved for client:</p>
-      <p><code>${clientId}</code></p>
-      <p>Verified state client_id: <code>${clientId}</code></p>
-      <p>Upserted client_id: <code>${clientId}</code></p>
-      <p>You can close this tab and run your Google sync.</p>
-    </div>
-  </body>
-</html>`;
-    return new NextResponse(html, { status: 200, headers: { "content-type": "text/html; charset=utf-8" } });
+    // Redirect back to settings page with shop_domain param
+    const settingsUrl = new URL("/settings", origin);
+    settingsUrl.searchParams.set("shop", payload.shop_domain);
+    return NextResponse.redirect(settingsUrl.toString());
   } catch (e: any) {
     console.error("googleads/callback error:", e);
     return NextResponse.json({ ok: false, error: e?.message ?? "Unknown error" }, { status: 500 });

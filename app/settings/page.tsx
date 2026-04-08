@@ -357,18 +357,11 @@ function SettingsPage() {
       const connectUrl = `/api/googleads/connect?shop_domain=${encodeURIComponent(effectiveShopDomain)}`;
       console.log("SETTINGS currentClientId", clientId);
       console.log("GOOGLE CONNECT url", connectUrl);
-      const res = await fetch(connectUrl, {
-        method: "GET",
-        cache: "no-store",
-      });
-      const payload = await res.json().catch(() => ({}));
-      const url = payload?.url as string | undefined;
-      if (!res.ok || !url) throw new Error(payload?.error || `OAuth start failed (${res.status})`);
 
       if (window.top) {
-        window.top.location.href = url;
+        window.top.location.href = connectUrl;
       } else {
-        window.location.href = url;
+        window.location.href = connectUrl;
       }
     } catch (e: any) {
       console.error(e);

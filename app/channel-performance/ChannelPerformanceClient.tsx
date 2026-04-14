@@ -43,6 +43,34 @@ function last30DaysRange() {
   return { startISO, endISO };
 }
 
+function buildDateRangeRows(startISO: string, endISO: string, byDate: Record<string, ChannelRow>): ChannelRow[] {
+  const start = new Date(`${startISO}T00:00:00Z`);
+  const end = new Date(`${endISO}T00:00:00Z`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return [];
+
+  const rows: ChannelRow[] = [];
+  for (let cursor = new Date(start); cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+    const date = cursor.toISOString().slice(0, 10);
+    const existing = byDate[date];
+    if (existing) {
+      rows.push(existing);
+      continue;
+    }
+
+    rows.push({
+      date,
+      ts: new Date(`${date}T00:00:00Z`).getTime(),
+      organic: 0,
+      direct: 0,
+      paid: 0,
+      unknown: 0,
+      ad_spend: 0,
+    });
+  }
+
+  return rows;
+}
+
 function formatCurrency(n: number) {
   return Number(n || 0).toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }
@@ -324,7 +352,7 @@ export default function ChannelPerformanceClient() {
     };
   }, [rangeValue, shopDomain, resolvedShopDomain, contextClientId]);
 
-  const filteredRows = useMemo(() => {
+  const filteredObservedRows = useMemo(() => {
     const startDate = new Date(`${rangeValue.startISO}T00:00:00Z`);
     const endDate = new Date(`${rangeValue.endISO}T23:59:59.999Z`);
 
@@ -335,6 +363,15 @@ export default function ChannelPerformanceClient() {
       })
       .sort((a, b) => new Date(`${a.date}T00:00:00Z`).getTime() - new Date(`${b.date}T00:00:00Z`).getTime());
   }, [rows, rangeValue.startISO, rangeValue.endISO]);
+
+  const filteredRows = useMemo(() => {
+    const byDate = filteredObservedRows.reduce<Record<string, ChannelRow>>((acc, row) => {
+      acc[row.date] = row;
+      return acc;
+    }, {});
+
+    return buildDateRangeRows(rangeValue.startISO, rangeValue.endISO, byDate);
+  }, [filteredObservedRows, rangeValue.startISO, rangeValue.endISO]);
 
   const displayRows = useMemo(() => {
     if (!rollingEnabled) return filteredRows;
@@ -402,9 +439,9 @@ export default function ChannelPerformanceClient() {
       ...totals,
       totalRevenue,
       roas,
-      days: filteredRows.length,
+      days: filteredObservedRows.length,
     };
-  }, [filteredRows]);
+  }, [filteredObservedRows.length, filteredRows]);
 
   const strongestCorr = useMemo(() => {
     const entries = [

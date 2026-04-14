@@ -28,6 +28,150 @@ function signState(payloadB64: string, secret: string): string {
     .replace(/=+$/g, "");
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderConnectedPage(options: {
+  title: string;
+  tokenLabel: string;
+  clientId: string;
+  footerMessage: string;
+  redirectUrl: string;
+  delayMs?: number;
+}) {
+  const { title, tokenLabel, clientId, footerMessage, redirectUrl, delayMs = 10000 } = options;
+  const safeTitle = escapeHtml(title);
+  const safeTokenLabel = escapeHtml(tokenLabel);
+  const safeClientId = escapeHtml(clientId);
+  const safeFooterMessage = escapeHtml(footerMessage);
+  const safeRedirectUrl = JSON.stringify(redirectUrl);
+  const safeDelayMs = Number.isFinite(delayMs) ? Math.max(0, delayMs) : 10000;
+
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${safeTitle}</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 24px;
+        background: #f3f4f6;
+        color: #111827;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial;
+      }
+      .card {
+        width: min(680px, 100%);
+        margin-top: 56px;
+        border: 1px solid #d1d5db;
+        border-radius: 12px;
+        background: #f3f4f6;
+        padding: 24px;
+      }
+      .ok {
+        color: #065f46;
+        font-size: 30px;
+        line-height: 1;
+        margin-right: 10px;
+      }
+      .title-row {
+        display: flex;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .title {
+        color: #065f46;
+        font-size: 30px;
+        font-weight: 700;
+        margin: 0;
+      }
+      p {
+        margin: 0 0 14px;
+        font-size: 31px;
+        line-height: 1.35;
+      }
+      code {
+        background: #e5e7eb;
+        padding: 2px 8px;
+        border-radius: 6px;
+        font-size: 26px;
+      }
+      .countdown {
+        font-size: 26px;
+        margin-top: 4px;
+      }
+      a {
+        color: #1f2937;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="title-row">
+        <div class="ok">✓</div>
+        <h1 class="title">${safeTitle}</h1>
+      </div>
+      <p>${safeTokenLabel}</p>
+      <p><code>${safeClientId}</code></p>
+      <p>${safeFooterMessage}</p>
+      <p class="countdown">Returning to Settings in <span id="countdown">${Math.ceil(safeDelayMs / 1000)}</span>s. <a id="redirect-link" href="#">Go now</a>.</p>
+    </div>
+    <script>
+      const redirectUrl = ${safeRedirectUrl};
+      const delayMs = ${safeDelayMs};
+      const countdownEl = document.getElementById("countdown");
+      const redirectLinkEl = document.getElementById("redirect-link");
+
+      if (redirectLinkEl) redirectLinkEl.href = redirectUrl;
+
+      const startedAt = Date.now();
+      const updateCountdown = () => {
+        if (!countdownEl) return;
+        const remainingMs = Math.max(0, delayMs - (Date.now() - startedAt));
+        countdownEl.textContent = String(Math.ceil(remainingMs / 1000));
+      };
+
+      const performRedirect = () => {
+        if (window.top && window.top !== window) {
+          window.top.location.href = redirectUrl;
+          return;
+        }
+        window.location.href = redirectUrl;
+      };
+
+      updateCountdown();
+      const intervalId = window.setInterval(updateCountdown, 250);
+      window.setTimeout(() => {
+        window.clearInterval(intervalId);
+        performRedirect();
+      }, delayMs);
+    </script>
+  </body>
+</html>`;
+
+  return new NextResponse(html, {
+    status: 200,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store, max-age=0",
+    },
+  });
+}
+
 async function exchangeCodeForToken(args: {
   appId: string;
   appSecret: string;
@@ -96,7 +240,7 @@ export async function GET(req: NextRequest) {
     }
 
     const payloadJson = b64urlToString(payloadB64);
-    const payload = JSON.parse(payloadJson) as { client_id: string; ts: number; nonce: string };
+    const payload = JSON.parse(payloadJson) as { client_id: string; shop_domain?: string; ts: number; nonce: string };
 
     if (!payload?.ts || Math.abs(Date.now() - payload.ts) > 10 * 60 * 1000) {
       return NextResponse.json({ ok: false, error: "State expired. Please reconnect again." }, { status: 400 });
@@ -210,31 +354,20 @@ export async function GET(req: NextRequest) {
       console.warn("meta/callback adaccounts fetch failed:", err);
     }
 
-    const html = `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Meta Connected</title>
-    <style>
-      body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; padding: 24px; }
-      .card { max-width: 640px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; }
-      code { background: #f3f4f6; padding: 2px 6px; border-radius: 6px; }
-      .ok { color: #065f46; font-weight: 700; }
-    </style>
-  </head>
-  <body>
-    <div class="card">
-      <div class="ok">✅ Meta Ads connected</div>
-      <p>Access token saved for client:</p>
-      <p><code>${clientId}</code></p>
-      ${autoSelectedAccount ? `<p>Ad account auto-selected: <code>${autoSelectedAccount.id}</code></p>` : ""}
-      <p>${autoSelectedAccount ? "You can close this tab and return to Settings." : "Select an ad account in Settings to finish setup."}</p>
-    </div>
-  </body>
-</html>`;
+    const settingsUrl = new URL("/settings", origin);
+    const shopDomain = String(payload.shop_domain || "").trim();
+    if (shopDomain) settingsUrl.searchParams.set("shop", shopDomain);
 
-    return new NextResponse(html, { status: 200, headers: { "content-type": "text/html; charset=utf-8" } });
+    return renderConnectedPage({
+      title: "Meta Ads connected",
+      tokenLabel: "Access token saved for client:",
+      clientId,
+      footerMessage: autoSelectedAccount
+        ? `Ad account auto-selected: ${autoSelectedAccount.id}. Returning to Settings.`
+        : "Select an ad account in Settings to finish setup.",
+      redirectUrl: settingsUrl.toString(),
+      delayMs: 10000,
+    });
   } catch (e: any) {
     console.error("meta/callback error:", e);
     return NextResponse.json({ ok: false, error: e?.message ?? "Unknown error" }, { status: 500 });

@@ -34,10 +34,28 @@ function signState(payloadB64: string, secret: string): string {
   return crypto.createHmac("sha256", secret).update(payloadB64).digest("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
-function renderRedirectPage(options: { title: string; message: string; redirectUrl: string; delayMs?: number }) {
-  const { title, message, redirectUrl, delayMs = 10000 } = options;
-  const safeTitle = JSON.stringify(title);
-  const safeMessage = JSON.stringify(message);
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderRedirectPage(options: {
+  title: string;
+  tokenLabel: string;
+  clientId: string;
+  footerMessage: string;
+  redirectUrl: string;
+  delayMs?: number;
+}) {
+  const { title, tokenLabel, clientId, footerMessage, redirectUrl, delayMs = 10000 } = options;
+  const safeTitle = escapeHtml(title);
+  const safeTokenLabel = escapeHtml(tokenLabel);
+  const safeClientId = escapeHtml(clientId);
+  const safeFooterMessage = escapeHtml(footerMessage);
   const safeRedirectUrl = JSON.stringify(redirectUrl);
   const safeDelayMs = Number.isFinite(delayMs) ? Math.max(0, delayMs) : 10000;
 
@@ -46,112 +64,84 @@ function renderRedirectPage(options: { title: string; message: string; redirectU
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${title}</title>
+    <title>${safeTitle}</title>
     <style>
-      :root {
-        color-scheme: light;
-        --bg: #f8fafc;
-        --panel: #ffffff;
-        --text: #0f172a;
-        --muted: #475569;
-        --accent: #2563eb;
-        --border: rgba(15, 23, 42, 0.08);
-      }
       * {
         box-sizing: border-box;
       }
       body {
         margin: 0;
         min-height: 100vh;
-        display: grid;
-        place-items: center;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
         padding: 24px;
-        background:
-          radial-gradient(circle at top, rgba(37, 99, 235, 0.14), transparent 36%),
-          linear-gradient(180deg, #eff6ff 0%, var(--bg) 42%, #ffffff 100%);
-        color: var(--text);
-        font-family: Georgia, "Times New Roman", serif;
+        background: #f3f4f6;
+        color: #111827;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial;
       }
-      main {
-        width: min(560px, 100%);
-        padding: 36px 32px;
-        border: 1px solid var(--border);
-        border-radius: 24px;
-        background: color-mix(in srgb, var(--panel) 88%, white 12%);
-        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
+      .card {
+        width: min(680px, 100%);
+        margin-top: 56px;
+        border: 1px solid #d1d5db;
+        border-radius: 12px;
+        background: #f3f4f6;
+        padding: 24px;
       }
-      h1 {
-        margin: 0 0 12px;
-        font-size: clamp(2rem, 4vw, 2.8rem);
-        line-height: 1.05;
-        letter-spacing: -0.03em;
+      .ok {
+        color: #065f46;
+        font-size: 30px;
+        line-height: 1;
+        margin-right: 10px;
+      }
+      .title-row {
+        display: flex;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .title {
+        color: #065f46;
+        font-size: 30px;
+        font-weight: 700;
+        margin: 0;
       }
       p {
-        margin: 0;
-        color: var(--muted);
-        font-size: 1.05rem;
-        line-height: 1.7;
+        margin: 0 0 14px;
+        font-size: 31px;
+        line-height: 1.35;
       }
-      .timer {
-        margin-top: 28px;
-        display: inline-flex;
-        align-items: center;
-        gap: 12px;
-        padding: 10px 16px;
-        border-radius: 999px;
-        background: rgba(37, 99, 235, 0.08);
-        color: var(--accent);
-        font-weight: 600;
+      code {
+        background: #e5e7eb;
+        padding: 2px 8px;
+        border-radius: 6px;
+        font-size: 26px;
       }
-      .bar {
-        margin-top: 28px;
-        width: 100%;
-        height: 10px;
-        border-radius: 999px;
-        overflow: hidden;
-        background: rgba(37, 99, 235, 0.12);
-      }
-      .bar > span {
-        display: block;
-        width: 100%;
-        height: 100%;
-        transform-origin: left center;
-        background: linear-gradient(90deg, #60a5fa 0%, #2563eb 100%);
-        animation: shrink ${safeDelayMs}ms linear forwards;
+      .countdown {
+        font-size: 26px;
+        margin-top: 4px;
       }
       a {
-        color: var(--accent);
-      }
-      @keyframes shrink {
-        from { transform: scaleX(1); }
-        to { transform: scaleX(0); }
+        color: #1f2937;
       }
     </style>
   </head>
   <body>
-    <main>
-      <h1 id="title"></h1>
-      <p id="message"></p>
-      <div class="timer">
-        Redirecting in <span id="countdown">${Math.ceil(safeDelayMs / 1000)}</span>s
+    <div class="card">
+      <div class="title-row">
+        <div class="ok">✓</div>
+        <h1 class="title">${safeTitle}</h1>
       </div>
-      <div class="bar" aria-hidden="true"><span></span></div>
-      <p style="margin-top: 20px; font-size: 0.95rem;">
-        If you are not redirected automatically, <a id="redirect-link" href="#">return to settings</a>.
-      </p>
-    </main>
+      <p>${safeTokenLabel}</p>
+      <p><code>${safeClientId}</code></p>
+      <p>${safeFooterMessage}</p>
+      <p class="countdown">Returning to Settings in <span id="countdown">${Math.ceil(safeDelayMs / 1000)}</span>s. <a id="redirect-link" href="#">Go now</a>.</p>
+    </div>
     <script>
-      const title = ${safeTitle};
-      const message = ${safeMessage};
       const redirectUrl = ${safeRedirectUrl};
       const delayMs = ${safeDelayMs};
       const countdownEl = document.getElementById("countdown");
-      const titleEl = document.getElementById("title");
-      const messageEl = document.getElementById("message");
       const redirectLinkEl = document.getElementById("redirect-link");
 
-      if (titleEl) titleEl.textContent = title;
-      if (messageEl) messageEl.textContent = message;
       if (redirectLinkEl) redirectLinkEl.href = redirectUrl;
 
       const startedAt = Date.now();
@@ -324,7 +314,9 @@ export async function GET(req: NextRequest) {
     settingsUrl.searchParams.set("shop", payload.shop_domain);
     return renderRedirectPage({
       title: "Google Ads connected",
-      message: "OAuth consent finished successfully. This page will return you to settings automatically.",
+      tokenLabel: "Refresh token saved for client:",
+      clientId,
+      footerMessage: "Select a Google Ads account in Settings to finish setup.",
       redirectUrl: settingsUrl.toString(),
       delayMs: 10000,
     });

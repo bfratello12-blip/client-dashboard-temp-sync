@@ -170,6 +170,8 @@ function SettingsPage() {
   const [syncError, setSyncError] = useState<string>("");
   const [cogsCoveragePct, setCogsCoveragePct] = useState<number | null>(null);
   const [cogsCoverageHasRows, setCogsCoverageHasRows] = useState(false);
+  const [catalogCoveragePct, setCatalogCoveragePct] = useState<number | null>(null);
+  const [catalogCoverageHasRows, setCatalogCoverageHasRows] = useState(false);
 
   const [integrationStatus, setIntegrationStatus] = useState<IntegrationStatus | null>(null);
   const [integrationLoading, setIntegrationLoading] = useState(false);
@@ -751,8 +753,37 @@ function SettingsPage() {
     if (!clientId) return;
     let cancelled = false;
 
+    const resetCoverage = () => {
+      setCogsCoverageHasRows(false);
+      setCogsCoveragePct(null);
+      setCatalogCoverageHasRows(false);
+      setCatalogCoveragePct(null);
+    };
+
     const run = async () => {
       try {
+        if (effectiveShopDomain) {
+          const res = await fetch(
+            `/api/settings/coverage?shop_domain=${encodeURIComponent(effectiveShopDomain)}`,
+            { cache: "no-store" }
+          );
+          const json = await res.json().catch(() => ({}));
+
+          if (!res.ok || !json?.ok) {
+            throw new Error(json?.error || "Coverage fetch failed");
+          }
+
+          if (!cancelled) {
+            const soldRatio = Number(json?.unitCostCoveragePct);
+            const catalogRatio = Number(json?.catalogCoveragePct);
+            setCogsCoverageHasRows(Boolean(json?.unitCostCoverageHasRows));
+            setCogsCoveragePct(Number.isFinite(soldRatio) ? soldRatio : null);
+            setCatalogCoverageHasRows(Boolean(json?.catalogCoverageHasRows));
+            setCatalogCoveragePct(Number.isFinite(catalogRatio) ? catalogRatio : null);
+          }
+          return;
+        }
+
         const { data: coverageRows, error: coverageErr } = await supabase
           .from("unit_cost_coverage_daily")
           .select("date, units_with_unit_cost, units_total")
@@ -779,11 +810,12 @@ function SettingsPage() {
         if (!cancelled) {
           setCogsCoverageHasRows(hasRows);
           setCogsCoveragePct(Number.isFinite(Number(ratio)) ? Number(ratio) : null);
+          setCatalogCoverageHasRows(false);
+          setCatalogCoveragePct(null);
         }
       } catch (e) {
         if (!cancelled) {
-          setCogsCoverageHasRows(false);
-          setCogsCoveragePct(null);
+          resetCoverage();
         }
       }
     };
@@ -793,7 +825,7 @@ function SettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [clientId]);
+  }, [clientId, effectiveShopDomain]);
 
   useEffect(() => {
     if (!clientId) {
@@ -1188,25 +1220,51 @@ function SettingsPage() {
                       </div>
                       {productCostMode === "shopify" ? (
                         <div className="mt-2 text-xs text-slate-600">
-                          <div className="font-semibold text-slate-700">Unit Cost Coverage (7d)</div>
-                          <div
-                            className={[
-                              "mt-0.5",
-                              cogsCoveragePct == null
-                                ? "text-slate-600"
-                                : cogsCoveragePct >= 0.75
-                                ? "text-emerald-600"
-                                : cogsCoveragePct >= 0.5
-                                ? "text-amber-600"
-                                : "text-rose-600",
-                            ].join(" ")}
-                          >
-                            {cogsCoverageHasRows
-                              ? `${Math.round((cogsCoveragePct ?? 0) * 100)}%`
-                              : "—"}
-                          </div>
-                          <div className="mt-0.5 text-[11px] text-slate-500">
-                            % of units sold in the last 7 days that have a Shopify unit cost.
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div>
+                              <div className="font-semibold text-slate-700">Sold Unit Coverage (7d)</div>
+                              <div
+                                className={[
+                                  "mt-0.5",
+                                  cogsCoveragePct == null
+                                    ? "text-slate-600"
+                                    : cogsCoveragePct >= 0.75
+                                    ? "text-emerald-600"
+                                    : cogsCoveragePct >= 0.5
+                                    ? "text-amber-600"
+                                    : "text-rose-600",
+                                ].join(" ")}
+                              >
+                                {cogsCoverageHasRows
+                                  ? `${Math.round((cogsCoveragePct ?? 0) * 100)}%`
+                                  : "—"}
+                              </div>
+                              <div className="mt-0.5 text-[11px] text-slate-500">
+                                % of units sold in the last 7 days that have a Shopify unit cost.
+                              </div>
+                            </div>
+                            <div>
+                              <div className="font-semibold text-slate-700">Catalog Coverage</div>
+                              <div
+                                className={[
+                                  "mt-0.5",
+                                  catalogCoveragePct == null
+                                    ? "text-slate-600"
+                                    : catalogCoveragePct >= 0.75
+                                    ? "text-emerald-600"
+                                    : catalogCoveragePct >= 0.5
+                                    ? "text-amber-600"
+                                    : "text-rose-600",
+                                ].join(" ")}
+                              >
+                                {catalogCoverageHasRows
+                                  ? `${Math.round((catalogCoveragePct ?? 0) * 100)}%`
+                                  : "—"}
+                              </div>
+                              <div className="mt-0.5 text-[11px] text-slate-500">
+                                % of synced Shopify variants in this store that have a Shopify unit cost.
+                              </div>
+                            </div>
                           </div>
                         </div>
                       ) : null}

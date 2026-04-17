@@ -52,6 +52,32 @@ export async function GET(req: NextRequest) {
     const unitCostCoveragePct =
       unitTotals.units > 0 ? unitTotals.unitsWithCost / unitTotals.units : null;
 
+    const { count: catalogVariantCount, error: catalogCountErr } = await supabase
+      .from("shopify_variant_unit_costs")
+      .select("inventory_item_id", { count: "exact", head: true })
+      .eq("client_id", client_id)
+      .not("inventory_item_id", "is", null);
+
+    if (catalogCountErr) {
+      throw new Error(catalogCountErr.message || "Failed to load Shopify catalog coverage");
+    }
+
+    const { count: catalogVariantsWithCostCount, error: catalogWithCostErr } = await supabase
+      .from("shopify_variant_unit_costs")
+      .select("inventory_item_id", { count: "exact", head: true })
+      .eq("client_id", client_id)
+      .not("inventory_item_id", "is", null)
+      .gt("unit_cost_amount", 0);
+
+    if (catalogWithCostErr) {
+      throw new Error(catalogWithCostErr.message || "Failed to load Shopify catalog cost coverage");
+    }
+
+    const catalogCoveragePct =
+      Number(catalogVariantCount || 0) > 0
+        ? Number(catalogVariantsWithCostCount || 0) / Number(catalogVariantCount || 0)
+        : null;
+
     const { data: effRows, error: effErr } = await supabase
       .from("daily_profit_summary")
       .select("date,revenue,revenue_with_cogs")
@@ -76,6 +102,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       unitCostCoveragePct,
+      unitCostCoverageHasRows: (unitRows?.length ?? 0) > 0,
+      catalogCoveragePct,
+      catalogCoverageHasRows: Number(catalogVariantCount || 0) > 0,
+      catalogVariantCount: Number(catalogVariantCount || 0),
+      catalogVariantsWithCostCount: Number(catalogVariantsWithCostCount || 0),
       effectiveCogsCoveragePct,
       range: { startISO, endISO },
     });

@@ -376,7 +376,7 @@ export async function POST(req: NextRequest) {
         if (chosenCost != null && Number.isFinite(Number(chosenCost)) && Number(chosenCost) > 0) {
           coverageByDate[d].product_cogs_known += units * n(chosenCost);
           coverageByDate[d].revenue_with_cogs += lineRevenue;
-          if (unitCostAmount != null && Number(unitCostAmount) > 0) {
+          if (units > 0) {
             unitsWithUnitCostByDay[d] += units;
           }
         } else {

@@ -148,6 +148,7 @@ export async function GET(req: NextRequest) {
       catalogVariantsWithCostCount: Number(catalogVariantsWithCostCount || 0),
       recommendedFallbackGrossMarginPct,
       recommendedFallbackGrossMarginHasRows: recommendationTotals.revenueWithCogs > 0,
+      recommendedFallbackSampleRevenue: recommendationTotals.revenueWithCogs,
       recommendedFallbackSampleUnits: recommendationTotals.unitsWithCogs,
       recommendedFallbackSampleDays: recommendationTotals.daysWithCoverage,
       recommendationRange: { startISO: recommendationStartISO, endISO },

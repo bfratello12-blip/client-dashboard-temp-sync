@@ -102,13 +102,23 @@ function recommendationInputValue(value: number | null) {
   return String(Math.round(value * 1000) / 10);
 }
 
+function formatUsd(value: number) {
+  return value.toLocaleString(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  });
+}
+
 function FallbackGrossMarginRecommendation({
   recommendedPct,
+  sampleRevenue,
   sampleUnits,
   sampleDays,
   onUse,
 }: {
   recommendedPct: number | null;
+  sampleRevenue: number;
   sampleUnits: number;
   sampleDays: number;
   onUse: () => void;
@@ -124,7 +134,9 @@ function FallbackGrossMarginRecommendation({
             {formatSuggestedPct(recommendedPct)}
           </div>
           <div className="mt-1 text-[11px] text-slate-600">
-            Based on {sampleUnits.toLocaleString()} sold units with known Shopify unit cost across {sampleDays.toLocaleString()} day{sampleDays === 1 ? "" : "s"} in the last 90 days.
+            {sampleUnits > 0
+              ? `Based on ${sampleUnits.toLocaleString()} sold units with known Shopify unit cost across ${sampleDays.toLocaleString()} day${sampleDays === 1 ? "" : "s"} in the last 90 days.`
+              : `Based on ${formatUsd(sampleRevenue)} of Shopify sales with known unit cost coverage across ${sampleDays.toLocaleString()} day${sampleDays === 1 ? "" : "s"} in the last 90 days.`}
           </div>
         </div>
         <button
@@ -225,6 +237,7 @@ function SettingsPage() {
   const [catalogCoveragePct, setCatalogCoveragePct] = useState<number | null>(null);
   const [catalogCoverageHasRows, setCatalogCoverageHasRows] = useState(false);
   const [recommendedFallbackGrossMarginPct, setRecommendedFallbackGrossMarginPct] = useState<number | null>(null);
+  const [recommendedFallbackSampleRevenue, setRecommendedFallbackSampleRevenue] = useState(0);
   const [recommendedFallbackSampleUnits, setRecommendedFallbackSampleUnits] = useState(0);
   const [recommendedFallbackSampleDays, setRecommendedFallbackSampleDays] = useState(0);
 
@@ -814,6 +827,7 @@ function SettingsPage() {
       setCatalogCoverageHasRows(false);
       setCatalogCoveragePct(null);
       setRecommendedFallbackGrossMarginPct(null);
+      setRecommendedFallbackSampleRevenue(0);
       setRecommendedFallbackSampleUnits(0);
       setRecommendedFallbackSampleDays(0);
     };
@@ -844,6 +858,7 @@ function SettingsPage() {
                 ? recommendedRatio
                 : null
             );
+            setRecommendedFallbackSampleRevenue(Number(json?.recommendedFallbackSampleRevenue || 0));
             setRecommendedFallbackSampleUnits(Number(json?.recommendedFallbackSampleUnits || 0));
             setRecommendedFallbackSampleDays(Number(json?.recommendedFallbackSampleDays || 0));
           }
@@ -879,6 +894,7 @@ function SettingsPage() {
           setCatalogCoverageHasRows(false);
           setCatalogCoveragePct(null);
           setRecommendedFallbackGrossMarginPct(null);
+          setRecommendedFallbackSampleRevenue(0);
           setRecommendedFallbackSampleUnits(0);
           setRecommendedFallbackSampleDays(0);
         }
@@ -1395,6 +1411,7 @@ function SettingsPage() {
                           </div>
                           <FallbackGrossMarginRecommendation
                             recommendedPct={recommendedFallbackGrossMarginPct}
+                            sampleRevenue={recommendedFallbackSampleRevenue}
                             sampleUnits={recommendedFallbackSampleUnits}
                             sampleDays={recommendedFallbackSampleDays}
                             onUse={() =>
@@ -1424,6 +1441,7 @@ function SettingsPage() {
                       />
                       <FallbackGrossMarginRecommendation
                         recommendedPct={recommendedFallbackGrossMarginPct}
+                        sampleRevenue={recommendedFallbackSampleRevenue}
                         sampleUnits={recommendedFallbackSampleUnits}
                         sampleDays={recommendedFallbackSampleDays}
                         onUse={() =>

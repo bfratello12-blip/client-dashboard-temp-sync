@@ -14,8 +14,102 @@ type VariantMeta = {
   admin_variant_url?: string;
 };
 
+type FilterableColumn =
+  | "units"
+  | "units_per_day"
+  | "revenue"
+  | "revenue_share_pct"
+  | "est_cogs"
+  | "profit"
+  | "profit_per_unit"
+  | "profit_margin_pct"
+  | "trend_pct"
+  | "on_hand_units"
+  | "days_of_inventory"
+  | "cogs_coverage_pct";
+
+type FilterOperator = "gt" | "gte" | "lt" | "lte" | "eq" | "neq";
+
+type ParsedFilterRule = {
+  column: FilterableColumn;
+  operator: FilterOperator;
+  value: number;
+};
+
 const VARIANT_META_TTL_MS = 6 * 60 * 60 * 1000;
 const variantMetaCache = new Map<string, { value: VariantMeta; expiresAt: number }>();
+const FILTERABLE_COLUMNS = new Set<FilterableColumn>([
+  "units",
+  "units_per_day",
+  "revenue",
+  "revenue_share_pct",
+  "est_cogs",
+  "profit",
+  "profit_per_unit",
+  "profit_margin_pct",
+  "trend_pct",
+  "on_hand_units",
+  "days_of_inventory",
+  "cogs_coverage_pct",
+]);
+const PERCENT_FILTER_COLUMNS = new Set<FilterableColumn>([
+  "revenue_share_pct",
+  "profit_margin_pct",
+  "trend_pct",
+  "cogs_coverage_pct",
+]);
+const FILTER_OPERATORS = new Set<FilterOperator>(["gt", "gte", "lt", "lte", "eq", "neq"]);
+
+function parseFilterRules(raw: string): ParsedFilterRule[] {
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.slice(0, 10).flatMap((entry: any) => {
+      const column = String(entry?.column || "") as FilterableColumn;
+      const operator = String(entry?.operator || "") as FilterOperator;
+      const rawValue = Number(entry?.value);
+
+      if (!FILTERABLE_COLUMNS.has(column) || !FILTER_OPERATORS.has(operator) || !Number.isFinite(rawValue)) {
+        return [];
+      }
+
+      const value = PERCENT_FILTER_COLUMNS.has(column) ? rawValue / 100 : rawValue;
+      return [{ column, operator, value }];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function getFilterValue(row: any, column: FilterableColumn): number | null {
+  const rawValue = row?.[column];
+  const numericValue = Number(rawValue);
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function matchesFilterRule(value: number | null, rule: ParsedFilterRule) {
+  if (value == null) return false;
+
+  switch (rule.operator) {
+    case "gt":
+      return value > rule.value;
+    case "gte":
+      return value >= rule.value;
+    case "lt":
+      return value < rule.value;
+    case "lte":
+      return value <= rule.value;
+    case "eq":
+      return Math.abs(value - rule.value) < 1e-9;
+    case "neq":
+      return Math.abs(value - rule.value) >= 1e-9;
+    default:
+      return true;
+  }
+}
 
 function isIsoDate(s: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s);
@@ -109,6 +203,7 @@ export async function GET(req: NextRequest) {
     const requestedShopDomain = (searchParams.get("shop_domain") || "").trim();
     const requestedClientId = (searchParams.get("client_id") || "").trim();
     const filterRaw = (searchParams.get("filter") || "all").trim().toLowerCase();
+    const filterRules = parseFilterRules((searchParams.get("filterRules") || "").trim());
     const filter =
       filterRaw === "rising" ||
       filterRaw === "declining" ||
@@ -469,7 +564,10 @@ export async function GET(req: NextRequest) {
       }
     };
 
-    const matchedRows = allRows.filter((r) => matchesSearch(r) && matchesFilter(r));
+    const matchesRuleFilters = (r: any) =>
+      filterRules.every((rule) => matchesFilterRule(getFilterValue(r, rule.column), rule));
+
+    const matchedRows = allRows.filter((r) => matchesSearch(r) && matchesFilter(r) && matchesRuleFilters(r));
 
     const toNum = (v: any) => (v == null || Number.isNaN(Number(v)) ? 0 : Number(v));
     const sortedRows = [...matchedRows].sort((a, b) => {

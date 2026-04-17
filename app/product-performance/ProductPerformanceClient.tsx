@@ -66,6 +66,79 @@ type SummaryInfo = {
   profitCoveragePct: number;
 };
 
+type FilterableColumn =
+  | "units"
+  | "units_per_day"
+  | "revenue"
+  | "revenue_share_pct"
+  | "est_cogs"
+  | "profit"
+  | "profit_per_unit"
+  | "profit_margin_pct"
+  | "trend_pct"
+  | "on_hand_units"
+  | "days_of_inventory"
+  | "cogs_coverage_pct";
+
+type FilterOperator = "gt" | "gte" | "lt" | "lte" | "eq" | "neq";
+
+type ColumnFilterRule = {
+  id: string;
+  column: FilterableColumn;
+  operator: FilterOperator;
+  value: string;
+};
+
+type FilterableColumnOption = {
+  value: FilterableColumn;
+  label: string;
+  placeholder: string;
+};
+
+const FILTERABLE_COLUMNS: FilterableColumnOption[] = [
+  { value: "units", label: "Units", placeholder: "e.g. 100" },
+  { value: "units_per_day", label: "Units / Day", placeholder: "e.g. 3" },
+  { value: "revenue", label: "Revenue ($)", placeholder: "e.g. 1000" },
+  { value: "revenue_share_pct", label: "Revenue Share (%)", placeholder: "e.g. 10" },
+  { value: "est_cogs", label: "Est. COGS ($)", placeholder: "e.g. 500" },
+  { value: "profit", label: "Profit ($)", placeholder: "e.g. 250" },
+  { value: "profit_per_unit", label: "Profit / Unit ($)", placeholder: "e.g. 15" },
+  { value: "profit_margin_pct", label: "Margin (%)", placeholder: "e.g. 35" },
+  { value: "trend_pct", label: "Trend (%)", placeholder: "e.g. -10" },
+  { value: "on_hand_units", label: "On-hand Units", placeholder: "e.g. 25" },
+  { value: "days_of_inventory", label: "Days of Inventory", placeholder: "e.g. 14" },
+  { value: "cogs_coverage_pct", label: "COGS Coverage (%)", placeholder: "e.g. 80" },
+];
+
+const FILTERABLE_COLUMN_MAP = Object.fromEntries(
+  FILTERABLE_COLUMNS.map((column) => [column.value, column])
+) as Record<FilterableColumn, FilterableColumnOption>;
+
+const FILTER_OPERATORS: Array<{ value: FilterOperator; label: string }> = [
+  { value: "gt", label: ">" },
+  { value: "gte", label: ">=" },
+  { value: "lt", label: "<" },
+  { value: "lte", label: "<=" },
+  { value: "eq", label: "=" },
+  { value: "neq", label: "!=" },
+];
+
+let columnFilterSequence = 0;
+
+function createColumnFilterRule(): ColumnFilterRule {
+  columnFilterSequence += 1;
+  return {
+    id: `rule-${columnFilterSequence}`,
+    column: "profit",
+    operator: "gt",
+    value: "",
+  };
+}
+
+function isColumnFilterRuleActive(rule: ColumnFilterRule) {
+  return rule.value.trim() !== "" && Number.isFinite(Number(rule.value));
+}
+
 function formatCurrency(n: number) {
   return n.toLocaleString(undefined, { style: "currency", currency: "USD" });
 }
@@ -176,6 +249,7 @@ export default function ProductPerformanceClient() {
   const [activeFilter, setActiveFilter] = useState<
     "all" | "rising" | "declining" | "low-inventory" | "high-margin" | "losing"
   >("all");
+  const [columnFilters, setColumnFilters] = useState<ColumnFilterRule[]>([]);
   const [pagination, setPagination] = useState<PaginationInfo>({
     page: 1,
     limit: 25,
@@ -209,9 +283,32 @@ export default function ProductPerformanceClient() {
     return <span className="ml-1 text-xs text-slate-400">{sortDirection === "asc" ? "▲" : "▼"}</span>;
   };
 
+  const activeColumnFilterCount = useMemo(
+    () => columnFilters.filter((rule) => isColumnFilterRuleActive(rule)).length,
+    [columnFilters]
+  );
+
+  const addColumnFilter = () => {
+    setColumnFilters((current) => [...current, createColumnFilterRule()]);
+  };
+
+  const updateColumnFilter = (id: string, patch: Partial<Omit<ColumnFilterRule, "id">>) => {
+    setColumnFilters((current) =>
+      current.map((rule) => (rule.id === id ? { ...rule, ...patch } : rule))
+    );
+  };
+
+  const removeColumnFilter = (id: string) => {
+    setColumnFilters((current) => current.filter((rule) => rule.id !== id));
+  };
+
+  const clearColumnFilters = () => {
+    setColumnFilters([]);
+  };
+
   useEffect(() => {
     setPage(1);
-  }, [rangeValue, sortKey, sortDirection, pageSize, searchTerm, activeFilter]);
+  }, [rangeValue, sortKey, sortDirection, pageSize, searchTerm, activeFilter, columnFilters]);
 
   const totalPages = pagination.totalPages || 1;
   const displayedRows = rows;
@@ -256,6 +353,16 @@ export default function ProductPerformanceClient() {
           losing: "losing_products",
         };
         params.set("filter", filterMap[activeFilter] || "all");
+        const activeRules = columnFilters
+          .filter((rule) => isColumnFilterRuleActive(rule))
+          .map(({ column, operator, value }) => ({
+            column,
+            operator,
+            value: value.trim(),
+          }));
+        if (activeRules.length) {
+          params.set("filterRules", JSON.stringify(activeRules));
+        }
         const url = `/api/data/product-performance?${params.toString()}`;
         console.debug("[product-performance] fetch", { url });
         const res = await authenticatedFetch(url);
@@ -300,7 +407,18 @@ export default function ProductPerformanceClient() {
         if (!isCancelled?.()) setLoading(false);
       }
     },
-    [shopDomain, resolvedShopDomain, contextClientId, page, pageSize, searchTerm, activeFilter, sortKey, sortDirection]
+    [
+      shopDomain,
+      resolvedShopDomain,
+      contextClientId,
+      page,
+      pageSize,
+      searchTerm,
+      activeFilter,
+      columnFilters,
+      sortKey,
+      sortDirection,
+    ]
   );
 
   useEffect(() => {
@@ -408,6 +526,102 @@ export default function ProductPerformanceClient() {
               </button>
             ))}
           </div>
+          <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-inner">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-900">Advanced column filters</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  Match all rules. For percentage columns, enter whole numbers like 40 for 40%.
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {activeColumnFilterCount > 0 ? (
+                  <span className="rounded-full bg-slate-900 px-3 py-1 text-[11px] font-semibold text-white">
+                    {activeColumnFilterCount} active rule{activeColumnFilterCount === 1 ? "" : "s"}
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={addColumnFilter}
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                >
+                  Add Rule
+                </button>
+                <button
+                  type="button"
+                  onClick={clearColumnFilters}
+                  disabled={columnFilters.length === 0}
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Clear Rules
+                </button>
+              </div>
+            </div>
+
+            {columnFilters.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {columnFilters.map((rule) => {
+                  const columnConfig = FILTERABLE_COLUMN_MAP[rule.column];
+                  return (
+                    <div
+                      key={rule.id}
+                      className="grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-4"
+                    >
+                      <select
+                        value={rule.column}
+                        onChange={(e) =>
+                          updateColumnFilter(rule.id, { column: e.target.value as FilterableColumn })
+                        }
+                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                        aria-label="Filter column"
+                      >
+                        {FILTERABLE_COLUMNS.map((column) => (
+                          <option key={column.value} value={column.value}>
+                            {column.label}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={rule.operator}
+                        onChange={(e) =>
+                          updateColumnFilter(rule.id, { operator: e.target.value as FilterOperator })
+                        }
+                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                        aria-label="Filter operator"
+                      >
+                        {FILTER_OPERATORS.map((operator) => (
+                          <option key={operator.value} value={operator.value}>
+                            {operator.label}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        step="any"
+                        value={rule.value}
+                        onChange={(e) => updateColumnFilter(rule.id, { value: e.target.value })}
+                        placeholder={columnConfig.placeholder}
+                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm placeholder:text-slate-400 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                        aria-label="Filter value"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeColumnFilter(rule.id)}
+                        className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-white px-3 py-3 text-xs text-slate-500">
+                No advanced rules applied. Add one or more rules to filter by numeric column values.
+              </div>
+            )}
+          </div>
           <div className="mb-4 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
             <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-[0_10px_24px_-20px_rgba(15,23,42,0.35)] transition-shadow hover:shadow-md">
               <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -471,7 +685,8 @@ export default function ProductPerformanceClient() {
           <div className="overflow-x-auto rounded-2xl border border-slate-200">
             <div className="border-b border-slate-200 bg-slate-50/80 px-3 py-2 text-xs font-medium text-slate-500">
               {(() => {
-                const filterActive = searchTerm.trim().length > 0 || activeFilter !== "all";
+                const filterActive =
+                  searchTerm.trim().length > 0 || activeFilter !== "all" || activeColumnFilterCount > 0;
                 if (filterActive) {
                   return `Showing ${rows.length} of ${pagination.total} matching products`;
                 }

@@ -1206,7 +1206,7 @@ function SettingsPage() {
                               : "—"}
                           </div>
                           <div className="mt-0.5 text-[11px] text-slate-500">
-                            % of units with a Shopify unit cost.
+                            % of units sold in the last 7 days that have a Shopify unit cost.
                           </div>
                         </div>
                       ) : null}

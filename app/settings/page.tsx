@@ -114,13 +114,13 @@ function FallbackGrossMarginRecommendation({
   recommendedPct,
   sampleRevenue,
   sampleUnits,
-  sampleDays,
+  sampleProducts,
   onUse,
 }: {
   recommendedPct: number | null;
   sampleRevenue: number;
   sampleUnits: number;
-  sampleDays: number;
+  sampleProducts: number;
   onUse: () => void;
 }) {
   if (recommendedPct == null) return null;
@@ -134,9 +134,7 @@ function FallbackGrossMarginRecommendation({
             {formatSuggestedPct(recommendedPct)}
           </div>
           <div className="mt-1 text-[11px] text-slate-600">
-            {sampleUnits > 0
-              ? `Based on ${sampleUnits.toLocaleString()} sold units with known Shopify unit cost across ${sampleDays.toLocaleString()} day${sampleDays === 1 ? "" : "s"} in the last 90 days.`
-              : `Based on ${formatUsd(sampleRevenue)} of Shopify sales with known unit cost coverage across ${sampleDays.toLocaleString()} day${sampleDays === 1 ? "" : "s"} in the last 90 days.`}
+            Based on {sampleProducts.toLocaleString()} products with 100% COGS coverage in the last 90 days ({formatUsd(sampleRevenue)} revenue, {sampleUnits.toLocaleString()} units).
           </div>
         </div>
         <button
@@ -239,7 +237,7 @@ function SettingsPage() {
   const [recommendedFallbackGrossMarginPct, setRecommendedFallbackGrossMarginPct] = useState<number | null>(null);
   const [recommendedFallbackSampleRevenue, setRecommendedFallbackSampleRevenue] = useState(0);
   const [recommendedFallbackSampleUnits, setRecommendedFallbackSampleUnits] = useState(0);
-  const [recommendedFallbackSampleDays, setRecommendedFallbackSampleDays] = useState(0);
+  const [recommendedFallbackSampleProducts, setRecommendedFallbackSampleProducts] = useState(0);
 
   const [integrationStatus, setIntegrationStatus] = useState<IntegrationStatus | null>(null);
   const [integrationLoading, setIntegrationLoading] = useState(false);
@@ -829,7 +827,7 @@ function SettingsPage() {
       setRecommendedFallbackGrossMarginPct(null);
       setRecommendedFallbackSampleRevenue(0);
       setRecommendedFallbackSampleUnits(0);
-      setRecommendedFallbackSampleDays(0);
+      setRecommendedFallbackSampleProducts(0);
     };
 
     const run = async () => {
@@ -860,7 +858,7 @@ function SettingsPage() {
             );
             setRecommendedFallbackSampleRevenue(Number(json?.recommendedFallbackSampleRevenue || 0));
             setRecommendedFallbackSampleUnits(Number(json?.recommendedFallbackSampleUnits || 0));
-            setRecommendedFallbackSampleDays(Number(json?.recommendedFallbackSampleDays || 0));
+            setRecommendedFallbackSampleProducts(Number(json?.recommendedFallbackSampleProducts || 0));
           }
           return;
         }
@@ -896,7 +894,7 @@ function SettingsPage() {
           setRecommendedFallbackGrossMarginPct(null);
           setRecommendedFallbackSampleRevenue(0);
           setRecommendedFallbackSampleUnits(0);
-          setRecommendedFallbackSampleDays(0);
+          setRecommendedFallbackSampleProducts(0);
         }
       } catch (e) {
         if (!cancelled) {
@@ -1413,7 +1411,7 @@ function SettingsPage() {
                             recommendedPct={recommendedFallbackGrossMarginPct}
                             sampleRevenue={recommendedFallbackSampleRevenue}
                             sampleUnits={recommendedFallbackSampleUnits}
-                            sampleDays={recommendedFallbackSampleDays}
+                            sampleProducts={recommendedFallbackSampleProducts}
                             onUse={() =>
                               setCS(
                                 "default_gross_margin_pct",
@@ -1443,7 +1441,7 @@ function SettingsPage() {
                         recommendedPct={recommendedFallbackGrossMarginPct}
                         sampleRevenue={recommendedFallbackSampleRevenue}
                         sampleUnits={recommendedFallbackSampleUnits}
-                        sampleDays={recommendedFallbackSampleDays}
+                        sampleProducts={recommendedFallbackSampleProducts}
                         onUse={() =>
                           setCS(
                             "default_gross_margin_pct",

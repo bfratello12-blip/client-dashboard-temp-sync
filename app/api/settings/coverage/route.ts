@@ -5,6 +5,37 @@ import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+async function fetchAllProductPerformance(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  clientId: string,
+  startISO: string,
+  endISO: string
+) {
+  const rows: any[] = [];
+  const pageSize = 1000;
+
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase.rpc("get_product_performance", {
+      p_client_id: clientId,
+      p_start: startISO,
+      p_end: endISO,
+      p_limit: pageSize,
+      p_offset: offset,
+    });
+
+    if (error) {
+      throw new Error(error.message || "Failed to load product performance recommendation data");
+    }
+
+    const chunk = (data || []) as any[];
+    if (!chunk.length) break;
+    rows.push(...chunk);
+    if (chunk.length < pageSize) break;
+  }
+
+  return rows;
+}
+
 function isoDateUTC(d: Date) {
   return d.toISOString().slice(0, 10);
 }
@@ -81,40 +112,32 @@ export async function GET(req: NextRequest) {
         ? Number(catalogVariantsWithCostCount || 0) / Number(catalogVariantCount || 0)
         : null;
 
-    const { data: recommendationRows, error: recommendationErr } = await supabase
-      .from("daily_shopify_cogs_coverage")
-      .select("date,product_cogs_known,revenue_with_cogs,units_with_cogs")
-      .eq("client_id", client_id)
-      .gte("date", recommendationStartISO)
-      .lte("date", endISO);
+    const recommendationRows = await fetchAllProductPerformance(
+      supabase,
+      client_id,
+      recommendationStartISO,
+      endISO
+    );
+    const fullyCoveredRecommendationRows = recommendationRows.filter((row: any) => {
+      const revenue = Number(row?.revenue ?? 0);
+      const coverage = Number(row?.cogs_coverage_pct ?? 0);
+      return revenue > 0 && coverage >= 0.999999;
+    });
 
-    if (recommendationErr) {
-      throw new Error(
-        recommendationErr.message || "Failed to load fallback gross margin recommendation"
-      );
-    }
-
-    const recommendationTotals = (recommendationRows ?? []).reduce(
+    const recommendationTotals = fullyCoveredRecommendationRows.reduce(
       (acc, row: any) => {
-        acc.productCogsKnown += Number(row?.product_cogs_known ?? 0);
-        acc.revenueWithCogs += Number(row?.revenue_with_cogs ?? 0);
-        acc.unitsWithCogs += Number(row?.units_with_cogs ?? 0);
-        acc.daysWithCoverage += Number(row?.revenue_with_cogs ?? 0) > 0 ? 1 : 0;
+        acc.revenue += Number(row?.revenue ?? 0);
+        acc.profit += Number(row?.profit ?? 0);
+        acc.units += Number(row?.units ?? 0);
+        acc.products += 1;
         return acc;
       },
-      { productCogsKnown: 0, revenueWithCogs: 0, unitsWithCogs: 0, daysWithCoverage: 0 }
+      { revenue: 0, profit: 0, units: 0, products: 0 }
     );
 
     const recommendedFallbackGrossMarginPct =
-      recommendationTotals.revenueWithCogs > 0
-        ? Math.max(
-            0,
-            Math.min(
-              1,
-              (recommendationTotals.revenueWithCogs - recommendationTotals.productCogsKnown) /
-                recommendationTotals.revenueWithCogs
-            )
-          )
+      recommendationTotals.revenue > 0
+        ? Math.max(0, Math.min(1, recommendationTotals.profit / recommendationTotals.revenue))
         : null;
 
     const { data: effRows, error: effErr } = await supabase
@@ -147,10 +170,10 @@ export async function GET(req: NextRequest) {
       catalogVariantCount: Number(catalogVariantCount || 0),
       catalogVariantsWithCostCount: Number(catalogVariantsWithCostCount || 0),
       recommendedFallbackGrossMarginPct,
-      recommendedFallbackGrossMarginHasRows: recommendationTotals.revenueWithCogs > 0,
-      recommendedFallbackSampleRevenue: recommendationTotals.revenueWithCogs,
-      recommendedFallbackSampleUnits: recommendationTotals.unitsWithCogs,
-      recommendedFallbackSampleDays: recommendationTotals.daysWithCoverage,
+      recommendedFallbackGrossMarginHasRows: recommendationTotals.revenue > 0,
+      recommendedFallbackSampleRevenue: recommendationTotals.revenue,
+      recommendedFallbackSampleUnits: recommendationTotals.units,
+      recommendedFallbackSampleProducts: recommendationTotals.products,
       recommendationRange: { startISO: recommendationStartISO, endISO },
       effectiveCogsCoveragePct,
       range: { startISO, endISO },

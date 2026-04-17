@@ -26,8 +26,11 @@ export async function GET(req: NextRequest) {
     end.setUTCHours(0, 0, 0, 0);
     const start = new Date(end);
     start.setUTCDate(end.getUTCDate() - 6);
+    const recommendationStart = new Date(end);
+    recommendationStart.setUTCDate(end.getUTCDate() - 89);
     const endISO = isoDateUTC(end);
     const startISO = isoDateUTC(start);
+    const recommendationStartISO = isoDateUTC(recommendationStart);
 
     const supabase = getSupabaseAdmin();
 
@@ -78,6 +81,42 @@ export async function GET(req: NextRequest) {
         ? Number(catalogVariantsWithCostCount || 0) / Number(catalogVariantCount || 0)
         : null;
 
+    const { data: recommendationRows, error: recommendationErr } = await supabase
+      .from("daily_shopify_cogs_coverage")
+      .select("date,product_cogs_known,revenue_with_cogs,units_with_cogs")
+      .eq("client_id", client_id)
+      .gte("date", recommendationStartISO)
+      .lte("date", endISO);
+
+    if (recommendationErr) {
+      throw new Error(
+        recommendationErr.message || "Failed to load fallback gross margin recommendation"
+      );
+    }
+
+    const recommendationTotals = (recommendationRows ?? []).reduce(
+      (acc, row: any) => {
+        acc.productCogsKnown += Number(row?.product_cogs_known ?? 0);
+        acc.revenueWithCogs += Number(row?.revenue_with_cogs ?? 0);
+        acc.unitsWithCogs += Number(row?.units_with_cogs ?? 0);
+        acc.daysWithCoverage += Number(row?.revenue_with_cogs ?? 0) > 0 ? 1 : 0;
+        return acc;
+      },
+      { productCogsKnown: 0, revenueWithCogs: 0, unitsWithCogs: 0, daysWithCoverage: 0 }
+    );
+
+    const recommendedFallbackGrossMarginPct =
+      recommendationTotals.revenueWithCogs > 0
+        ? Math.max(
+            0,
+            Math.min(
+              1,
+              (recommendationTotals.revenueWithCogs - recommendationTotals.productCogsKnown) /
+                recommendationTotals.revenueWithCogs
+            )
+          )
+        : null;
+
     const { data: effRows, error: effErr } = await supabase
       .from("daily_profit_summary")
       .select("date,revenue,revenue_with_cogs")
@@ -107,6 +146,11 @@ export async function GET(req: NextRequest) {
       catalogCoverageHasRows: Number(catalogVariantCount || 0) > 0,
       catalogVariantCount: Number(catalogVariantCount || 0),
       catalogVariantsWithCostCount: Number(catalogVariantsWithCostCount || 0),
+      recommendedFallbackGrossMarginPct,
+      recommendedFallbackGrossMarginHasRows: recommendationTotals.revenueWithCogs > 0,
+      recommendedFallbackSampleUnits: recommendationTotals.unitsWithCogs,
+      recommendedFallbackSampleDays: recommendationTotals.daysWithCoverage,
+      recommendationRange: { startISO: recommendationStartISO, endISO },
       effectiveCogsCoveragePct,
       range: { startISO, endISO },
     });

@@ -50,9 +50,13 @@ function isoDateInTimeZone(d: Date, timeZone: string) {
 }
 
 function last30DaysRangeISO(timeZone: string) {
+  return lastNDaysRangeISO(timeZone, 30);
+}
+
+function lastNDaysRangeISO(timeZone: string, days: number) {
   const endISO = isoDateInTimeZone(new Date(), timeZone);
   const endDate = new Date(`${endISO}T00:00:00Z`);
-  endDate.setUTCDate(endDate.getUTCDate() - 29);
+  endDate.setUTCDate(endDate.getUTCDate() - Math.max(0, days - 1));
   const startISO = isoDateInTimeZone(endDate, timeZone);
   return { startISO, endISO };
 }
@@ -83,6 +87,54 @@ function Field({
         ) : null}
       </div>
       <div className="relative mt-3">{children}</div>
+    </div>
+  );
+}
+
+function formatSuggestedPct(value: number | null) {
+  if (value == null || !Number.isFinite(value)) return "";
+  const pct = Math.round(value * 1000) / 10;
+  return `${pct.toFixed(1).replace(/\.0$/, "")}%`;
+}
+
+function recommendationInputValue(value: number | null) {
+  if (value == null || !Number.isFinite(value)) return "";
+  return String(Math.round(value * 1000) / 10);
+}
+
+function FallbackGrossMarginRecommendation({
+  recommendedPct,
+  sampleUnits,
+  sampleDays,
+  onUse,
+}: {
+  recommendedPct: number | null;
+  sampleUnits: number;
+  sampleDays: number;
+  onUse: () => void;
+}) {
+  if (recommendedPct == null) return null;
+
+  return (
+    <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-slate-700">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="font-semibold text-emerald-800">Recommended fallback gross margin (90d)</div>
+          <div className="mt-0.5 text-sm font-semibold text-emerald-700">
+            {formatSuggestedPct(recommendedPct)}
+          </div>
+          <div className="mt-1 text-[11px] text-slate-600">
+            Based on {sampleUnits.toLocaleString()} sold units with known Shopify unit cost across {sampleDays.toLocaleString()} day{sampleDays === 1 ? "" : "s"} in the last 90 days.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onUse}
+          className="inline-flex rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-100"
+        >
+          Use recommendation
+        </button>
+      </div>
     </div>
   );
 }
@@ -172,6 +224,9 @@ function SettingsPage() {
   const [cogsCoverageHasRows, setCogsCoverageHasRows] = useState(false);
   const [catalogCoveragePct, setCatalogCoveragePct] = useState<number | null>(null);
   const [catalogCoverageHasRows, setCatalogCoverageHasRows] = useState(false);
+  const [recommendedFallbackGrossMarginPct, setRecommendedFallbackGrossMarginPct] = useState<number | null>(null);
+  const [recommendedFallbackSampleUnits, setRecommendedFallbackSampleUnits] = useState(0);
+  const [recommendedFallbackSampleDays, setRecommendedFallbackSampleDays] = useState(0);
 
   const [integrationStatus, setIntegrationStatus] = useState<IntegrationStatus | null>(null);
   const [integrationLoading, setIntegrationLoading] = useState(false);
@@ -758,6 +813,9 @@ function SettingsPage() {
       setCogsCoveragePct(null);
       setCatalogCoverageHasRows(false);
       setCatalogCoveragePct(null);
+      setRecommendedFallbackGrossMarginPct(null);
+      setRecommendedFallbackSampleUnits(0);
+      setRecommendedFallbackSampleDays(0);
     };
 
     const run = async () => {
@@ -776,10 +834,18 @@ function SettingsPage() {
           if (!cancelled) {
             const soldRatio = Number(json?.unitCostCoveragePct);
             const catalogRatio = Number(json?.catalogCoveragePct);
+            const recommendedRatio = Number(json?.recommendedFallbackGrossMarginPct);
             setCogsCoverageHasRows(Boolean(json?.unitCostCoverageHasRows));
             setCogsCoveragePct(Number.isFinite(soldRatio) ? soldRatio : null);
             setCatalogCoverageHasRows(Boolean(json?.catalogCoverageHasRows));
             setCatalogCoveragePct(Number.isFinite(catalogRatio) ? catalogRatio : null);
+            setRecommendedFallbackGrossMarginPct(
+              Boolean(json?.recommendedFallbackGrossMarginHasRows) && Number.isFinite(recommendedRatio)
+                ? recommendedRatio
+                : null
+            );
+            setRecommendedFallbackSampleUnits(Number(json?.recommendedFallbackSampleUnits || 0));
+            setRecommendedFallbackSampleDays(Number(json?.recommendedFallbackSampleDays || 0));
           }
           return;
         }
@@ -812,6 +878,9 @@ function SettingsPage() {
           setCogsCoveragePct(Number.isFinite(Number(ratio)) ? Number(ratio) : null);
           setCatalogCoverageHasRows(false);
           setCatalogCoveragePct(null);
+          setRecommendedFallbackGrossMarginPct(null);
+          setRecommendedFallbackSampleUnits(0);
+          setRecommendedFallbackSampleDays(0);
         }
       } catch (e) {
         if (!cancelled) {
@@ -1324,6 +1393,17 @@ function SettingsPage() {
                               </div>
                             </label>
                           </div>
+                          <FallbackGrossMarginRecommendation
+                            recommendedPct={recommendedFallbackGrossMarginPct}
+                            sampleUnits={recommendedFallbackSampleUnits}
+                            sampleDays={recommendedFallbackSampleDays}
+                            onUse={() =>
+                              setCS(
+                                "default_gross_margin_pct",
+                                recommendationInputValue(recommendedFallbackGrossMarginPct)
+                              )
+                            }
+                          />
                         </div>
                       ) : null}
                     </div>
@@ -1341,6 +1421,17 @@ function SettingsPage() {
                         inputMode="decimal"
                         className="mt-2 w-full rounded-xl border border-slate-300/90 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
                         placeholder="e.g. 55"
+                      />
+                      <FallbackGrossMarginRecommendation
+                        recommendedPct={recommendedFallbackGrossMarginPct}
+                        sampleUnits={recommendedFallbackSampleUnits}
+                        sampleDays={recommendedFallbackSampleDays}
+                        onUse={() =>
+                          setCS(
+                            "default_gross_margin_pct",
+                            recommendationInputValue(recommendedFallbackGrossMarginPct)
+                          )
+                        }
                       />
                     </div>
                   ) : null}

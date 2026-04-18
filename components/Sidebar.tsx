@@ -116,13 +116,16 @@ export default function Sidebar({
   const clientId = useClientId();
   const [supabaseUser, setSupabaseUser] = React.useState<User | null>(null);
   const [costCoverage, setCostCoverage] = React.useState<CostCoverageState>(emptyCostCoverageState);
-  const effectiveShopDomain = (
+  const shopDomainParam = (
     getContextValueClient(searchParams as any, "shop_domain") ||
     getContextValueClient(searchParams as any, "shop") ||
     ""
   )
     .trim()
     .toLowerCase();
+  const contextClientId = getContextValueClient(searchParams as any, "client_id").trim();
+  const [resolvedShopDomain, setResolvedShopDomain] = React.useState<string>(shopDomainParam);
+  const effectiveShopDomain = (shopDomainParam || resolvedShopDomain || "").trim().toLowerCase();
 
   const withClientId = React.useCallback(
     (path: string) => {
@@ -172,6 +175,38 @@ export default function Sidebar({
       mounted = false;
     };
   }, []);
+
+  React.useEffect(() => {
+    if (!shopDomainParam) return;
+    setResolvedShopDomain(shopDomainParam);
+  }, [shopDomainParam]);
+
+  React.useEffect(() => {
+    if (shopDomainParam || resolvedShopDomain || !(clientId || contextClientId)) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const effectiveClientId = String(clientId || contextClientId || "").trim();
+        if (!effectiveClientId) return;
+
+        const res = await fetch(`/api/client/context?client_id=${encodeURIComponent(effectiveClientId)}`, {
+          cache: "no-store",
+        });
+        const json = await res.json().catch(() => ({}));
+        const recovered = String(json?.shop_domain || "").trim().toLowerCase();
+        if (!cancelled && res.ok && json?.ok && recovered) {
+          setResolvedShopDomain(recovered);
+        }
+      } catch {
+        // no-op; cost coverage will stay empty until context becomes available
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shopDomainParam, resolvedShopDomain, clientId, contextClientId]);
 
   React.useEffect(() => {
     let cancelled = false;

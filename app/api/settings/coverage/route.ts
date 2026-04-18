@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
+import { isRequestAuthorizedForClient, resolveClientIdFromShopDomainParam } from "@/lib/requestAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,11 +44,21 @@ export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
     const shopDomain = (url.searchParams.get("shop_domain") || "").trim();
-    if (!shopDomain) {
-      return NextResponse.json({ ok: false, error: "Missing shop_domain" }, { status: 400 });
+    const clientIdParam = (url.searchParams.get("client_id") || "").trim();
+
+    let client_id = "";
+    if (shopDomain) {
+      client_id = (await resolveClientIdFromShopDomainParam(shopDomain)) || "";
+    } else if (clientIdParam) {
+      const allowed = await isRequestAuthorizedForClient(req, clientIdParam);
+      if (!allowed) {
+        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      }
+      client_id = clientIdParam;
+    } else {
+      return NextResponse.json({ ok: false, error: "Missing shop_domain or client_id" }, { status: 400 });
     }
 
-    const client_id = await resolveClientIdFromShopDomainParam(shopDomain);
     if (!client_id) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }

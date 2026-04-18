@@ -126,6 +126,7 @@ export default function Sidebar({
   const contextClientId = getContextValueClient(searchParams as any, "client_id").trim();
   const [resolvedShopDomain, setResolvedShopDomain] = React.useState<string>(shopDomainParam);
   const effectiveShopDomain = (shopDomainParam || resolvedShopDomain || "").trim().toLowerCase();
+  const effectiveClientId = String(clientId || contextClientId || "").trim();
 
   const withClientId = React.useCallback(
     (path: string) => {
@@ -211,7 +212,7 @@ export default function Sidebar({
   React.useEffect(() => {
     let cancelled = false;
 
-    if (!effectiveShopDomain) {
+    if (!effectiveShopDomain && !effectiveClientId) {
       setCostCoverage(emptyCostCoverageState());
       return () => {
         cancelled = true;
@@ -221,10 +222,16 @@ export default function Sidebar({
     const run = async () => {
       try {
         setCostCoverage((current) => ({ ...current, loading: true, error: "" }));
-        const res = await authenticatedFetch(
-          `/api/settings/coverage?shop_domain=${encodeURIComponent(effectiveShopDomain)}`,
-          { cache: "no-store" }
-        );
+        const params = new URLSearchParams();
+        if (effectiveShopDomain) {
+          params.set("shop_domain", effectiveShopDomain);
+        } else if (effectiveClientId) {
+          params.set("client_id", effectiveClientId);
+        }
+
+        const res = await authenticatedFetch(`/api/settings/coverage?${params.toString()}`, {
+          cache: "no-store",
+        });
         const json = await res.json().catch(() => ({}));
 
         if (!res.ok || !json?.ok) {
@@ -258,7 +265,7 @@ export default function Sidebar({
     return () => {
       cancelled = true;
     };
-  }, [effectiveShopDomain]);
+  }, [effectiveShopDomain, effectiveClientId]);
 
   return (
     <aside className="hidden md:flex w-64 flex-col border-r border-slate-200 bg-white p-5">

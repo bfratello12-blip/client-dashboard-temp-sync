@@ -107,41 +107,17 @@ export default function DashboardLayout({ children, skipSupabaseAuth, showClient
   const [clientName] = useState<string>("");
   const [loading] = useState(false);
 
-  // Mock data health values - these would normally come from the main dashboard state
-  const [dataHealth] = useState({
-    missingShopify: 0,
-    missingAds: 0,
-    missingCompareShopify: 0,
-    missingCompareAds: 0,
-  });
-
-  const [comparisonEnabled] = useState(false);
-  const [comparisonAvailable] = useState(true);
-  const [compareDisabledReason] = useState<string | null>(null);
-
-  const [conf] = useState({
-    tone: "bg-green-100 text-green-700",
-    label: "On",
-  });
-
   const [windowStartISO] = useState("");
   const [windowEndISO] = useState("");
   const [coverageLabel] = useState("100%");
   const [compareCoverageLabel] = useState("100%");
   const [effectiveShowComparison] = useState(false);
-  const [lastSalesDateISO] = useState("");
 
   return (
     <div className="flex min-h-screen bg-slate-50">
       <Suspense fallback={<aside className="hidden md:flex w-64 border-r border-slate-200 bg-white" />}>
         <Sidebar
           clientName={clientName}
-          lastSalesDateISO={lastSalesDateISO}
-          dataHealth={dataHealth}
-          comparisonEnabled={comparisonEnabled}
-          comparisonAvailable={comparisonAvailable}
-          compareDisabledReason={compareDisabledReason}
-          conf={conf}
           windowStartISO={windowStartISO}
           windowEndISO={windowEndISO}
           coverageLabel={coverageLabel}

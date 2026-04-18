@@ -6,31 +6,72 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { LayoutDashboard, Package, TrendingUp, Zap, Settings, Shield } from "lucide-react";
 import { type User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
+import { authenticatedFetch } from "@/lib/shopify/authenticatedFetch";
 import useClientId from "@/hooks/useClientId";
 import { getContextValueClient } from "@/lib/shopifyContext";
 
 interface SidebarProps {
   clientName: string;
-  lastSalesDateISO: string;
-  dataHealth: {
-    missingShopify: number;
-    missingAds: number;
-    missingCompareShopify: number;
-    missingCompareAds: number;
-  };
-  comparisonEnabled: boolean;
-  comparisonAvailable: boolean;
-  compareDisabledReason: string | null;
-  conf: {
-    tone: string;
-    label: string;
-  };
   windowStartISO: string;
   windowEndISO: string;
   coverageLabel: string;
   compareCoverageLabel: string;
   effectiveShowComparison: boolean;
   loading: boolean;
+}
+
+type CostCoverageState = {
+  soldUnitCoveragePct: number | null;
+  soldUnitCoverageHasRows: boolean;
+  catalogCoveragePct: number | null;
+  catalogCoverageHasRows: boolean;
+  loading: boolean;
+  error: string;
+};
+
+function emptyCostCoverageState(): CostCoverageState {
+  return {
+    soldUnitCoveragePct: null,
+    soldUnitCoverageHasRows: false,
+    catalogCoveragePct: null,
+    catalogCoverageHasRows: false,
+    loading: false,
+    error: "",
+  };
+}
+
+function coverageTone(value: number | null) {
+  if (value == null) return "text-slate-600";
+  if (value >= 0.75) return "text-emerald-600";
+  if (value >= 0.5) return "text-amber-600";
+  return "text-rose-600";
+}
+
+function formatCoverageValue(value: number | null, hasRows: boolean) {
+  if (!hasRows || value == null || !Number.isFinite(value)) return "—";
+  return `${Math.round(value * 100)}%`;
+}
+
+function CoverageMetricCard({
+  label,
+  value,
+  hasRows,
+  help,
+}: {
+  label: string;
+  value: number | null;
+  hasRows: boolean;
+  help: string;
+}) {
+  return (
+    <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+      <div className="text-[11px] text-slate-500">{label}</div>
+      <div className={["mt-1 text-base font-semibold", coverageTone(hasRows ? value : null)].join(" ")}>
+        {formatCoverageValue(value, hasRows)}
+      </div>
+      <div className="mt-1 text-[11px] leading-relaxed text-slate-500">{help}</div>
+    </div>
+  );
 }
 
 function NavItem({
@@ -63,12 +104,6 @@ function NavItem({
 
 export default function Sidebar({
   clientName,
-  lastSalesDateISO,
-  dataHealth,
-  comparisonEnabled,
-  comparisonAvailable,
-  compareDisabledReason,
-  conf,
   windowStartISO,
   windowEndISO,
   coverageLabel,
@@ -80,6 +115,14 @@ export default function Sidebar({
   const searchParams = useSearchParams();
   const clientId = useClientId();
   const [supabaseUser, setSupabaseUser] = React.useState<User | null>(null);
+  const [costCoverage, setCostCoverage] = React.useState<CostCoverageState>(emptyCostCoverageState);
+  const effectiveShopDomain = (
+    getContextValueClient(searchParams as any, "shop_domain") ||
+    getContextValueClient(searchParams as any, "shop") ||
+    ""
+  )
+    .trim()
+    .toLowerCase();
 
   const withClientId = React.useCallback(
     (path: string) => {
@@ -130,6 +173,58 @@ export default function Sidebar({
     };
   }, []);
 
+  React.useEffect(() => {
+    let cancelled = false;
+
+    if (!effectiveShopDomain) {
+      setCostCoverage(emptyCostCoverageState());
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const run = async () => {
+      try {
+        setCostCoverage((current) => ({ ...current, loading: true, error: "" }));
+        const res = await authenticatedFetch(
+          `/api/settings/coverage?shop_domain=${encodeURIComponent(effectiveShopDomain)}`,
+          { cache: "no-store" }
+        );
+        const json = await res.json().catch(() => ({}));
+
+        if (!res.ok || !json?.ok) {
+          throw new Error(json?.error || `Coverage request failed (${res.status})`);
+        }
+
+        if (!cancelled) {
+          const soldUnitCoveragePct = Number(json?.unitCostCoveragePct);
+          const catalogCoveragePct = Number(json?.catalogCoveragePct);
+          setCostCoverage({
+            soldUnitCoveragePct: Number.isFinite(soldUnitCoveragePct) ? soldUnitCoveragePct : null,
+            soldUnitCoverageHasRows: Boolean(json?.unitCostCoverageHasRows),
+            catalogCoveragePct: Number.isFinite(catalogCoveragePct) ? catalogCoveragePct : null,
+            catalogCoverageHasRows: Boolean(json?.catalogCoverageHasRows),
+            loading: false,
+            error: "",
+          });
+        }
+      } catch (error: any) {
+        if (!cancelled) {
+          setCostCoverage({
+            ...emptyCostCoverageState(),
+            error: error?.message || "Unable to load cost coverage",
+          });
+        }
+      }
+    };
+
+    run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveShopDomain]);
+
   return (
     <aside className="hidden md:flex w-64 flex-col border-r border-slate-200 bg-white p-5">
       <div className="flex items-center gap-3">
@@ -173,35 +268,40 @@ export default function Sidebar({
       <div className="mt-6 rounded-2xl bg-white p-4 ring-1 ring-slate-200">
         <div className="flex items-center justify-between">
           <div className="text-sm font-semibold text-slate-900">Data health</div>
-          <span className={["rounded-full px-2 py-0.5 text-[11px] font-semibold", conf.tone].join(" ")}>
-            {comparisonEnabled ? `Compare: ${conf.label}` : "Compare: Off"}
+          <span
+            className={[
+              "rounded-full px-2 py-0.5 text-[11px] font-semibold",
+              costCoverage.loading
+                ? "bg-slate-100 text-slate-600"
+                : costCoverage.error
+                ? "bg-rose-50 text-rose-700"
+                : "bg-emerald-50 text-emerald-700",
+            ].join(" ")}
+          >
+            {costCoverage.loading ? "Loading" : costCoverage.error ? "Unavailable" : "Cost coverage"}
           </span>
         </div>
 
         <div className="mt-2 text-[11px] text-slate-500">
-          Last Shopify day: <span className="font-semibold text-slate-700">{lastSalesDateISO || "—"}</span>
+          Same cost coverage metrics shown in Settings → Product costs.
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
-            <div className="text-[11px] text-slate-500">Primary missing</div>
-            <div className="mt-1 text-xs font-semibold text-slate-900">
-              Shopify {dataHealth.missingShopify} • Ads {dataHealth.missingAds}
-            </div>
-          </div>
-
-          <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
-            <div className="text-[11px] text-slate-500">Compare missing</div>
-            <div className="mt-1 text-xs font-semibold text-slate-900">
-              Shopify {comparisonEnabled ? dataHealth.missingCompareShopify : "—"} • Ads{" "}
-              {comparisonEnabled ? dataHealth.missingCompareAds : "—"}
-            </div>
-          </div>
+        <div className="mt-3 grid grid-cols-1 gap-2">
+          <CoverageMetricCard
+            label="Sold Unit Coverage (7d)"
+            value={costCoverage.soldUnitCoveragePct}
+            hasRows={costCoverage.soldUnitCoverageHasRows}
+            help="% of units sold in the last 7 days that have a Shopify unit cost."
+          />
+          <CoverageMetricCard
+            label="Catalog Coverage"
+            value={costCoverage.catalogCoveragePct}
+            hasRows={costCoverage.catalogCoverageHasRows}
+            help="% of synced Shopify variants in this store that have a Shopify unit cost."
+          />
         </div>
 
-        {comparisonEnabled && !comparisonAvailable && compareDisabledReason ? (
-          <div className="mt-2 text-[11px] text-amber-700">Comparison hidden: {compareDisabledReason}</div>
-        ) : null}
+        {costCoverage.error ? <div className="mt-2 text-[11px] text-rose-700">{costCoverage.error}</div> : null}
       </div>
 
       <div className="mt-auto rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">

@@ -6,14 +6,12 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const hasNonEmpty = (v: any) => v != null && String(v).trim().length > 0;
-const normalizeCustomerId = (v: string) => String(v || "").replace(/-/g, "").trim();
 
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({} as any));
     const clientId = String(body?.client_id ?? "").trim();
-    const googleAdsCustomerId = normalizeCustomerId(String(body?.google_ads_customer_id ?? "").trim());
-    const googleManagerCustomerId = normalizeCustomerId(String(body?.google_manager_customer_id ?? "").trim());
+    const googleAdsCustomerId = String(body?.google_ads_customer_id ?? "").trim();
 
     if (!clientId) return NextResponse.json({ ok: false, error: "Missing client_id" }, { status: 400 });
     if (!googleAdsCustomerId) {
@@ -37,9 +35,6 @@ export async function POST(req: Request) {
         google_ads_customer_id: googleAdsCustomerId,
         google_customer_id: googleAdsCustomerId,
       };
-      if ("google_manager_customer_id" in integration) {
-        updatePayload.google_manager_customer_id = googleManagerCustomerId || null;
-      }
       if ("status" in integration && !hasNonEmpty(integration.status)) updatePayload.status = "connected";
       if ("is_active" in integration && integration.is_active !== true) updatePayload.is_active = true;
 
@@ -61,20 +56,9 @@ export async function POST(req: Request) {
       status: "connected",
       is_active: true,
     };
-    if (googleManagerCustomerId) {
-      insertPayload.google_manager_customer_id = googleManagerCustomerId;
-    }
 
     const { error: insErr } = await supabase.from("client_integrations").insert(insertPayload);
-    if (insErr) {
-      if ("google_manager_customer_id" in insertPayload) {
-        delete insertPayload.google_manager_customer_id;
-        const { error: retryErr } = await supabase.from("client_integrations").insert(insertPayload);
-        if (retryErr) throw retryErr;
-      } else {
-        throw insErr;
-      }
-    }
+    if (insErr) throw insErr;
 
     return NextResponse.json({ ok: true, inserted: true });
   } catch (e: any) {

@@ -255,14 +255,12 @@ export async function GET(req: NextRequest) {
       // Prefer rows with a name and non-manager rows for selection clarity.
       if (!existing.name && acct.name) existing.name = acct.name;
       if (existing.isManager && acct.isManager === false) existing.isManager = false;
-      if (!existing.parentManagerId && acct.parentManagerId) existing.parentManagerId = acct.parentManagerId;
     }
 
     const accounts = Array.from(byId.values())
       .map((acct) => ({
         id: acct.id,
         name: acct.name ? `${acct.name}${acct.isManager ? " (MCC)" : ""}` : acct.id,
-        parentManagerId: acct.parentManagerId || null,
       }))
       .sort((a, b) => {
         const aMcc = /\(MCC\)$/i.test(a.name || "");

@@ -33,12 +33,6 @@ type IntegrationStatus = {
   meta: { connected: boolean; hasToken?: boolean; accountId?: string | null; accountName?: string | null };
 };
 
-type GoogleAccountOption = {
-  id: string;
-  name?: string | null;
-  parentManagerId?: string | null;
-};
-
 const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
 const TIMEZONE = "America/New_York";
 
@@ -250,7 +244,7 @@ function SettingsPage() {
   const [integrationError, setIntegrationError] = useState("");
 
 
-  const [googleAccounts, setGoogleAccounts] = useState<GoogleAccountOption[]>([]);
+  const [googleAccounts, setGoogleAccounts] = useState<Array<{ id: string; name?: string | null }>>([]);
   const [googleAccountsLoading, setGoogleAccountsLoading] = useState(false);
   const [googleAccountsError, setGoogleAccountsError] = useState("");
   const [googleSelectedAccountId, setGoogleSelectedAccountId] = useState("");
@@ -517,7 +511,7 @@ function SettingsPage() {
       const payload = await res.json().catch(() => ({}));
       if (!res.ok || !payload?.ok) throw new Error(payload?.error || `Account fetch failed (${res.status})`);
 
-      const accounts = (Array.isArray(payload?.accounts) ? payload.accounts : []) as GoogleAccountOption[];
+      const accounts = Array.isArray(payload?.accounts) ? payload.accounts : [];
       setGoogleAccounts(accounts);
       if (!googleSelectedAccountId && accounts.length > 0) {
         setGoogleSelectedAccountId(String(accounts[0]?.id ?? ""));
@@ -562,15 +556,10 @@ function SettingsPage() {
     setIntegrationError("");
 
     try {
-      const selected = googleAccounts.find((acct) => String(acct.id) === String(googleSelectedAccountId));
       const res = await fetch("/api/googleads/select-account", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          client_id: clientId,
-          google_ads_customer_id: googleSelectedAccountId,
-          google_manager_customer_id: selected?.parentManagerId ?? null,
-        }),
+        body: JSON.stringify({ client_id: clientId, google_ads_customer_id: googleSelectedAccountId }),
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok || !payload?.ok) throw new Error(payload?.error || `Save failed (${res.status})`);
@@ -583,7 +572,7 @@ function SettingsPage() {
     } finally {
       setGoogleAccountSaving(false);
     }
-  }, [clientId, googleSelectedAccountId, googleAccounts, fetchIntegrationStatus, fetchGoogleIntegration]);
+  }, [clientId, googleSelectedAccountId, fetchIntegrationStatus, fetchGoogleIntegration]);
 
   const saveMetaAccount = useCallback(async () => {
     if (!clientId || !metaSelectedAccountId) return;

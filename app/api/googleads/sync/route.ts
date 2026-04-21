@@ -100,6 +100,9 @@ async function postGoogleSearchStream(args: {
     return { res, bodyText };
   };
 
+  const hasResults = (rows: any[]) =>
+    rows.some((chunk) => Array.isArray(chunk?.results) && chunk.results.length > 0);
+
   // First try with login-customer-id (MCC) when configured.
   let attempt = await post(true);
 
@@ -113,7 +116,20 @@ async function postGoogleSearchStream(args: {
     throw new Error(`Google Ads API failed (${attempt.res.status}): ${attempt.bodyText.slice(0, 500)}`);
   }
 
-  return parseGoogleAdsSearchStreamBody(attempt.bodyText);
+  const parsed = parseGoogleAdsSearchStreamBody(attempt.bodyText);
+  if (!args.cfg.managerCustomerId || hasResults(parsed)) {
+    return parsed;
+  }
+
+  // A wrong MCC login-customer-id can occasionally return an empty success response.
+  // Retry without it before accepting an all-zero result.
+  const directAttempt = await post(false);
+  if (!directAttempt.res.ok) {
+    return parsed;
+  }
+
+  const directParsed = parseGoogleAdsSearchStreamBody(directAttempt.bodyText);
+  return hasResults(directParsed) ? directParsed : parsed;
 }
 
 /**
@@ -321,7 +337,7 @@ export async function GET(req: NextRequest) {
   const providerVariants = ["google", "google_ads", "googleads", "google-ads"];
   let q = supabase
     .from("client_integrations")
-    .select("client_id, provider, google_ads_customer_id, google_refresh_token")
+    .select("*")
     .in("provider", providerVariants);
 
   if (clientIdFilter) q = q.eq("client_id", clientIdFilter);
@@ -369,8 +385,13 @@ export async function GET(req: NextRequest) {
       const developerToken = String(process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? "").trim();
       const oauthClientId = String(process.env.GOOGLE_ADS_CLIENT_ID ?? "").trim();
       const oauthClientSecret = String(process.env.GOOGLE_ADS_CLIENT_SECRET ?? "").trim();
+      const rowManagerCustomerId = String(i.google_manager_customer_id ?? "").trim();
       const managerCustomerIdRaw = String(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID ?? "").trim();
-      const managerCustomerId = managerCustomerIdRaw ? normalizeCustomerId(managerCustomerIdRaw) : undefined;
+      const managerCustomerId = rowManagerCustomerId
+        ? normalizeCustomerId(rowManagerCustomerId)
+        : managerCustomerIdRaw
+        ? normalizeCustomerId(managerCustomerIdRaw)
+        : undefined;
 
       if (!customerId) throw new Error("Google Ads account not selected for this client");
       if (!refreshToken) throw new Error("Google Ads not connected for this client");

@@ -4509,7 +4509,7 @@ export default function Home({
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-slate-500">Ad ROAS</span>
+                          <span className="text-slate-500">ROAS</span>
                           <span className="font-semibold text-slate-900">
                             {eventPerf ? `${eventPerf.after.roas.toFixed(2)}x` : "—"}
                           </span>
@@ -4572,7 +4572,7 @@ export default function Home({
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-slate-500">Ad ROAS</span>
+                          <span className="text-slate-500">ROAS</span>
                           <span className="font-semibold text-slate-900">
                             {eventPerf ? `${eventPerf.before.roas.toFixed(2)}x` : "—"}
                           </span>
@@ -4651,7 +4651,7 @@ export default function Home({
                         good={eventPerf ? eventPerf.lifts.spend.delta <= 0 : true}
                       />
                       <LiftRow
-                        label="Ad ROAS"
+                        label="ROAS"
                         value={
                           eventPerf
                             ? `${eventPerf.lifts.roas.delta >= 0 ? "+" : "−"}${Math.abs(eventPerf.lifts.roas.delta).toFixed(2)}x (${formatLiftPct(eventPerf.lifts.roas.pct)})`

@@ -226,6 +226,16 @@ function pctChange(curr: number, prev: number) {
   if (prev === 0) return curr === 0 ? 0 : 999;
   return ((curr - prev) / prev) * 100;
 }
+function sumSeriesMetric<T extends Record<string, unknown>>(rows: T[], key: keyof T) {
+  return rows.reduce((total, row) => total + safeNumber(row[key]), 0);
+}
+function averagePlatformRoas(platforms: Array<{ spend: number; revenue: number }>) {
+  const roasValues = platforms
+    .map(({ spend, revenue }) => (spend > 0 ? revenue / spend : null))
+    .filter((value): value is number => value != null && Number.isFinite(value));
+  if (roasValues.length === 0) return 0;
+  return roasValues.reduce((total, value) => total + value, 0) / roasValues.length;
+}
 function minISO(a: string, b: string) {
   return a <= b ? a : b;
 }
@@ -2997,7 +3007,14 @@ export default function Home({
     };
   }, [clientId, monthlyMonths, marginAfterCostsPct]);
   /** Derived metrics */
-  const adRoas = adTotals.spend > 0 ? adTotals.revenue / adTotals.spend : 0;
+  const metaPlatformSpend = sumSeriesMetric(metaSpendSeries, "spend");
+  const metaPlatformRevenue = sumSeriesMetric(metaRevenueSeries, "revenue");
+  const googlePlatformSpend = sumSeriesMetric(googleSpendSeries, "spend");
+  const googlePlatformRevenue = sumSeriesMetric(googleRevenueSeries, "revenue");
+  const adRoas = averagePlatformRoas([
+    { spend: metaPlatformSpend, revenue: metaPlatformRevenue },
+    { spend: googlePlatformSpend, revenue: googlePlatformRevenue },
+  ]);
   const ctr = adTotals.impressions > 0 ? (adTotals.clicks / adTotals.impressions) * 100 : null;
   const profitPrimaryValue =
     Number.isFinite(Number(profitTotals.contributionProfit))
@@ -3021,8 +3038,17 @@ export default function Home({
     effectiveShowComparison && compareTotals.adSpend > 0 ? compareTotals.bizRevenue / compareTotals.adSpend : 0;
   const prevProfitReturnOnCosts =
     effectiveShowComparison && totalCostsCompare > 0 ? profitCompareValue / totalCostsCompare : 0;
+  const prevMetaPlatformSpend = sumSeriesMetric(metaSpendSeriesCompare, "spend");
+  const prevMetaPlatformRevenue = sumSeriesMetric(metaRevenueSeriesCompare, "revenue");
+  const prevGooglePlatformSpend = sumSeriesMetric(googleSpendSeriesCompare, "spend");
+  const prevGooglePlatformRevenue = sumSeriesMetric(googleRevenueSeriesCompare, "revenue");
   const prevRoas =
-    effectiveShowComparison && compareTotals.adSpend > 0 ? compareTotals.adRevenue / compareTotals.adSpend : 0;
+    effectiveShowComparison
+      ? averagePlatformRoas([
+          { spend: prevMetaPlatformSpend, revenue: prevMetaPlatformRevenue },
+          { spend: prevGooglePlatformSpend, revenue: prevGooglePlatformRevenue },
+        ])
+      : 0;
   const prevCtr =
     effectiveShowComparison && compareTotals.adImpressions > 0
       ? (compareTotals.adClicks / compareTotals.adImpressions) * 100
@@ -3743,7 +3769,12 @@ export default function Home({
         { label: "AOV", value: formatCurrency(bizTotals.aov), sub: "Average order value", trend: undefined },
         { label: "ASP", value: formatCurrency(bizTotals.asp), sub: "Average selling price", trend: undefined },
         { label: "Ad Spend", value: formatCurrency(adTotals.spend), sub: "Total ad spend", trend: undefined },
-        { label: "Ad ROAS", value: `${adRoas.toFixed(2)}x`, sub: "Return on ad spend", trend: undefined },
+        {
+          label: "Ad ROAS",
+          value: `${adRoas.toFixed(2)}x`,
+          sub: "Average Meta + Google platform ROAS",
+          trend: undefined,
+        },
         {
           label: "MER (True ROAS)",
           value: merTruePrimary != null ? `${merTruePrimary.toFixed(2)}x` : "—",
@@ -3798,7 +3829,12 @@ export default function Home({
       { label: "AOV", value: formatCurrency(bizTotals.aov), sub: `vs prev: ${fmtDelta(aovDelta, allowPct)}`, trend: allowPct ? aovDelta : undefined },
       { label: "ASP", value: formatCurrency(bizTotals.asp), sub: `vs prev: ${fmtDelta(aspDelta, allowPct)}`, trend: allowPct ? aspDelta : undefined },
       { label: "Ad Spend", value: formatCurrency(adTotals.spend), sub: `vs prev: ${fmtDelta(spendDelta, allowPct)}`, trend: allowPct ? spendDelta : undefined },
-      { label: "Ad ROAS", value: `${adRoas.toFixed(2)}x`, sub: `vs prev: ${fmtDelta(roasDelta, allowPct)}`, trend: allowPct ? roasDelta : undefined },
+      {
+        label: "Ad ROAS",
+        value: `${adRoas.toFixed(2)}x`,
+        sub: `Average Meta + Google platform ROAS • vs prev: ${fmtDelta(roasDelta, allowPct)}`,
+        trend: allowPct ? roasDelta : undefined,
+      },
       {
         label: "MER (True ROAS)",
         value: merTruePrimary != null ? `${merTruePrimary.toFixed(2)}x` : "—",
@@ -3826,6 +3862,7 @@ export default function Home({
     compareTotals,
     adTotals,
     adRoas,
+    prevRoas,
     ctr,
     mer,
     profitReturnOnCosts,
@@ -4472,7 +4509,7 @@ export default function Home({
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-slate-500">ROAS</span>
+                          <span className="text-slate-500">Ad ROAS</span>
                           <span className="font-semibold text-slate-900">
                             {eventPerf ? `${eventPerf.after.roas.toFixed(2)}x` : "—"}
                           </span>
@@ -4535,7 +4572,7 @@ export default function Home({
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-slate-500">ROAS</span>
+                          <span className="text-slate-500">Ad ROAS</span>
                           <span className="font-semibold text-slate-900">
                             {eventPerf ? `${eventPerf.before.roas.toFixed(2)}x` : "—"}
                           </span>
@@ -4614,7 +4651,7 @@ export default function Home({
                         good={eventPerf ? eventPerf.lifts.spend.delta <= 0 : true}
                       />
                       <LiftRow
-                        label="ROAS"
+                        label="Ad ROAS"
                         value={
                           eventPerf
                             ? `${eventPerf.lifts.roas.delta >= 0 ? "+" : "−"}${Math.abs(eventPerf.lifts.roas.delta).toFixed(2)}x (${formatLiftPct(eventPerf.lifts.roas.pct)})`

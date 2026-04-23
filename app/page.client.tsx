@@ -3343,7 +3343,7 @@ export default function Home({
     return { primary, compare, label: `${labelBase} • ${evStart}` };
   }, [liftFocusEventId, eventsPrimary, windows.primary.startISO, windows.primary.endISO, windows.compare, windows.primary, windows.compare, compareMode]);
   useEffect(() => {
-    if (!shopDomain || !liftFocusEventId) {
+    if ((!shopDomain && !clientId) || !liftFocusEventId) {
       setEventCompare(null);
       setEventCompareError("");
       setEventCompareLoading(false);
@@ -3365,10 +3365,14 @@ export default function Home({
       setEventCompareError("");
       try {
         const params = new URLSearchParams({
-          shop_domain: shopDomain,
           event_date: eventDate,
           window_days: String(windowDays),
         });
+        if (shopDomain) {
+          params.set("shop_domain", shopDomain);
+        } else if (clientId) {
+          params.set("client_id", clientId);
+        }
         const res = await fetch(`/api/events/compare?${params.toString()}`);
         const json = await res.json().catch(() => ({}));
         if (!res.ok || !json?.ok) {
@@ -3388,7 +3392,7 @@ export default function Home({
     return () => {
       cancelled = true;
     };
-  }, [shopDomain, liftFocusEventId, eventsPrimary]);
+  }, [shopDomain, clientId, liftFocusEventId, eventsPrimary]);
   const lift = useMemo(() => {
     const scopePrimary = liftWindows.primary;
     const scopeCompare = liftWindows.compare;

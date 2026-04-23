@@ -12,17 +12,20 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const shopDomain = (searchParams.get("shop_domain") || "").trim();
+    const clientIdParam = (searchParams.get("client_id") || "").trim();
     const eventDate = (searchParams.get("event_date") || "").trim();
     const windowDays = Math.max(1, Number(searchParams.get("window_days") || 7));
 
-    if (!shopDomain || !eventDate) {
+    if ((!shopDomain && !clientIdParam) || !eventDate) {
       return NextResponse.json(
-        { ok: false, error: "Missing shop_domain or event_date" },
+        { ok: false, error: "Missing shop_domain/client_id or event_date" },
         { status: 400 }
       );
     }
 
-    const clientId = await resolveClientIdFromShopDomainParam(shopDomain);
+    const clientId = shopDomain
+      ? await resolveClientIdFromShopDomainParam(shopDomain)
+      : clientIdParam;
     if (!clientId) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }

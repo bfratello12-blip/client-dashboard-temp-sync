@@ -5210,10 +5210,10 @@ export default function Home({
                     showMarkers={showEventMarkers}
                     xDomain={xDomain}
                     compareLabel={compareLabel}
+                    hideAreaLegend
                     dualYAxis
                     leftYAxisLabel="Profit"
                     rightYAxisLabel="Ad Spend"
-                    xAxisDataKey="date"
                   />
                 ) : (
                   <EventfulLineChart

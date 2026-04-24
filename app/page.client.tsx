@@ -696,60 +696,59 @@ function EventfulLineChart({
   return (
     <div
       ref={wrapRef}
-      className="relative w-full min-w-0 min-h-0 overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-2.5 shadow-[0_16px_36px_-26px_rgba(15,23,42,0.5)]"
+      className="relative w-full min-w-0 min-h-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-16px_rgba(15,23,42,0.18)]"
       style={{ height: `${height}px`, minHeight: `${height}px` }}
       onMouseLeave={clearHover}
       onPointerLeave={clearHover}
     >
-      <div className="pointer-events-none absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_1px_1px,#dbe2ee_1px,transparent_0)] [background-size:24px_24px] opacity-25" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-cyan-50/65 to-transparent" />
       <SafeResponsiveContainer height={height} className="h-full w-full">
-        <ComposedChart data={chartData} margin={{ top: 12, right: 20, left: 8, bottom: 8 }}>
-          <CartesianGrid stroke="#94a3b8" strokeDasharray="3 6" strokeOpacity={0.24} vertical={false} />
+        <ComposedChart data={chartData} margin={{ top: 16, right: 16, left: 4, bottom: 4 }}>
+          <CartesianGrid stroke="#e2e8f0" strokeOpacity={0.7} vertical={false} />
           <defs>
             <radialGradient id="eventMarkerGradient" cx="30%" cy="30%" r="70%">
               <stop offset="0%" stopColor="#22c55e" />
               <stop offset="70%" stopColor="#16a34a" />
               <stop offset="100%" stopColor="#15803d" />
             </radialGradient>
-            <linearGradient id={singleGradId} x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.95} />
-              <stop offset="45%" stopColor="#2563eb" stopOpacity={0.8} />
-              <stop offset="100%" stopColor="#1e40af" stopOpacity={1} />
-            </linearGradient>
             <linearGradient id={`${singleGradId}-fill`} x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#1d4ed8" stopOpacity={0.34} />
-              <stop offset="45%" stopColor="#2563eb" stopOpacity={0.12} />
-              <stop offset="100%" stopColor="#2563eb" stopOpacity={0} />
-            </linearGradient>
-            <linearGradient id={singleCompareGradId} x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#cbd5e1" stopOpacity={0.85} />
-              <stop offset="50%" stopColor="#94a3b8" stopOpacity={0.7} />
-              <stop offset="100%" stopColor="#64748b" stopOpacity={0.9} />
+              <stop offset="0%" stopColor="#2563eb" stopOpacity={0.18} />
+              <stop offset="80%" stopColor="#2563eb" stopOpacity={0} />
             </linearGradient>
             <linearGradient id={`${singleCompareGradId}-fill`} x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#94a3b8" stopOpacity={0.3} />
-              <stop offset="50%" stopColor="#94a3b8" stopOpacity={0.1} />
-              <stop offset="100%" stopColor="#94a3b8" stopOpacity={0} />
+              <stop offset="0%" stopColor="#94a3b8" stopOpacity={0.12} />
+              <stop offset="80%" stopColor="#94a3b8" stopOpacity={0} />
             </linearGradient>
+            <filter id={`${singleGradId}-shadow`} x="-10%" y="-20%" width="120%" height="140%">
+              <feGaussianBlur in="SourceAlpha" stdDeviation="1.2" />
+              <feOffset dx="0" dy="1.5" result="offsetblur" />
+              <feComponentTransfer>
+                <feFuncA type="linear" slope="0.18" />
+              </feComponentTransfer>
+              <feMerge>
+                <feMergeNode />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
           </defs>
           <XAxis
             dataKey="ts"
             type="number"
             scale="time"
             domain={xDomain ?? ["dataMin", "dataMax"]}
-            tick={{ fontSize: 11, fill: "#64748b" }}
+            tick={{ fontSize: 11, fill: "#94a3b8", style: { fontVariantNumeric: "tabular-nums" } } as any}
             tickFormatter={(v) => mmdd(new Date(Number(v)).toISOString().slice(0, 10))}
             interval="preserveStartEnd"
-            minTickGap={28}
+            minTickGap={36}
             tickLine={false}
-            axisLine={{ stroke: "#cbd5e1", strokeOpacity: 0.45 }}
+            axisLine={false}
+            dy={6}
           />
-          <YAxis 
-            tick={{ fontSize: 11, fill: "#64748b" }} 
-            domain={yDomain as any} 
+          <YAxis
+            tick={{ fontSize: 11, fill: "#94a3b8", style: { fontVariantNumeric: "tabular-nums" } } as any}
+            domain={yDomain as any}
             tickLine={false}
-            axisLine={{ stroke: "#cbd5e1", strokeOpacity: 0.45 }}
+            axisLine={false}
+            width={44}
             tickFormatter={(v) => {
               const n = Number(v);
               if (!isFinite(n)) return "";
@@ -772,7 +771,7 @@ function EventfulLineChart({
                 compareLabel={compareLabel}
               />
             )}
-            cursor={{ stroke: "#64748b", strokeDasharray: "4 6", strokeOpacity: 0.45 }}
+            cursor={{ stroke: "#475569", strokeWidth: 1, strokeOpacity: 0.35 }}
           />
           {/* shading */}
           {showMarkers &&
@@ -853,7 +852,7 @@ function EventfulLineChart({
           {/* compare area fill */}
           {showComparison && compareChartData.length > 0 && (
             <Area
-              type="linear"
+              type="monotone"
               dataKey={yKey}
               fill={`url(#${singleCompareGradId}-fill)`}
               stroke="none"
@@ -862,25 +861,26 @@ function EventfulLineChart({
               fillOpacity={1}
             />
           )}
-          {/* compare line (dashed) */}
+          {/* compare line (dotted) */}
           {showComparison && compareChartData.length > 0 && (
             <Line
-              type="linear"
+              type="monotone"
               dataKey={yKey}
               data={compareChartData as any}
-              stroke={`url(#${singleCompareGradId})`}
-              strokeWidth={1.4}
+              stroke="#94a3b8"
+              strokeWidth={1.5}
               dot={false}
               connectNulls
-              strokeDasharray="5 5"
+              strokeDasharray="2 4"
               strokeLinecap="round"
               strokeLinejoin="round"
-              opacity={0.48}
+              opacity={0.7}
+              isAnimationActive={false}
             />
           )}
           {/* primary area fill */}
           <Area
-            type="linear"
+            type="monotone"
             dataKey={yKey}
             fill={`url(#${singleGradId}-fill)`}
             stroke="none"
@@ -890,7 +890,7 @@ function EventfulLineChart({
           />
           {trendlineData && trendlineData.length >= 2 ? (
             <Line
-              type="linear"
+              type="monotone"
               data={trendlineData as any}
               dataKey="trend"
               stroke="#94a3b8"
@@ -906,15 +906,17 @@ function EventfulLineChart({
           ) : null}
           {/* primary line */}
           <Line
-            type="linear"
+            type="monotone"
             dataKey={yKey}
-            stroke={`url(#${singleGradId})`}
-            strokeWidth={2.1}
+            stroke="#2563eb"
+            strokeWidth={2}
             dot={false}
             connectNulls
             strokeLinecap="round"
             strokeLinejoin="round"
-            activeDot={{ r: 4.5, stroke: "#1d4ed8", strokeWidth: 1.75, fill: "#f8fafc" }}
+            isAnimationActive={false}
+            filter={`url(#${singleGradId}-shadow)`}
+            activeDot={{ r: 5, stroke: "#ffffff", strokeWidth: 2, fill: "#2563eb" }}
           />
         </ComposedChart>
       </SafeResponsiveContainer>
@@ -1087,19 +1089,17 @@ export function MultiSeriesEventfulLineChart({
   return (
     <div
       ref={wrapRef}
-      className="relative w-full min-w-0 min-h-0 overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-2.5 shadow-[0_16px_36px_-26px_rgba(15,23,42,0.5)]"
+      className="relative w-full min-w-0 min-h-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-16px_rgba(15,23,42,0.18)]"
       style={{ height: `${height}px`, minHeight: `${height}px` }}
       onMouseLeave={clearHover}
       onPointerLeave={clearHover}
     >
-      <div className="pointer-events-none absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_1px_1px,#dbe2ee_1px,transparent_0)] [background-size:24px_24px] opacity-25" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-cyan-50/65 to-transparent" />
       <SafeResponsiveContainer height={height} className="h-full w-full">
         <ComposedChart
           data={chartData}
-          margin={{ top: 12, right: 20, left: 8, bottom: 8 }}
+          margin={{ top: 16, right: 16, left: 4, bottom: 4 }}
         >
-          <CartesianGrid stroke="#94a3b8" strokeDasharray="3 6" strokeOpacity={0.24} vertical={false} />
+          <CartesianGrid stroke="#e2e8f0" strokeOpacity={0.7} vertical={false} />
           <defs>
             <radialGradient id="eventMarkerGradient" cx="30%" cy="30%" r="70%">
               <stop offset="0%" stopColor="#22c55e" />
@@ -1108,16 +1108,21 @@ export function MultiSeriesEventfulLineChart({
             </radialGradient>
             {series.map((s) => (
               <g key={`grads-${s.key}`}>
-                <linearGradient id={strokeIds[s.key]} x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor={s.color} stopOpacity={1} />
-                  <stop offset="50%" stopColor={s.color} stopOpacity={0.65} />
-                  <stop offset="100%" stopColor={s.color} stopOpacity={1} />
-                </linearGradient>
                 <linearGradient id={`${strokeIds[s.key]}-fill`} x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stopColor={s.color} stopOpacity={0.35} />
-                  <stop offset="50%" stopColor={s.color} stopOpacity={0.1} />
-                  <stop offset="100%" stopColor={s.color} stopOpacity={0} />
+                  <stop offset="0%" stopColor={s.color} stopOpacity={0.18} />
+                  <stop offset="80%" stopColor={s.color} stopOpacity={0} />
                 </linearGradient>
+                <filter id={`${strokeIds[s.key]}-shadow`} x="-10%" y="-20%" width="120%" height="140%">
+                  <feGaussianBlur in="SourceAlpha" stdDeviation="1.2" />
+                  <feOffset dx="0" dy="1.5" result="offsetblur" />
+                  <feComponentTransfer>
+                    <feFuncA type="linear" slope="0.18" />
+                  </feComponentTransfer>
+                  <feMerge>
+                    <feMergeNode />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
               </g>
             ))}
           </defs>
@@ -1126,18 +1131,19 @@ export function MultiSeriesEventfulLineChart({
             type={useDateAxis ? "category" : "number"}
             scale={useDateAxis ? "auto" : "time"}
             domain={useDateAxis ? undefined : xDomain}
-            tick={{ fontSize: 11, fill: "#64748b" }}
+            tick={{ fontSize: 11, fill: "#94a3b8", style: { fontVariantNumeric: "tabular-nums" } } as any}
             tickFormatter={(v) => (useDateAxis ? mmdd(toISO10(v)) : mmdd(new Date(Number(v)).toISOString().slice(0, 10)))}
             interval="preserveStartEnd"
-            minTickGap={20}
+            minTickGap={28}
             tickLine={false}
-            axisLine={{ stroke: "#cbd5e1", strokeOpacity: 0.45 }}
+            axisLine={false}
+            dy={6}
           />
           {dualYAxis ? (
             <>
               <YAxis
                 yAxisId="left"
-                tick={{ fontSize: 11, fill: "#64748b" }}
+                tick={{ fontSize: 11, fill: "#94a3b8", style: { fontVariantNumeric: "tabular-nums" } } as any}
                 domain={leftYDomain as any}
                 label={
                   (leftYAxisLabel || yAxisLabel)
@@ -1145,13 +1151,14 @@ export function MultiSeriesEventfulLineChart({
                         value: leftYAxisLabel || yAxisLabel,
                         angle: -90,
                         position: "insideLeft",
-                        fill: "#64748b",
+                        fill: "#94a3b8",
                         fontSize: 11,
                       }
                     : undefined
                 }
                 tickLine={false}
-                axisLine={{ stroke: "#cbd5e1", strokeOpacity: 0.45 }}
+                axisLine={false}
+                width={44}
                 tickFormatter={(v) => {
                   const n = Number(v);
                   if (!isFinite(n)) return "";
@@ -1164,7 +1171,7 @@ export function MultiSeriesEventfulLineChart({
               <YAxis
                 yAxisId="right"
                 orientation="right"
-                tick={{ fontSize: 11, fill: "#64748b" }}
+                tick={{ fontSize: 11, fill: "#94a3b8", style: { fontVariantNumeric: "tabular-nums" } } as any}
                 domain={rightYDomain as any}
                 label={
                   rightYAxisLabel
@@ -1172,13 +1179,14 @@ export function MultiSeriesEventfulLineChart({
                         value: rightYAxisLabel,
                         angle: 90,
                         position: "insideRight",
-                        fill: "#64748b",
+                        fill: "#94a3b8",
                         fontSize: 11,
                       }
                     : undefined
                 }
                 tickLine={false}
-                axisLine={{ stroke: "#cbd5e1", strokeOpacity: 0.45 }}
+                axisLine={false}
+                width={44}
                 tickFormatter={(v) => {
                   const n = Number(v);
                   if (!isFinite(n)) return "";
@@ -1191,15 +1199,16 @@ export function MultiSeriesEventfulLineChart({
             </>
           ) : (
             <YAxis
-              tick={{ fontSize: 11, fill: "#64748b" }}
+              tick={{ fontSize: 11, fill: "#94a3b8", style: { fontVariantNumeric: "tabular-nums" } } as any}
               domain={yDomain as any}
               label={
                 yAxisLabel
-                    ? { value: yAxisLabel, angle: -90, position: "insideLeft", fill: "#64748b", fontSize: 11 }
+                    ? { value: yAxisLabel, angle: -90, position: "insideLeft", fill: "#94a3b8", fontSize: 11 }
                   : undefined
               }
               tickLine={false}
-                  axisLine={{ stroke: "#cbd5e1", strokeOpacity: 0.45 }}
+                  axisLine={false}
+              width={44}
               tickFormatter={(v) => {
                 const n = Number(v);
                 if (!isFinite(n)) return "";
@@ -1223,15 +1232,15 @@ export function MultiSeriesEventfulLineChart({
                     />
                   )
             }
-            cursor={{ stroke: "#64748b", strokeDasharray: "4 6", strokeOpacity: 0.45 }}
+            cursor={{ stroke: "#475569", strokeWidth: 1, strokeOpacity: 0.35 }}
           />
           <Legend
             verticalAlign="top"
-            align="right"
+            align="left"
             iconType="circle"
-            iconSize={8}
-            wrapperStyle={{ paddingBottom: 8 }}
-            formatter={(value) => <span className="text-xs font-medium text-slate-600">{value}</span>}
+            iconSize={7}
+            wrapperStyle={{ paddingBottom: 12 }}
+            formatter={(value) => <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{value}</span>}
           />
           {/* Event markers */}
           {eventDotData.map((dot, i) => {
@@ -1278,7 +1287,7 @@ export function MultiSeriesEventfulLineChart({
           {showComparison && compareChartData.length > 0 && series.map((s) => (
             <Area
               key={`compare-area-${s.key}`}
-              type="linear"
+              type="monotone"
               dataKey={s.key}
               fill={`url(#${strokeIds[s.key]}-fill)`}
               stroke="none"
@@ -1288,30 +1297,31 @@ export function MultiSeriesEventfulLineChart({
               legendType={hideAreaLegend ? "none" : "line"}
             />
           ))}
-          {/* Compare lines (dashed) */}
+          {/* Compare lines (dotted) */}
           {showComparison && compareChartData.length > 0 && series.map((s) => (
             <Line
               key={`compare-${s.key}`}
-              type="linear"
+              type="monotone"
               dataKey={s.key}
               yAxisId={dualYAxis ? (s.yAxisId || "left") : undefined}
               data={compareChartData as any}
               name={`${s.name} (${compareLabel})`}
-              stroke={`url(#${strokeIds[s.key]})`}
+              stroke={s.color}
               strokeWidth={1.4}
               dot={false}
               connectNulls
-              strokeDasharray="5 5"
+              strokeDasharray="2 4"
               strokeLinecap="round"
               strokeLinejoin="round"
-              opacity={0.48}
+              opacity={0.5}
+              isAnimationActive={false}
             />
           ))}
           {/* Primary area fills */}
           {series.map((s) => (
             <Area
               key={`area-${s.key}`}
-              type="linear"
+              type="monotone"
               dataKey={s.key}
               yAxisId={dualYAxis ? (s.yAxisId || "left") : undefined}
               fill={`url(#${strokeIds[s.key]}-fill)`}
@@ -1326,17 +1336,19 @@ export function MultiSeriesEventfulLineChart({
           {series.map((s) => (
             <Line
               key={s.key}
-              type="linear"
+              type="monotone"
               dataKey={s.key}
               yAxisId={dualYAxis ? (s.yAxisId || "left") : undefined}
               name={s.name}
-              stroke={`url(#${strokeIds[s.key]})`}
-              strokeWidth={(s.strokeWidth ?? 2.8) * 0.75}
+              stroke={s.color}
+              strokeWidth={s.strokeWidth ?? 2}
               dot={false}
               connectNulls
               strokeLinecap="round"
               strokeLinejoin="round"
-              activeDot={{ r: 4.5, stroke: s.color, strokeWidth: 1.75, fill: "#f8fafc" }}
+              isAnimationActive={false}
+              filter={`url(#${strokeIds[s.key]}-shadow)`}
+              activeDot={{ r: 5, stroke: "#ffffff", strokeWidth: 2, fill: s.color }}
             />
           ))}
         </ComposedChart>

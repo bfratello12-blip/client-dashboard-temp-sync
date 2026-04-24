@@ -3210,10 +3210,20 @@ export default function Home({
       ? buildRollingAvgSeries(googleSpendSeriesCompare, "spend", spendRollingWindowDays)
       : googleSpendSeriesCompare;
   }, [spendRollingEnabled, spendRollingWindowDays, googleSpendSeriesCompare]);
+  const profitOverlaySpendSeries = useMemo(() => {
+    return profitRollingEnabled
+      ? buildRollingAvgSeries(spendSeries, "spend", profitRollingWindowDays)
+      : spendSeries;
+  }, [profitRollingEnabled, profitRollingWindowDays, spendSeries]);
+  const profitOverlaySpendSeriesCompare = useMemo(() => {
+    return profitRollingEnabled
+      ? buildRollingAvgSeries(spendSeriesCompare, "spend", profitRollingWindowDays)
+      : spendSeriesCompare;
+  }, [profitRollingEnabled, profitRollingWindowDays, spendSeriesCompare]);
   /** Profit + ad spend overlay (for Profit Trend chart "Show ad spend" toggle) */
   const profitWithSpendSeries = useMemo(() => {
     const spendByDate = new Map<string, number>();
-    for (const s of spendTrendSeries) {
+    for (const s of profitOverlaySpendSeries) {
       spendByDate.set(s.date, Number(s.spend ?? 0));
     }
     return profitTrendSeries.map((d) => ({
@@ -3221,11 +3231,11 @@ export default function Home({
       profit: d.profit,
       adSpend: spendByDate.has(d.date) ? spendByDate.get(d.date)! : 0,
     }));
-  }, [profitTrendSeries, spendTrendSeries]);
+  }, [profitTrendSeries, profitOverlaySpendSeries]);
   const profitWithSpendSeriesCompare = useMemo(() => {
     if (!effectiveShowComparison) return [];
     const spendByDate = new Map<string, number>();
-    for (const s of spendTrendSeriesCompare) {
+    for (const s of profitOverlaySpendSeriesCompare) {
       spendByDate.set(s.date, Number(s.spend ?? 0));
     }
     return profitTrendSeriesCompare.map((d) => ({
@@ -3233,7 +3243,7 @@ export default function Home({
       profit: d.profit,
       adSpend: spendByDate.has(d.date) ? spendByDate.get(d.date)! : 0,
     }));
-  }, [profitTrendSeriesCompare, spendTrendSeriesCompare, effectiveShowComparison]);
+  }, [profitTrendSeriesCompare, profitOverlaySpendSeriesCompare, effectiveShowComparison]);
   /** Selected spend series based on chart type */
   const spendChartData = useMemo(() => {
     return spendTrendSeries.map((item, index) => ({

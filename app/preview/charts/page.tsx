@@ -258,7 +258,7 @@ function RedesignedChart({
             type="number"
             scale="time"
             domain={["dataMin", "dataMax"]}
-            tick={{ fontSize: 11, fill: "#94a3b8", fontVariantNumeric: "tabular-nums" }}
+            tick={{ fontSize: 11, fill: "#94a3b8", style: { fontVariantNumeric: "tabular-nums" } } as any}
             tickFormatter={(v) => mmdd(new Date(Number(v)).toISOString().slice(0, 10))}
             interval="preserveStartEnd"
             minTickGap={36}
@@ -267,7 +267,7 @@ function RedesignedChart({
             dy={6}
           />
           <YAxis
-            tick={{ fontSize: 11, fill: "#94a3b8", fontVariantNumeric: "tabular-nums" }}
+            tick={{ fontSize: 11, fill: "#94a3b8", style: { fontVariantNumeric: "tabular-nums" } } as any}
             tickLine={false}
             axisLine={false}
             tickFormatter={(v) => compactNum(Number(v))}

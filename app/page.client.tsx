@@ -702,7 +702,7 @@ function EventfulLineChart({
       onPointerLeave={clearHover}
     >
       <SafeResponsiveContainer height={height} className="h-full w-full">
-        <ComposedChart data={chartData} margin={{ top: 16, right: 16, left: 4, bottom: 4 }}>
+        <ComposedChart data={chartData} margin={{ top: 16, right: 16, left: 4, bottom: 24 }}>
           <CartesianGrid stroke="#e2e8f0" strokeOpacity={0.7} vertical={false} />
           <defs>
             <radialGradient id="eventMarkerGradient" cx="30%" cy="30%" r="70%">
@@ -1097,7 +1097,7 @@ export function MultiSeriesEventfulLineChart({
       <SafeResponsiveContainer height={height} className="h-full w-full">
         <ComposedChart
           data={chartData}
-          margin={{ top: 16, right: 16, left: 4, bottom: 4 }}
+          margin={{ top: 16, right: 16, left: 4, bottom: 24 }}
         >
           <CartesianGrid stroke="#e2e8f0" strokeOpacity={0.7} vertical={false} />
           <defs>
@@ -1630,6 +1630,7 @@ export default function Home({
   const [profitRollingEnabled, setProfitRollingEnabled] = useState(false);
   const [profitRollingWindowDays, setProfitRollingWindowDays] = useState<number>(7);
   const [showProfitTrendline, setShowProfitTrendline] = useState<boolean>(true);
+  const [showProfitAdSpend, setShowProfitAdSpend] = useState<boolean>(false);
   const [revenueRollingEnabled, setRevenueRollingEnabled] = useState(false);
   const [revenueRollingWindowDays, setRevenueRollingWindowDays] = useState<number>(7);
   const [spendRollingEnabled, setSpendRollingEnabled] = useState(false);
@@ -3209,6 +3210,30 @@ export default function Home({
       ? buildRollingAvgSeries(googleSpendSeriesCompare, "spend", spendRollingWindowDays)
       : googleSpendSeriesCompare;
   }, [spendRollingEnabled, spendRollingWindowDays, googleSpendSeriesCompare]);
+  /** Profit + ad spend overlay (for Profit Trend chart "Show ad spend" toggle) */
+  const profitWithSpendSeries = useMemo(() => {
+    const spendByDate = new Map<string, number>();
+    for (const s of spendTrendSeries) {
+      spendByDate.set(s.date, Number(s.spend ?? 0));
+    }
+    return profitTrendSeries.map((d) => ({
+      date: d.date,
+      profit: d.profit,
+      adSpend: spendByDate.has(d.date) ? spendByDate.get(d.date)! : 0,
+    }));
+  }, [profitTrendSeries, spendTrendSeries]);
+  const profitWithSpendSeriesCompare = useMemo(() => {
+    if (!effectiveShowComparison) return [];
+    const spendByDate = new Map<string, number>();
+    for (const s of spendTrendSeriesCompare) {
+      spendByDate.set(s.date, Number(s.spend ?? 0));
+    }
+    return profitTrendSeriesCompare.map((d) => ({
+      date: d.date,
+      profit: d.profit,
+      adSpend: spendByDate.has(d.date) ? spendByDate.get(d.date)! : 0,
+    }));
+  }, [profitTrendSeriesCompare, spendTrendSeriesCompare, effectiveShowComparison]);
   /** Selected spend series based on chart type */
   const spendChartData = useMemo(() => {
     return spendTrendSeries.map((item, index) => ({
@@ -5126,6 +5151,15 @@ export default function Home({
                   Show trendline
                 </label>
                 <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={showProfitAdSpend}
+                    onChange={(e) => setShowProfitAdSpend(e.target.checked)}
+                  />
+                  Show ad spend
+                </label>
+                <label className="flex items-center gap-2">
                   <span className="text-slate-500">Window</span>
                   <select
                     className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs"
@@ -5162,18 +5196,39 @@ export default function Home({
                 </div>
               </div>
               <ChartReadyWrapper minHeight={320} className="w-full">
-                <EventfulLineChart
-                  data={profitTrendSeries}
-                  compareData={profitTrendSeriesCompare}
-                  showComparison={effectiveShowComparison}
-                  yKey="profit"
-                  yTooltipFormatter={(v) => formatCurrency(v)}
-                  markers={eventMarkers}
-                  showMarkers={showEventMarkers}
-                  xDomain={xDomain}
-                  compareLabel={compareLabel}
-                  trendlineData={showProfitTrendline ? profitTrendline?.data : undefined}
-                />
+                {showProfitAdSpend ? (
+                  <MultiSeriesEventfulLineChart
+                    data={profitWithSpendSeries}
+                    compareData={profitWithSpendSeriesCompare}
+                    showComparison={effectiveShowComparison}
+                    series={[
+                      { key: "profit", name: "Profit", color: "#2563eb", strokeWidth: 2.5, yAxisId: "left" },
+                      { key: "adSpend", name: "Total Ad Spend", color: "#f97316", strokeWidth: 2, yAxisId: "right" },
+                    ]}
+                    yTooltipFormatter={(v) => formatCurrency(v)}
+                    markers={eventMarkers}
+                    showMarkers={showEventMarkers}
+                    xDomain={xDomain}
+                    compareLabel={compareLabel}
+                    dualYAxis
+                    leftYAxisLabel="Profit"
+                    rightYAxisLabel="Ad Spend"
+                    xAxisDataKey="date"
+                  />
+                ) : (
+                  <EventfulLineChart
+                    data={profitTrendSeries}
+                    compareData={profitTrendSeriesCompare}
+                    showComparison={effectiveShowComparison}
+                    yKey="profit"
+                    yTooltipFormatter={(v) => formatCurrency(v)}
+                    markers={eventMarkers}
+                    showMarkers={showEventMarkers}
+                    xDomain={xDomain}
+                    compareLabel={compareLabel}
+                    trendlineData={showProfitTrendline ? profitTrendline?.data : undefined}
+                  />
+                )}
               </ChartReadyWrapper>
             </ChartCard>
             <ChartCard
